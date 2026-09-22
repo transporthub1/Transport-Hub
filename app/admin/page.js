@@ -21,8 +21,15 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadAllData();
-  }, []);
+  const loggedIn = localStorage.getItem("transportAdminLoggedIn");
+
+  if (loggedIn !== "true") {
+    window.location.href = "/admin/login";
+    return;
+  }
+
+  loadAllData();
+}, []);
 
   const loadAllData = () => {
     loadUsers();
