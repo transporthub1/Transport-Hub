@@ -63,11 +63,7 @@ function getUserName(user) {
 
   const combinedName = `${firstName} ${lastName}`.trim();
 
-  if (combinedName) {
-    return combinedName;
-  }
-
-  return "User";
+  return combinedName || "User";
 }
 
 export default function Dashboard() {
@@ -77,6 +73,7 @@ export default function Dashboard() {
   const [teamMembers, setTeamMembers] = useState([]);
   const [withdrawableReturns, setWithdrawableReturns] = useState(0);
   const [showFeatures, setShowFeatures] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState(false);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -107,7 +104,6 @@ export default function Dashboard() {
     };
 
     saveStorage("transportUser", normalizedUser);
-
     setUser(normalizedUser);
 
     const phone = normalizedUser.phone || "unknown";
@@ -127,20 +123,20 @@ export default function Dashboard() {
     }
 
     const storedWithdrawable = Number(
-      localStorage.getItem(`transportWithdrawableReturns_${phone}`) || 0
+      localStorage.getItem(
+        `transportWithdrawableReturns_${phone}`
+      ) || 0
     );
 
     setWithdrawableReturns(storedWithdrawable);
 
-    const storedTransactions = getStorageArray(
-      `transportTransactions_${phone}`
+    setTransactions(
+      getStorageArray(`transportTransactions_${phone}`)
     );
 
-    setTransactions(storedTransactions);
-
-    const storedTeam = getStorageArray(`transportTeam_${phone}`);
-
-    setTeamMembers(storedTeam);
+    setTeamMembers(
+      getStorageArray(`transportTeam_${phone}`)
+    );
 
     setLoading(false);
   }, []);
@@ -168,7 +164,9 @@ export default function Dashboard() {
 
       const daysPassed = Math.max(
         0,
-        Math.floor((now - start) / (1000 * 60 * 60 * 24))
+        Math.floor(
+          (now - start) / (1000 * 60 * 60 * 24)
+        )
       );
 
       const eligibleDays = Math.min(
@@ -176,7 +174,10 @@ export default function Dashboard() {
         Number(plan.duration || PLAN_DURATION)
       );
 
-      return total + eligibleDays * Number(plan.daily || 0);
+      return (
+        total +
+        eligibleDays * Number(plan.daily || 0)
+      );
     }, 0);
   }, [activePlans]);
 
@@ -184,7 +185,8 @@ export default function Dashboard() {
     return activePlans.reduce(
       (total, plan) =>
         total +
-        Number(plan.daily || 0) * Number(plan.duration || PLAN_DURATION),
+        Number(plan.daily || 0) *
+          Number(plan.duration || PLAN_DURATION),
       0
     );
   }, [activePlans]);
@@ -193,57 +195,78 @@ export default function Dashboard() {
     return transactions
       .filter(
         (item) =>
-          String(item.type || "").toLowerCase() === "deposit" &&
-          String(item.status || "").toLowerCase() === "approved"
+          String(item.type || "").toLowerCase() ===
+            "deposit" &&
+          String(item.status || "").toLowerCase() ===
+            "approved"
       )
-      .reduce((total, item) => total + Number(item.amount || 0), 0);
+      .reduce(
+        (total, item) =>
+          total + Number(item.amount || 0),
+        0
+      );
   }, [transactions]);
 
   const withdrawalTotal = useMemo(() => {
     return transactions
       .filter(
         (item) =>
-          String(item.type || "").toLowerCase() === "withdraw" &&
-          String(item.status || "").toLowerCase() === "approved"
+          String(item.type || "").toLowerCase() ===
+            "withdraw" &&
+          String(item.status || "").toLowerCase() ===
+            "approved"
       )
-      .reduce((total, item) => total + Number(item.amount || 0), 0);
+      .reduce(
+        (total, item) =>
+          total + Number(item.amount || 0),
+        0
+      );
   }, [transactions]);
 
   const pendingDeposits = useMemo(() => {
     return transactions
       .filter(
         (item) =>
-          String(item.type || "").toLowerCase() === "deposit" &&
-          String(item.status || "").toLowerCase() === "pending"
+          String(item.type || "").toLowerCase() ===
+            "deposit" &&
+          String(item.status || "").toLowerCase() ===
+            "pending"
       )
-      .reduce((total, item) => total + Number(item.amount || 0), 0);
+      .reduce(
+        (total, item) =>
+          total + Number(item.amount || 0),
+        0
+      );
   }, [transactions]);
 
   const pendingWithdrawals = useMemo(() => {
     return transactions
       .filter(
         (item) =>
-          String(item.type || "").toLowerCase() === "withdraw" &&
-          String(item.status || "").toLowerCase() === "pending"
+          String(item.type || "").toLowerCase() ===
+            "withdraw" &&
+          String(item.status || "").toLowerCase() ===
+            "pending"
       )
-      .reduce((total, item) => total + Number(item.amount || 0), 0);
+      .reduce(
+        (total, item) =>
+          total + Number(item.amount || 0),
+        0
+      );
   }, [transactions]);
-
-  const todayProfit = dailyReturn;
-  const yesterdayProfit = dailyReturn;
-  const weekProfit = dailyReturn * 7;
-  const monthProfit = dailyReturn * 30;
 
   const teamInvestment = useMemo(() => {
     return teamMembers.reduce(
-      (total, member) => total + Number(member.investment || 0),
+      (total, member) =>
+        total + Number(member.investment || 0),
       0
     );
   }, [teamMembers]);
 
   const paidTeam = useMemo(() => {
     return teamMembers.reduce(
-      (total, member) => total + Number(member.commission || 0),
+      (total, member) =>
+        total + Number(member.commission || 0),
       0
     );
   }, [teamMembers]);
@@ -267,7 +290,8 @@ export default function Dashboard() {
   }, [teamMembers]);
 
   const walletBalance =
-    Number(user?.balance || 0) + Number(withdrawableReturns || 0);
+    Number(user?.balance || 0) +
+    Number(withdrawableReturns || 0);
 
   const referralCode =
     user?.referralCode ||
@@ -280,6 +304,11 @@ export default function Dashboard() {
     typeof window !== "undefined"
       ? `${window.location.origin}/register?ref=${referralCode}`
       : "";
+
+  function navigate(path) {
+    setMobileMenu(false);
+    window.location.href = path;
+  }
 
   function copyReferral() {
     if (!referralLink) return;
@@ -305,7 +334,9 @@ export default function Dashboard() {
       <div style={styles.loadingScreen}>
         <div style={styles.loadingCard}>
           <div style={styles.loadingIcon}>🚛</div>
-          <div style={styles.loadingTitle}>Transport Hub</div>
+          <div style={styles.loadingTitle}>
+            Transport Hub
+          </div>
           <div style={styles.loadingText}>
             Loading your dashboard...
           </div>
@@ -315,669 +346,1025 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={styles.dashboard}>
-      <aside style={styles.sidebar}>
-        <div style={styles.logoArea}>
-          <div style={styles.logoIcon}>🚛</div>
+    <>
+      <style jsx global>{`
+        * {
+          box-sizing: border-box;
+        }
 
-          <div>
-            <div style={styles.logoTitle}>Transport Hub</div>
-            <div style={styles.logoSubtitle}>
-              Investment Platform
-            </div>
-          </div>
-        </div>
+        html,
+        body {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          overflow-x: hidden;
+        }
 
-        <div style={styles.userMiniCard}>
-          <div style={styles.avatar}>👤</div>
+        button,
+        input {
+          font-family: Arial, sans-serif;
+        }
 
-          <div style={{ minWidth: 0 }}>
-            <div style={styles.userMiniName}>
-              {displayName}
-            </div>
+        @media (max-width: 900px) {
+          .desktop-sidebar {
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+          }
 
-            <div style={styles.userMiniPhone}>
-              {user?.phone || ""}
-            </div>
-          </div>
-        </div>
+          .desktop-sidebar.mobile-open {
+            transform: translateX(0);
+          }
 
-        <nav style={styles.navigation}>
-          <button
-            style={{
-              ...styles.navItem,
-              ...styles.activeNavItem,
-            }}
-            onClick={() => {
-              window.location.href = "/";
-            }}
-          >
-            <span>🏠</span>
-            <span>Dashboard</span>
-          </button>
+          .dashboard-main {
+            margin-left: 0 !important;
+            width: 100% !important;
+            padding: 14px !important;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/transport-plans";
-            }}
-          >
-            <span>🚛</span>
-            <span>Transport Plans</span>
-          </button>
+          .mobile-menu-button {
+            display: flex !important;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/deposit";
-            }}
-          >
-            <span>💰</span>
-            <span>Deposit</span>
-          </button>
+          .desktop-top-user {
+            display: none !important;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/withdraw";
-            }}
-          >
-            <span>💸</span>
-            <span>Withdraw</span>
-          </button>
+          .summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/transactions";
-            }}
-          >
-            <span>📊</span>
-            <span>Transactions</span>
-          </button>
+          .two-column-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/deposit-history";
-            }}
-          >
-            <span>📋</span>
-            <span>Deposit History</span>
-          </button>
+        @media (max-width: 600px) {
+          .dashboard-main {
+            padding: 10px !important;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/withdraw-history";
-            }}
-          >
-            <span>📋</span>
-            <span>Withdraw History</span>
-          </button>
+          .mobile-header {
+            display: flex !important;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/daily-returns";
-            }}
-          >
-            <span>🎁</span>
-            <span>Daily Returns</span>
-          </button>
+          .top-bar {
+            margin-top: 10px !important;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/my-team";
-            }}
-          >
-            <span>👥</span>
-            <span>My Team</span>
-          </button>
+          .summary-grid {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/referral";
-            }}
-          >
-            <span>🔗</span>
-            <span>Referral</span>
-          </button>
+          .summary-card {
+            padding: 13px !important;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/profile";
-            }}
-          >
-            <span>👤</span>
-            <span>Profile</span>
-          </button>
+          .summary-value {
+            font-size: 16px !important;
+            word-break: break-word;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              setShowFeatures(true);
-            }}
-          >
-            <span>🔐</span>
-            <span>Security</span>
-          </button>
+          .welcome-card {
+            padding: 17px !important;
+          }
 
-          <button
-            style={styles.navItem}
-            onClick={() => {
-              window.location.href = "/support";
-            }}
-          >
-            <span>🎧</span>
-            <span>Support</span>
-          </button>
+          .welcome-title {
+            font-size: 20px !important;
+          }
 
-          <button
-            style={styles.logoutNavItem}
-            onClick={logout}
-          >
-            <span>🚪</span>
-            <span>Logout</span>
-          </button>
-        </nav>
-      </aside>
+          .welcome-text {
+            font-size: 10px !important;
+          }
 
-      <main style={styles.mainContent}>
-        <div style={styles.topBar}>
-          <div>
-            <div style={styles.pageTitle}>Dashboard</div>
+          .welcome-truck {
+            width: 48px !important;
+            height: 48px !important;
+            font-size: 23px !important;
+          }
 
-            <div style={styles.pageSubtitle}>
-              Manage your transport investment account
-            </div>
-          </div>
+          .section-card {
+            padding: 15px !important;
+          }
 
-          <div style={styles.topUser}>
-            <div style={styles.topAvatar}>👤</div>
+          .plan-grid {
+            grid-template-columns: 1fr !important;
+          }
+
+          .plan-stats {
+            grid-template-columns: repeat(3, 1fr) !important;
+          }
+
+          .transaction-row {
+            flex-wrap: wrap !important;
+          }
+
+          .transaction-info {
+            min-width: calc(100% - 50px) !important;
+          }
+
+          .transaction-amount {
+            margin-left: 44px !important;
+          }
+
+          .dashboard-support {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+          }
+
+          .dashboard-support-buttons {
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+          }
+
+          .live-chat-button,
+          .whatsapp-button {
+            width: 100% !important;
+            text-align: center !important;
+          }
+
+          .top-bar {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+          }
+
+          .mobile-user-box {
+            display: flex !important;
+          }
+        }
+
+        @media (min-width: 901px) {
+          .mobile-header {
+            display: none !important;
+          }
+
+          .mobile-menu-button {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      <div style={styles.dashboard}>
+
+        {mobileMenu && (
+          <div
+            style={styles.overlay}
+            onClick={() => setMobileMenu(false)}
+          />
+        )}
+
+        <aside
+          className={`desktop-sidebar ${
+            mobileMenu ? "mobile-open" : ""
+          }`}
+          style={styles.sidebar}
+        >
+          <div style={styles.logoArea}>
+            <div style={styles.logoIcon}>🚛</div>
 
             <div>
-              <div style={styles.topUserName}>
+              <div style={styles.logoTitle}>
+                Transport Hub
+              </div>
+
+              <div style={styles.logoSubtitle}>
+                Investment Platform
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.userMiniCard}>
+            <div style={styles.avatar}>👤</div>
+
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.userMiniName}>
                 {displayName}
               </div>
 
-              <div style={styles.topUserBalance}>
-                Balance: {formatMoney(walletBalance)}
+              <div style={styles.userMiniPhone}>
+                {user?.phone || ""}
               </div>
             </div>
           </div>
-        </div>
 
-        <section style={styles.welcomeCard}>
-          <div>
-            <div style={styles.welcomeSmall}>
-              Welcome back
-            </div>
-
-            <div style={styles.welcomeTitle}>
-              {displayName} 👋
-            </div>
-
-            <div style={styles.welcomeText}>
-              Track your investments, daily returns and team activity
-              from one place.
-            </div>
-          </div>
-
-          <div style={styles.welcomeTruck}>🚛</div>
-        </section>
-
-        <section style={styles.summaryGrid}>
-          <div style={styles.summaryCard}>
-            <div style={styles.summaryIcon}>💼</div>
-
-            <div style={styles.summaryLabel}>
-              Total Investment
-            </div>
-
-            <div style={styles.summaryValue}>
-              {formatMoney(totalInvestment)}
-            </div>
-          </div>
-
-          <div style={styles.summaryCard}>
-            <div style={styles.summaryIcon}>📈</div>
-
-            <div style={styles.summaryLabel}>
-              Daily Return
-            </div>
-
-            <div style={styles.summaryValue}>
-              {formatMoney(dailyReturn)}
-            </div>
-          </div>
-
-          <div style={styles.summaryCard}>
-            <div style={styles.summaryIcon}>💰</div>
-
-            <div style={styles.summaryLabel}>
-              Wallet Balance
-            </div>
-
-            <div style={styles.summaryValue}>
-              {formatMoney(walletBalance)}
-            </div>
-          </div>
-
-          <div style={styles.summaryCard}>
-            <div style={styles.summaryIcon}>🎯</div>
-
-            <div style={styles.summaryLabel}>
-              Expected Return
-            </div>
-
-            <div style={styles.summaryValue}>
-              {formatMoney(expectedReturn)}
-            </div>
-          </div>
-        </section>
-
-        <section style={styles.largeCard}>
-          <div style={styles.sectionHeader}>
-            <div>
-              <div style={styles.sectionTitle}>
-                🚛 Active Transport Plans
-              </div>
-
-              <div style={styles.sectionSubtitle}>
-                Your currently active investment plans
-              </div>
-            </div>
+          <nav style={styles.navigation}>
 
             <button
-              style={styles.greenButton}
+              style={{
+                ...styles.navItem,
+                ...styles.activeNavItem,
+              }}
+              onClick={() => navigate("/")}
+            >
+              <span>🏠</span>
+              <span>Dashboard</span>
+            </button>
+
+            <button
+              style={styles.navItem}
+              onClick={() =>
+                navigate("/transport-plans")
+              }
+            >
+              <span>🚛</span>
+              <span>Transport Plans</span>
+            </button>
+
+            <button
+              style={styles.navItem}
+              onClick={() => navigate("/deposit")}
+            >
+              <span>💰</span>
+              <span>Deposit</span>
+            </button>
+
+            <button
+              style={styles.navItem}
+              onClick={() => navigate("/withdraw")}
+            >
+              <span>💸</span>
+              <span>Withdraw</span>
+            </button>
+
+            <button
+              style={styles.navItem}
+              onClick={() =>
+                navigate("/transactions")
+              }
+            >
+              <span>📊</span>
+              <span>Transactions</span>
+            </button>
+
+            <button
+              style={styles.navItem}
+              onClick={() =>
+                navigate("/deposit-history")
+              }
+            >
+              <span>📋</span>
+              <span>Deposit History</span>
+            </button>
+
+            <button
+              style={styles.navItem}
+              onClick={() =>
+                navigate("/withdraw-history")
+              }
+            >
+              <span>📋</span>
+              <span>Withdraw History</span>
+            </button>
+
+            <button
+              style={styles.navItem}
+              onClick={() =>
+                navigate("/daily-returns")
+              }
+            >
+              <span>🎁</span>
+              <span>Daily Returns</span>
+            </button>
+
+            <button
+              style={styles.navItem}
+              onClick={() => navigate("/my-team")}
+            >
+              <span>👥</span>
+              <span>My Team</span>
+            </button>
+
+            <button
+              style={styles.navItem}
+              onClick={() => navigate("/referral")}
+            >
+              <span>🔗</span>
+              <span>Referral</span>
+            </button>
+
+            <button
+              style={styles.navItem}
+              onClick={() => navigate("/profile")}
+            >
+              <span>👤</span>
+              <span>Profile</span>
+            </button>
+
+            <button
+              style={styles.navItem}
               onClick={() => {
-                window.location.href = "/transport-plans";
+                setMobileMenu(false);
+                setShowFeatures(true);
               }}
             >
-              + Add Plan
+              <span>🔐</span>
+              <span>Security</span>
             </button>
-          </div>
 
-          {activePlans.length === 0 ? (
-            <div style={styles.emptyState}>
-              <div style={styles.emptyIcon}>🚛</div>
+            <button
+              style={styles.navItem}
+              onClick={() => navigate("/support")}
+            >
+              <span>🎧</span>
+              <span>Support</span>
+            </button>
 
-              <div style={styles.emptyTitle}>
-                No Active Transport Plans
+            <button
+              style={styles.logoutNavItem}
+              onClick={logout}
+            >
+              <span>🚪</span>
+              <span>Logout</span>
+            </button>
+
+          </nav>
+        </aside>
+
+        <main
+          className="dashboard-main"
+          style={styles.mainContent}
+        >
+
+          <div
+            className="mobile-header"
+            style={styles.mobileHeader}
+          >
+            <button
+              className="mobile-menu-button"
+              style={styles.menuButton}
+              onClick={() => setMobileMenu(true)}
+            >
+              ☰
+            </button>
+
+            <div style={styles.mobileBrand}>
+              <div style={styles.mobileLogoIcon}>
+                🚛
               </div>
 
-              <div style={styles.emptyText}>
-                Select a transport plan to start earning daily returns.
+              <div>
+                <div style={styles.mobileBrandTitle}>
+                  Transport Hub
+                </div>
+
+                <div style={styles.mobileBrandSub}>
+                  Investment Platform
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.mobileHeaderAvatar}>
+              👤
+            </div>
+          </div>
+
+          <div
+            className="top-bar"
+            style={styles.topBar}
+          >
+            <div>
+              <div style={styles.pageTitle}>
+                Dashboard
+              </div>
+
+              <div style={styles.pageSubtitle}>
+                Manage your transport investment account
+              </div>
+            </div>
+
+            <div
+              className="desktop-top-user"
+              style={styles.topUser}
+            >
+              <div style={styles.topAvatar}>
+                👤
+              </div>
+
+              <div>
+                <div style={styles.topUserName}>
+                  {displayName}
+                </div>
+
+                <div style={styles.topUserBalance}>
+                  Balance: {formatMoney(walletBalance)}
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="mobile-user-box"
+              style={styles.mobileUserBox}
+            >
+              <span>Balance</span>
+              <strong>
+                PKR {formatMoney(walletBalance)}
+              </strong>
+            </div>
+          </div>
+
+          <section
+            className="welcome-card"
+            style={styles.welcomeCard}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.welcomeSmall}>
+                Welcome back
+              </div>
+
+              <div
+                className="welcome-title"
+                style={styles.welcomeTitle}
+              >
+                {displayName} 👋
+              </div>
+
+              <div
+                className="welcome-text"
+                style={styles.welcomeText}
+              >
+                Track your investments, daily returns
+                and team activity from one place.
+              </div>
+            </div>
+
+            <div
+              className="welcome-truck"
+              style={styles.welcomeTruck}
+            >
+              🚛
+            </div>
+          </section>
+
+          <section
+            className="summary-grid"
+            style={styles.summaryGrid}
+          >
+            <div
+              className="summary-card"
+              style={styles.summaryCard}
+            >
+              <div style={styles.summaryIcon}>
+                💼
+              </div>
+
+              <div style={styles.summaryLabel}>
+                Total Investment
+              </div>
+
+              <div
+                className="summary-value"
+                style={styles.summaryValue}
+              >
+                {formatMoney(totalInvestment)}
+              </div>
+            </div>
+
+            <div
+              className="summary-card"
+              style={styles.summaryCard}
+            >
+              <div style={styles.summaryIcon}>
+                📈
+              </div>
+
+              <div style={styles.summaryLabel}>
+                Daily Return
+              </div>
+
+              <div
+                className="summary-value"
+                style={styles.summaryValue}
+              >
+                {formatMoney(dailyReturn)}
+              </div>
+            </div>
+
+            <div
+              className="summary-card"
+              style={styles.summaryCard}
+            >
+              <div style={styles.summaryIcon}>
+                💰
+              </div>
+
+              <div style={styles.summaryLabel}>
+                Wallet Balance
+              </div>
+
+              <div
+                className="summary-value"
+                style={styles.summaryValue}
+              >
+                {formatMoney(walletBalance)}
+              </div>
+            </div>
+
+            <div
+              className="summary-card"
+              style={styles.summaryCard}
+            >
+              <div style={styles.summaryIcon}>
+                🎯
+              </div>
+
+              <div style={styles.summaryLabel}>
+                Expected Return
+              </div>
+
+              <div
+                className="summary-value"
+                style={styles.summaryValue}
+              >
+                {formatMoney(expectedReturn)}
+              </div>
+            </div>
+          </section>
+
+          <section
+            className="section-card"
+            style={styles.largeCard}
+          >
+            <div style={styles.sectionHeader}>
+              <div>
+                <div style={styles.sectionTitle}>
+                  🚛 Active Transport Plans
+                </div>
+
+                <div style={styles.sectionSubtitle}>
+                  Your currently active investment plans
+                </div>
+              </div>
+
+              <button
+                style={styles.greenButton}
+                onClick={() =>
+                  navigate("/transport-plans")
+                }
+              >
+                + Add Plan
+              </button>
+            </div>
+
+            {activePlans.length === 0 ? (
+              <div style={styles.emptyState}>
+                <div style={styles.emptyIcon}>
+                  🚛
+                </div>
+
+                <div style={styles.emptyTitle}>
+                  No Active Transport Plans
+                </div>
+
+                <div style={styles.emptyText}>
+                  Select a transport plan to start earning
+                  daily returns.
+                </div>
+
+                <button
+                  style={styles.greenButtonLarge}
+                  onClick={() =>
+                    navigate("/transport-plans")
+                  }
+                >
+                  View Transport Plans
+                </button>
+              </div>
+            ) : (
+              <div
+                className="plan-grid"
+                style={styles.planGrid}
+              >
+                {activePlans.map((plan, index) => {
+                  const totalPlanReturn =
+                    Number(plan.daily || 0) *
+                    Number(
+                      plan.duration || PLAN_DURATION
+                    );
+
+                  return (
+                    <div
+                      style={styles.planCard}
+                      key={index}
+                    >
+                      <div style={styles.planTop}>
+                        <div>
+                          <div style={styles.planName}>
+                            {plan.name}
+                          </div>
+
+                          <div style={styles.planPrice}>
+                            {formatMoney(plan.price)}
+                          </div>
+                        </div>
+
+                        <div style={styles.activeBadge}>
+                          ACTIVE
+                        </div>
+                      </div>
+
+                      <div
+                        className="plan-stats"
+                        style={styles.planStats}
+                      >
+                        <div>
+                          <span style={styles.statLabel}>
+                            Daily
+                          </span>
+
+                          <strong style={styles.statValue}>
+                            {formatMoney(plan.daily)}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span style={styles.statLabel}>
+                            Duration
+                          </span>
+
+                          <strong style={styles.statValue}>
+                            {plan.duration} Days
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span style={styles.statLabel}>
+                            Total Return
+                          </span>
+
+                          <strong style={styles.statValue}>
+                            {formatMoney(totalPlanReturn)}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section
+            className="two-column-grid"
+            style={styles.twoColumnGrid}
+          >
+            <div style={styles.sideCard}>
+              <div style={styles.sectionTitle}>
+                💰 Wallet Overview
+              </div>
+
+              <div style={styles.walletRows}>
+                <div style={styles.walletRow}>
+                  <span>Available Balance</span>
+                  <strong>
+                    {formatMoney(walletBalance)}
+                  </strong>
+                </div>
+
+                <div style={styles.walletRow}>
+                  <span>Total Deposits</span>
+                  <strong>
+                    {formatMoney(depositTotal)}
+                  </strong>
+                </div>
+
+                <div style={styles.walletRow}>
+                  <span>Total Withdrawals</span>
+                  <strong>
+                    {formatMoney(withdrawalTotal)}
+                  </strong>
+                </div>
+
+                <div style={styles.walletRow}>
+                  <span>Pending Deposits</span>
+                  <strong>
+                    {formatMoney(pendingDeposits)}
+                  </strong>
+                </div>
+
+                <div style={styles.walletRow}>
+                  <span>Pending Withdrawals</span>
+                  <strong>
+                    {formatMoney(pendingWithdrawals)}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.sideCard}>
+              <div style={styles.sectionTitle}>
+                📈 Return Summary
+              </div>
+
+              <div style={styles.walletRows}>
+                <div style={styles.walletRow}>
+                  <span>Today</span>
+                  <strong>
+                    {formatMoney(dailyReturn)}
+                  </strong>
+                </div>
+
+                <div style={styles.walletRow}>
+                  <span>Yesterday</span>
+                  <strong>
+                    {formatMoney(dailyReturn)}
+                  </strong>
+                </div>
+
+                <div style={styles.walletRow}>
+                  <span>Last 7 Days</span>
+                  <strong>
+                    {formatMoney(dailyReturn * 7)}
+                  </strong>
+                </div>
+
+                <div style={styles.walletRow}>
+                  <span>Last 30 Days</span>
+                  <strong>
+                    {formatMoney(dailyReturn * 30)}
+                  </strong>
+                </div>
+
+                <div style={styles.walletRow}>
+                  <span>Total Earned</span>
+                  <strong>
+                    {formatMoney(earnedReturns)}
+                  </strong>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            className="two-column-grid"
+            style={styles.twoColumnGrid}
+          >
+            <div style={styles.sideCard}>
+              <div style={styles.sectionTitle}>
+                👥 My Team
+              </div>
+
+              <div style={styles.teamMainNumber}>
+                {teamMembers.length}
+              </div>
+
+              <div style={styles.teamLabel}>
+                Total Team Members
+              </div>
+
+              <div style={styles.teamStats}>
+                <div style={styles.teamStat}>
+                  <span>Team Investment</span>
+                  <strong>
+                    {formatMoney(teamInvestment)}
+                  </strong>
+                </div>
+
+                <div style={styles.teamStat}>
+                  <span>Paid Commission</span>
+                  <strong>
+                    {formatMoney(paidTeam)}
+                  </strong>
+                </div>
+
+                <div style={styles.teamStat}>
+                  <span>Today Commission</span>
+                  <strong>
+                    {formatMoney(todayTeam)}
+                  </strong>
+                </div>
+              </div>
+
+              <button
+                style={styles.outlineButton}
+                onClick={() => navigate("/my-team")}
+              >
+                View My Team
+              </button>
+            </div>
+
+            <div style={styles.sideCard}>
+              <div style={styles.sectionTitle}>
+                🔗 Referral Program
+              </div>
+
+              <div style={styles.referralText}>
+                Invite friends and grow your team.
+              </div>
+
+              <div style={styles.referralCodeBox}>
+                <span>{referralCode}</span>
+
+                <button
+                  style={styles.copyButton}
+                  onClick={copyReferral}
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+
+              <div style={styles.referralLinkBox}>
+                {referralLink ||
+                  "Referral link unavailable"}
+              </div>
+
+              <button
+                style={styles.greenButton}
+                onClick={() => navigate("/referral")}
+              >
+                Open Referral
+              </button>
+            </div>
+          </section>
+
+          <section
+            className="section-card"
+            style={styles.activityCard}
+          >
+            <div style={styles.sectionHeader}>
+              <div>
+                <div style={styles.sectionTitle}>
+                  📊 Recent Transactions
+                </div>
+
+                <div style={styles.sectionSubtitle}>
+                  Latest account activity
+                </div>
+              </div>
+
+              <button
+                style={styles.textButton}
+                onClick={() =>
+                  navigate("/transactions")
+                }
+              >
+                View All →
+              </button>
+            </div>
+
+            {transactions.length === 0 ? (
+              <div style={styles.transactionEmpty}>
+                No transactions yet.
+              </div>
+            ) : (
+              <div style={styles.transactionList}>
+                {transactions
+                  .slice(0, 5)
+                  .map((item, index) => {
+                    const type = String(
+                      item.type || ""
+                    ).toLowerCase();
+
+                    const status = String(
+                      item.status || "pending"
+                    ).toLowerCase();
+
+                    return (
+                      <div
+                        className="transaction-row"
+                        style={styles.transactionRow}
+                        key={index}
+                      >
+                        <div
+                          style={
+                            styles.transactionIcon
+                          }
+                        >
+                          {type === "withdraw"
+                            ? "💸"
+                            : "💰"}
+                        </div>
+
+                        <div
+                          className="transaction-info"
+                          style={
+                            styles.transactionInfo
+                          }
+                        >
+                          <div
+                            style={
+                              styles.transactionTitle
+                            }
+                          >
+                            {type === "withdraw"
+                              ? "Withdrawal"
+                              : "Deposit"}
+                          </div>
+
+                          <div
+                            style={
+                              styles.transactionDate
+                            }
+                          >
+                            {item.date ||
+                              item.createdAt ||
+                              item.submittedAt ||
+                              "Recently"}
+                          </div>
+                        </div>
+
+                        <div
+                          className="transaction-amount"
+                          style={
+                            styles.transactionAmount
+                          }
+                        >
+                          {formatMoney(item.amount)}
+                        </div>
+
+                        <div
+                          style={{
+                            ...styles.statusBadge,
+                            ...(status === "approved"
+                              ? styles.approvedStatus
+                              : status === "rejected"
+                              ? styles.rejectedStatus
+                              : styles.pendingStatus),
+                          }}
+                        >
+                          {status.toUpperCase()}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </section>
+
+          <section
+            className="dashboard-support"
+            style={styles.dashboardSupport}
+          >
+            <div style={styles.dashboardSupportIcon}>
+              🎧
+            </div>
+
+            <div style={styles.dashboardSupportContent}>
+              <div style={styles.dashboardSupportTitle}>
+                Need Help?
+              </div>
+
+              <div style={styles.dashboardSupportText}>
+                Have questions about your account,
+                deposits, withdrawals, or transport
+                plans? Our support team is here to help.
+              </div>
+            </div>
+
+            <div
+              className="dashboard-support-buttons"
+              style={styles.dashboardSupportButtons}
+            >
+              <button
+                className="live-chat-button"
+                style={styles.liveChatButton}
+                onClick={() => navigate("/support")}
+              >
+                💬 Live Chat
+              </button>
+
+              <a
+                className="whatsapp-button"
+                href="https://wa.me/923263159327?text=Hello%20Transport%20Hub%20Support%2C%20I%20need%20help."
+                target="_blank"
+                rel="noopener noreferrer"
+                style={styles.whatsappButton}
+              >
+                📱 WhatsApp
+              </a>
+            </div>
+          </section>
+        </main>
+
+        {showFeatures && (
+          <div style={styles.modalOverlay}>
+            <div style={styles.modalCard}>
+              <div style={styles.modalIcon}>
+                🚧
+              </div>
+
+              <div style={styles.modalTitle}>
+                Coming Soon
+              </div>
+
+              <div style={styles.modalText}>
+                This feature is currently under
+                development and will be available soon.
               </div>
 
               <button
                 style={styles.greenButtonLarge}
-                onClick={() => {
-                  window.location.href = "/transport-plans";
-                }}
+                onClick={() =>
+                  setShowFeatures(false)
+                }
               >
-                View Transport Plans
+                Close
               </button>
             </div>
-          ) : (
-            <div style={styles.planGrid}>
-              {activePlans.map((plan, index) => {
-                const totalPlanReturn =
-                  Number(plan.daily || 0) *
-                  Number(plan.duration || PLAN_DURATION);
-
-                return (
-                  <div style={styles.planCard} key={index}>
-                    <div style={styles.planTop}>
-                      <div>
-                        <div style={styles.planName}>
-                          {plan.name}
-                        </div>
-
-                        <div style={styles.planPrice}>
-                          {formatMoney(plan.price)}
-                        </div>
-                      </div>
-
-                      <div style={styles.activeBadge}>
-                        ACTIVE
-                      </div>
-                    </div>
-
-                    <div style={styles.planStats}>
-                      <div>
-                        <span style={styles.statLabel}>
-                          Daily
-                        </span>
-
-                        <strong style={styles.statValue}>
-                          {formatMoney(plan.daily)}
-                        </strong>
-                      </div>
-
-                      <div>
-                        <span style={styles.statLabel}>
-                          Duration
-                        </span>
-
-                        <strong style={styles.statValue}>
-                          {plan.duration} Days
-                        </strong>
-                      </div>
-
-                      <div>
-                        <span style={styles.statLabel}>
-                          Total Return
-                        </span>
-
-                        <strong style={styles.statValue}>
-                          {formatMoney(totalPlanReturn)}
-                        </strong>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section style={styles.twoColumnGrid}>
-          <div style={styles.sideCard}>
-            <div style={styles.sectionTitle}>
-              💰 Wallet Overview
-            </div>
-
-            <div style={styles.walletRows}>
-              <div style={styles.walletRow}>
-                <span>Available Balance</span>
-                <strong>{formatMoney(walletBalance)}</strong>
-              </div>
-
-              <div style={styles.walletRow}>
-                <span>Total Deposits</span>
-                <strong>{formatMoney(depositTotal)}</strong>
-              </div>
-
-              <div style={styles.walletRow}>
-                <span>Total Withdrawals</span>
-                <strong>{formatMoney(withdrawalTotal)}</strong>
-              </div>
-
-              <div style={styles.walletRow}>
-                <span>Pending Deposits</span>
-                <strong>{formatMoney(pendingDeposits)}</strong>
-              </div>
-
-              <div style={styles.walletRow}>
-                <span>Pending Withdrawals</span>
-                <strong>{formatMoney(pendingWithdrawals)}</strong>
-              </div>
-            </div>
           </div>
-
-          <div style={styles.sideCard}>
-            <div style={styles.sectionTitle}>
-              📈 Return Summary
-            </div>
-
-            <div style={styles.walletRows}>
-              <div style={styles.walletRow}>
-                <span>Today</span>
-                <strong>{formatMoney(todayProfit)}</strong>
-              </div>
-
-              <div style={styles.walletRow}>
-                <span>Yesterday</span>
-                <strong>{formatMoney(yesterdayProfit)}</strong>
-              </div>
-
-              <div style={styles.walletRow}>
-                <span>Last 7 Days</span>
-                <strong>{formatMoney(weekProfit)}</strong>
-              </div>
-
-              <div style={styles.walletRow}>
-                <span>Last 30 Days</span>
-                <strong>{formatMoney(monthProfit)}</strong>
-              </div>
-
-              <div style={styles.walletRow}>
-                <span>Total Earned</span>
-                <strong>{formatMoney(earnedReturns)}</strong>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section style={styles.twoColumnGrid}>
-          <div style={styles.sideCard}>
-            <div style={styles.sectionTitle}>
-              👥 My Team
-            </div>
-
-            <div style={styles.teamMainNumber}>
-              {teamMembers.length}
-            </div>
-
-            <div style={styles.teamLabel}>
-              Total Team Members
-            </div>
-
-            <div style={styles.teamStats}>
-              <div style={styles.teamStat}>
-                <span>Team Investment</span>
-                <strong>{formatMoney(teamInvestment)}</strong>
-              </div>
-
-              <div style={styles.teamStat}>
-                <span>Paid Commission</span>
-                <strong>{formatMoney(paidTeam)}</strong>
-              </div>
-
-              <div style={styles.teamStat}>
-                <span>Today Commission</span>
-                <strong>{formatMoney(todayTeam)}</strong>
-              </div>
-            </div>
-
-            <button
-              style={styles.outlineButton}
-              onClick={() => {
-                window.location.href = "/my-team";
-              }}
-            >
-              View My Team
-            </button>
-          </div>
-
-          <div style={styles.sideCard}>
-            <div style={styles.sectionTitle}>
-              🔗 Referral Program
-            </div>
-
-            <div style={styles.referralText}>
-              Invite friends and grow your team.
-            </div>
-
-            <div style={styles.referralCodeBox}>
-              <span>{referralCode}</span>
-
-              <button
-                style={styles.copyButton}
-                onClick={copyReferral}
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-
-            <div style={styles.referralLinkBox}>
-              {referralLink || "Referral link unavailable"}
-            </div>
-
-            <button
-              style={styles.greenButton}
-              onClick={() => {
-                window.location.href = "/referral";
-              }}
-            >
-              Open Referral
-            </button>
-          </div>
-        </section>
-
-        <section style={styles.activityCard}>
-          <div style={styles.sectionHeader}>
-            <div>
-              <div style={styles.sectionTitle}>
-                📊 Recent Transactions
-              </div>
-
-              <div style={styles.sectionSubtitle}>
-                Latest account activity
-              </div>
-            </div>
-
-            <button
-              style={styles.textButton}
-              onClick={() => {
-                window.location.href = "/transactions";
-              }}
-            >
-              View All →
-            </button>
-          </div>
-
-          {transactions.length === 0 ? (
-            <div style={styles.transactionEmpty}>
-              No transactions yet.
-            </div>
-          ) : (
-            <div style={styles.transactionList}>
-              {transactions.slice(0, 5).map((item, index) => {
-                const type = String(
-                  item.type || ""
-                ).toLowerCase();
-
-                const status = String(
-                  item.status || "pending"
-                ).toLowerCase();
-
-                return (
-                  <div
-                    style={styles.transactionRow}
-                    key={index}
-                  >
-                    <div style={styles.transactionIcon}>
-                      {type === "withdraw" ? "💸" : "💰"}
-                    </div>
-
-                    <div style={styles.transactionInfo}>
-                      <div style={styles.transactionTitle}>
-                        {type === "withdraw"
-                          ? "Withdrawal"
-                          : "Deposit"}
-                      </div>
-
-                      <div style={styles.transactionDate}>
-                        {item.date ||
-                          item.createdAt ||
-                          item.submittedAt ||
-                          "Recently"}
-                      </div>
-                    </div>
-
-                    <div style={styles.transactionAmount}>
-                      {formatMoney(item.amount)}
-                    </div>
-
-                    <div
-                      style={{
-                        ...styles.statusBadge,
-                        ...(status === "approved"
-                          ? styles.approvedStatus
-                          : status === "rejected"
-                          ? styles.rejectedStatus
-                          : styles.pendingStatus),
-                      }}
-                    >
-                      {status.toUpperCase()}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section style={styles.dashboardSupport}>
-          <div style={styles.dashboardSupportIcon}>
-            🎧
-          </div>
-
-          <div style={styles.dashboardSupportContent}>
-            <div style={styles.dashboardSupportTitle}>
-              Need Help?
-            </div>
-
-            <div style={styles.dashboardSupportText}>
-              Have questions about your account, deposits, withdrawals,
-              or transport plans? Our support team is here to help.
-            </div>
-          </div>
-
-          <div style={styles.dashboardSupportButtons}>
-            <button
-              style={styles.liveChatButton}
-              onClick={() => {
-                window.location.href = "/support";
-              }}
-            >
-              💬 Live Chat
-            </button>
-
-            <a
-              href="https://wa.me/923263159327?text=Hello%20Transport%20Hub%20Support%2C%20I%20need%20help."
-              target="_blank"
-              rel="noopener noreferrer"
-              style={styles.whatsappButton}
-            >
-              📱 WhatsApp
-            </a>
-          </div>
-        </section>
-      </main>
-
-      {showFeatures && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalCard}>
-            <div style={styles.modalIcon}>🚧</div>
-
-            <div style={styles.modalTitle}>
-              Coming Soon
-            </div>
-
-            <div style={styles.modalText}>
-              This feature is currently under development
-              and will be available soon.
-            </div>
-
-            <button
-              style={styles.greenButtonLarge}
-              onClick={() => {
-                setShowFeatures(false);
-              }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -988,6 +1375,14 @@ const styles = {
     background: "#eef3f7",
     color: "#102A43",
     fontFamily: "Arial, sans-serif",
+    position: "relative",
+  },
+
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.55)",
+    zIndex: 90,
   },
 
   sidebar: {
@@ -1002,6 +1397,7 @@ const styles = {
     top: 0,
     bottom: 0,
     overflowY: "auto",
+    zIndex: 100,
   },
 
   logoArea: {
@@ -1118,6 +1514,88 @@ const styles = {
     boxSizing: "border-box",
   },
 
+  mobileHeader: {
+    display: "none",
+    width: "100%",
+    minHeight: "58px",
+    background: "#102A43",
+    borderRadius: "14px",
+    padding: "9px 10px",
+    alignItems: "center",
+    gap: "10px",
+    color: "#ffffff",
+    marginBottom: "12px",
+  },
+
+  menuButton: {
+    width: "40px",
+    height: "40px",
+    border: "1px solid #294B66",
+    borderRadius: "10px",
+    background: "#173B5A",
+    color: "#ffffff",
+    fontSize: "21px",
+    cursor: "pointer",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  mobileBrand: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flex: 1,
+    minWidth: 0,
+  },
+
+  mobileLogoIcon: {
+    width: "38px",
+    height: "38px",
+    borderRadius: "10px",
+    background: "#1E3A56",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "19px",
+    flexShrink: 0,
+  },
+
+  mobileBrandTitle: {
+    fontSize: "13px",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+  },
+
+  mobileBrandSub: {
+    fontSize: "8px",
+    color: "#9FB3C8",
+    marginTop: "2px",
+  },
+
+  mobileHeaderAvatar: {
+    width: "38px",
+    height: "38px",
+    borderRadius: "50%",
+    background: "#1E3A56",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+
+  mobileUserBox: {
+    display: "none",
+    width: "100%",
+    background: "#ffffff",
+    border: "1px solid #dce5ec",
+    borderRadius: "11px",
+    padding: "9px 11px",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: "10px",
+    color: "#6B8297",
+  },
+
   topBar: {
     display: "flex",
     alignItems: "center",
@@ -1211,11 +1689,13 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     fontSize: "30px",
+    flexShrink: 0,
   },
 
   summaryGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gridTemplateColumns:
+      "repeat(4, minmax(0, 1fr))",
     gap: "14px",
     marginBottom: "18px",
   },
@@ -1225,6 +1705,7 @@ const styles = {
     borderRadius: "15px",
     padding: "17px",
     border: "1px solid #1E3A56",
+    minWidth: 0,
   },
 
   summaryIcon: {
@@ -1275,18 +1756,21 @@ const styles = {
 
   greenButton: {
     border: "none",
-    background: "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
+    background:
+      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
     color: "#ffffff",
     padding: "10px 14px",
     borderRadius: "9px",
     cursor: "pointer",
     fontSize: "10px",
     fontWeight: 800,
+    whiteSpace: "nowrap",
   },
 
   greenButtonLarge: {
     border: "none",
-    background: "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
+    background:
+      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
     color: "#ffffff",
     padding: "11px 18px",
     borderRadius: "9px",
@@ -1321,7 +1805,8 @@ const styles = {
 
   planGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
     gap: "12px",
   },
 
@@ -1330,6 +1815,7 @@ const styles = {
     borderRadius: "13px",
     padding: "15px",
     border: "1px solid #294B66",
+    minWidth: 0,
   },
 
   planTop: {
@@ -1363,7 +1849,8 @@ const styles = {
 
   planStats: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
+    gridTemplateColumns:
+      "repeat(3, minmax(0, 1fr))",
     gap: "8px",
     marginTop: "15px",
     paddingTop: "12px",
@@ -1385,7 +1872,8 @@ const styles = {
 
   twoColumnGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
     gap: "18px",
     marginBottom: "18px",
   },
@@ -1395,6 +1883,7 @@ const styles = {
     borderRadius: "17px",
     padding: "20px",
     border: "1px solid #1E3A56",
+    minWidth: 0,
   },
 
   walletRows: {
@@ -1432,6 +1921,7 @@ const styles = {
   teamStat: {
     display: "flex",
     justifyContent: "space-between",
+    gap: "10px",
     padding: "8px 0",
     borderBottom: "1px solid #1E3A56",
     color: "#C9D8E6",
@@ -1509,6 +1999,7 @@ const styles = {
     cursor: "pointer",
     fontSize: "10px",
     fontWeight: 800,
+    whiteSpace: "nowrap",
   },
 
   transactionEmpty: {
@@ -1531,6 +2022,7 @@ const styles = {
     gap: "10px",
     padding: "11px 0",
     borderBottom: "1px solid #1E3A56",
+    minWidth: 0,
   },
 
   transactionIcon: {
@@ -1565,6 +2057,7 @@ const styles = {
     color: "#8FD694",
     fontSize: "10px",
     fontWeight: 900,
+    whiteSpace: "nowrap",
   },
 
   statusBadge: {
@@ -1572,6 +2065,7 @@ const styles = {
     borderRadius: "6px",
     fontSize: "7px",
     fontWeight: 900,
+    whiteSpace: "nowrap",
   },
 
   approvedStatus: {
@@ -1599,7 +2093,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "16px",
-    boxShadow: "0 8px 24px rgba(16,42,67,.12)",
+    boxShadow:
+      "0 8px 24px rgba(16,42,67,.12)",
   },
 
   dashboardSupportIcon: {
@@ -1641,7 +2136,8 @@ const styles = {
 
   liveChatButton: {
     border: "none",
-    background: "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
+    background:
+      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
     color: "#ffffff",
     padding: "11px 15px",
     borderRadius: "9px",
