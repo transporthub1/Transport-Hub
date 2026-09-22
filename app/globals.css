@@ -1,0 +1,914 @@
+/* =========================================
+   TRANSPORT HUB - GLOBAL CSS
+   Clean Professional Theme
+   ========================================= */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+  background: #f4f7f3;
+  color: #173b2b;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+  font-weight: 800;
+  color: inherit;
+}
+
+input,
+select,
+textarea {
+  outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+}
+
+/* =========================================
+   COMMON PAGE
+   ========================================= */
+
+.page-container {
+  min-height: 100vh;
+  background: #f4f7f3;
+  color: #173b2b;
+}
+
+/* =========================================
+   SIDEBAR
+   ========================================= */
+
+.sidebar {
+  background: #123d2b;
+  color: #ffffff;
+}
+
+.sidebar .logo {
+  color: #c5ef72;
+  font-weight: 900;
+  letter-spacing: 0.8px;
+}
+
+.sidebar nav a {
+  color: #d9e8df;
+  transition: all 0.2s ease;
+}
+
+.sidebar nav a:hover,
+.sidebar nav a.active {
+  background: #24543d;
+  color: #c5ef72;
+}
+
+/* =========================================
+   MAIN CONTENT
+   ========================================= */
+
+.main-content {
+  background: #f4f7f3;
+  color: #173b2b;
+}
+
+/* =========================================
+   TOPBAR
+   ========================================= */
+
+.topbar {
+  background: #ffffff;
+  border: 1px solid #e1eae3;
+  box-shadow: 0 4px 18px rgba(23, 59, 43, 0.06);
+}
+
+.topbar h1 {
+  color: #173b2b;
+}
+
+.topbar p {
+  color: #718176;
+}
+
+.top-user {
+  color: #24734a;
+  font-weight: 700;
+}
+
+/* =========================================
+   WELCOME
+   ========================================= */
+
+.welcome-box {
+  background: linear-gradient(
+    135deg,
+    #123d2b 0%,
+    #1d6040 100%
+  );
+  color: #ffffff;
+  border: 1px solid #245d43;
+  box-shadow: 0 10px 30px rgba(18, 61, 43, 0.12);
+}
+
+.welcome-box h2 {
+  color: #ffffff;
+}
+
+.welcome-box p {
+  color: #d8e8df;
+}
+
+/* =========================================
+   BALANCE
+   ========================================= */
+
+.balance-section {
+  background: #ffffff;
+  border: 1px solid #e0e9e2;
+  box-shadow: 0 6px 22px rgba(23, 59, 43, 0.06);
+}
+
+.balance-card span {
+  color: #39865b;
+}
+
+.balance-card h2 {
+  color: #173b2b;
+}
+
+.balance-card p {
+  color: #718176;
+}
+
+.balance-actions a {
+  background: #24734a;
+  color: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.balance-actions a:hover {
+  background: #1b5d3b;
+}
+
+/* =========================================
+   SUMMARY CARDS
+   ========================================= */
+
+.card {
+  background: #ffffff;
+  color: #173b2b;
+  border: 1px solid #e0e9e2;
+  box-shadow: 0 6px 20px rgba(23, 59, 43, 0.06);
+}
+
+.card span {
+  color: #39865b;
+}
+
+.card h3 {
+  color: #718176;
+}
+
+.card strong {
+  color: #173b2b;
+}
+
+/* =========================================
+   SECTION CARDS
+   ========================================= */
+
+.section-card {
+  background: #ffffff;
+  color: #173b2b;
+  border: 1px solid #e0e9e2;
+  box-shadow: 0 6px 22px rgba(23, 59, 43, 0.055);
+}
+
+.section-heading span {
+  color: #39865b;
+}
+
+.section-heading h2 {
+  color: #173b2b;
+}
+
+.section-heading a {
+  color: #24734a;
+}
+
+/* =========================================
+   QUICK ACCESS
+   ========================================= */
+
+.quick-grid a {
+  background: #f8faf8;
+  color: #173b2b;
+  border: 1px solid #e0e9e2;
+  transition: all 0.2s ease;
+}
+
+.quick-grid a:hover {
+  background: #ffffff;
+  border-color: #80b894;
+  box-shadow: 0 8px 20px rgba(23, 59, 43, 0.08);
+}
+
+.quick-grid b {
+  color: #39865b;
+}
+
+.quick-grid small {
+  color: #7a887f;
+}
+
+/* =========================================
+   EMPTY STATE
+   ========================================= */
+
+.empty-state {
+  background: #f8faf8;
+  color: #718176;
+  border: 1px dashed #b9cbbf;
+}
+
+.empty-state strong {
+  color: #173b2b;
+}
+
+.empty-state a {
+  background: #24734a;
+  color: #ffffff;
+}
+
+/* =========================================
+   ACTIVE PLANS
+   ========================================= */
+
+.active-plan {
+  background: #f9fbf9;
+  color: #173b2b;
+  border: 1px solid #dfe9e1;
+  box-shadow: 0 4px 15px rgba(23, 59, 43, 0.04);
+}
+
+.active-plan span,
+.plan-return span,
+.plan-earned span {
+  color: #39865b;
+}
+
+.active-plan h3 {
+  color: #173b2b;
+}
+
+.active-plan p {
+  color: #718176;
+}
+
+.plan-return strong,
+.plan-earned strong {
+  color: #173b2b;
+}
+
+.plan-progress > div:first-child {
+  color: #718176;
+}
+
+.progress-track {
+  background: #e5ece7;
+}
+
+.progress-fill {
+  background: linear-gradient(
+    90deg,
+    #24734a,
+    #80b94f
+  );
+}
+
+/* =========================================
+   REFERRAL
+   ========================================= */
+
+.referral-box span {
+  color: #39865b;
+}
+
+.referral-box input {
+  background: #f8faf8;
+  color: #173b2b;
+  border: 1px solid #d8e4db;
+}
+
+.referral-box input:focus {
+  border-color: #80b894;
+}
+
+.referral-box button,
+.team-share a {
+  background: #24734a;
+  color: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.referral-box button:hover,
+.team-share a:hover {
+  background: #1b5d3b;
+}
+
+/* =========================================
+   TEAM STATS
+   ========================================= */
+
+.stat-group {
+  background: #ffffff;
+  color: #173b2b;
+  border: 1px solid #e0e9e2;
+  box-shadow: 0 6px 20px rgba(23, 59, 43, 0.05);
+}
+
+.stat-group > span {
+  color: #39865b;
+}
+
+.stat-group strong {
+  color: #173b2b;
+}
+
+.stat-group small {
+  color: #718176;
+}
+
+/* =========================================
+   SUPPORT
+   ========================================= */
+
+.support-grid a {
+  background: #f8faf8;
+  color: #173b2b;
+  border: 1px solid #e0e9e2;
+  transition: all 0.2s ease;
+}
+
+.support-grid a:hover {
+  background: #ffffff;
+  border-color: #80b894;
+  box-shadow: 0 8px 20px rgba(23, 59, 43, 0.08);
+}
+
+.support-grid b {
+  color: #39865b;
+}
+
+.support-grid small {
+  color: #718176;
+}
+
+.support-footer {
+  border-top: 1px solid #e2e9e4;
+  color: #718176;
+}
+
+/* =========================================
+   PROFIT
+   ========================================= */
+
+.profit-grid > div {
+  background: #f8faf8;
+  border: 1px solid #e0e9e2;
+}
+
+.profit-grid span {
+  color: #39865b;
+}
+
+.profit-grid strong {
+  color: #173b2b;
+}
+
+.profit-total {
+  background: #123d2b;
+  color: #ffffff;
+  border: 1px solid #245d43;
+}
+
+.profit-total span {
+  color: #c5ef72;
+}
+
+.profit-total strong {
+  color: #ffffff;
+}
+
+.profit-total small {
+  color: #c9ddd1;
+}
+
+/* =========================================
+   LIVE ACTIVITY
+   ========================================= */
+
+.activity-item {
+  background: #f9fbf9;
+  color: #173b2b;
+  border: 1px solid #e0e9e2;
+}
+
+.activity-symbol {
+  background: #e7f2ea;
+  color: #24734a;
+}
+
+.activity-info strong {
+  color: #39865b;
+}
+
+.activity-info span {
+  color: #173b2b;
+}
+
+.activity-method span {
+  color: #173b2b;
+}
+
+.activity-method small {
+  color: #7a887f;
+}
+
+.activity-amount {
+  color: #173b2b;
+}
+
+/* =========================================
+   UPCOMING FEATURES
+   ========================================= */
+
+.feature-grid button {
+  background: #f8faf8;
+  color: #173b2b;
+  border: 1px solid #e0e9e2;
+  transition: all 0.2s ease;
+}
+
+.feature-grid button:hover {
+  background: #ffffff;
+  border-color: #80b894;
+  box-shadow: 0 8px 20px rgba(23, 59, 43, 0.08);
+}
+
+.feature-grid button > span {
+  color: #39865b;
+}
+
+.feature-grid small {
+  color: #7a887f;
+}
+
+/* =========================================
+   MODAL
+   ========================================= */
+
+.modal-overlay {
+  background: rgba(12, 31, 21, 0.68);
+}
+
+.coming-modal {
+  background: #ffffff;
+  color: #173b2b;
+  border: 1px solid #dce7df;
+  box-shadow: 0 25px 70px rgba(12, 31, 21, 0.25);
+}
+
+.coming-modal > span {
+  color: #39865b;
+}
+
+.coming-modal h2,
+.coming-modal h3 {
+  color: #173b2b;
+}
+
+.coming-badge {
+  border: 1px solid #80b894;
+  color: #24734a;
+  background: #eef7f0;
+}
+
+.coming-modal p {
+  color: #718176;
+}
+
+.modal-line {
+  color: #24734a;
+}
+
+.coming-modal small {
+  color: #7a887f;
+}
+
+.coming-modal button {
+  background: #24734a;
+  color: #ffffff;
+}
+
+.coming-modal button:hover {
+  background: #1b5d3b;
+}
+
+/* =========================================
+   TRANSPORT PLANS PAGE
+   ========================================= */
+
+.plans-page {
+  min-height: 100vh;
+  background: #f4f7f3;
+  color: #173b2b;
+  padding: 30px;
+}
+
+.plans-header h1 {
+  color: #173b2b;
+}
+
+.plans-header p {
+  color: #718176;
+}
+
+.plans-intro {
+  background: #ffffff;
+  color: #173b2b;
+  border: 1px solid #e0e9e2;
+  box-shadow: 0 6px 20px rgba(23, 59, 43, 0.05);
+}
+
+.plans-intro h2 {
+  color: #173b2b;
+}
+
+.plans-intro p {
+  color: #718176;
+}
+
+.professional-plan {
+  background: #ffffff;
+  color: #173b2b;
+  border: 1px solid #dfe8e1;
+  box-shadow: 0 8px 25px rgba(23, 59, 43, 0.07);
+  transition: all 0.2s ease;
+}
+
+.professional-plan:hover {
+  transform: translateY(-3px);
+  border-color: #9abd9f;
+  box-shadow: 0 12px 30px rgba(23, 59, 43, 0.1);
+}
+
+.plan-badge {
+  background: #123d2b;
+  color: #c5ef72;
+}
+
+.professional-plan h3 {
+  color: #173b2b;
+}
+
+.plan-price {
+  background: #f4f8f5;
+  border: 1px solid #e0e9e2;
+}
+
+.plan-price small {
+  color: #718176;
+}
+
+.plan-price strong {
+  color: #24734a;
+}
+
+.plan-details {
+  border-top: 1px solid #e0e9e2;
+}
+
+.plan-details span {
+  color: #718176;
+}
+
+.plan-details strong {
+  color: #173b2b;
+}
+
+.select-plan {
+  background: #24734a;
+  color: #ffffff;
+}
+
+.select-plan:hover {
+  background: #1b5d3b;
+}
+
+/* =========================================
+   CONFIRMATION PAGE
+   ========================================= */
+
+.confirmation-page {
+  min-height: 100vh;
+  background: #f4f7f3;
+  color: #173b2b;
+}
+
+.confirmation-card {
+  background: #ffffff;
+  color: #173b2b;
+  border: 1px solid #dfe9e1;
+  box-shadow: 0 12px 35px rgba(23, 59, 43, 0.1);
+}
+
+.confirmation-icon {
+  background: #eaf4ed;
+  border: 1px solid #cfe0d4;
+  color: #24734a;
+}
+
+.confirmation-card h1 {
+  color: #173b2b;
+}
+
+.confirmation-subtitle {
+  color: #718176;
+}
+
+.selected-plan {
+  background: #f7faf7;
+  border: 1px solid #dfe9e1;
+}
+
+.selected-plan h2 {
+  color: #24734a;
+}
+
+.selected-plan span {
+  color: #718176;
+}
+
+.confirmation-details {
+  background: #f8faf8;
+  border: 1px solid #dfe9e1;
+}
+
+.confirmation-details div {
+  border-bottom: 1px solid #e0e9e2;
+}
+
+.confirmation-details span {
+  color: #718176;
+}
+
+.confirmation-details strong {
+  color: #173b2b;
+}
+
+.confirm-plan {
+  background: #24734a;
+  color: #ffffff;
+}
+
+.confirm-plan:hover {
+  background: #1b5d3b;
+}
+
+.back-plans {
+  border: 1px solid #cbd9ce;
+  background: #ffffff;
+  color: #718176;
+}
+
+.back-plans:hover {
+  background: #eef6f0;
+  color: #24734a;
+}
+
+/* =========================================
+   AUTHENTICATION PAGES
+   ========================================= */
+
+.auth-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(128, 185, 79, 0.13),
+      transparent 35%
+    ),
+    #f4f7f3;
+  color: #173b2b;
+}
+
+.auth-card {
+  background: #ffffff;
+  color: #173b2b;
+  border: 1px solid #dfe9e1;
+  box-shadow: 0 15px 40px rgba(23, 59, 43, 0.1);
+}
+
+.auth-icon {
+  background: #123d2b;
+  border: 1px solid #245d43;
+  color: #c5ef72;
+}
+
+.auth-card h1 {
+  color: #173b2b;
+}
+
+.auth-subtitle {
+  color: #718176;
+}
+
+.auth-card label {
+  color: #3f5046;
+}
+
+.auth-card input {
+  background: #f8faf8;
+  color: #173b2b;
+  border: 1px solid #d5e1d8;
+}
+
+.auth-card input:focus {
+  border-color: #80b894;
+  box-shadow: 0 0 0 3px rgba(128, 185, 79, 0.12);
+}
+
+.auth-card input::placeholder {
+  color: #9aa79e;
+}
+
+.auth-button {
+  background: #24734a;
+  color: #ffffff;
+}
+
+.auth-button:hover {
+  background: #1b5d3b;
+}
+
+.auth-message {
+  color: #24734a;
+}
+
+.auth-footer {
+  color: #718176;
+}
+
+.auth-footer a {
+  color: #24734a;
+}
+
+.auth-footer a:hover {
+  color: #1b5d3b;
+}
+
+/* =========================================
+   DEPOSIT PAGE
+   ========================================= */
+
+.deposit-select {
+  background: #f8faf8;
+  color: #173b2b;
+  border: 1px solid #d5e1d8;
+}
+
+.deposit-select:focus {
+  border-color: #80b894;
+  box-shadow: 0 0 0 3px rgba(128, 185, 79, 0.12);
+}
+
+.deposit-select option {
+  background: #ffffff;
+  color: #173b2b;
+}
+
+.confirmation-card form label {
+  color: #3f5046;
+}
+
+.confirmation-card form input,
+.confirmation-card form select {
+  font-family: inherit;
+}
+
+.confirmation-card form input {
+  background: #f8faf8;
+  color: #173b2b;
+  border: 1px solid #d5e1d8;
+}
+
+.confirmation-card form input:focus {
+  border-color: #80b894;
+  box-shadow: 0 0 0 3px rgba(128, 185, 79, 0.12);
+}
+
+.confirmation-card form input::placeholder {
+  color: #9aa79e;
+}
+
+/* =========================================
+   COMMON BUTTON EFFECTS
+   ========================================= */
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #80b894;
+  outline-offset: 2px;
+}
+
+/* =========================================
+   MOBILE
+   ========================================= */
+
+@media (max-width: 1100px) {
+  .plans-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .plans-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .plans-page {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .plans-page {
+    padding: 15px;
+  }
+
+  .plans-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .plans-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .plans-header h1 {
+    font-size: 26px;
+  }
+
+  .confirmation-page,
+  .auth-page {
+    padding: 15px;
+  }
+
+  .auth-card,
+  .confirmation-card {
+    padding: 22px;
+  }
+}
