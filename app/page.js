@@ -60,10 +60,9 @@ function getUserName(user) {
 
   const firstName = String(user.firstName || "").trim();
   const lastName = String(user.lastName || "").trim();
+  const combinedName = (firstName + " " + lastName).trim();
 
-  const combinedName = firstName + " " + lastName;
-
-  return combinedName.trim() || "User";
+  return combinedName || "User";
 }
 
 export default function Dashboard() {
@@ -75,7 +74,21 @@ export default function Dashboard() {
   const [showFeatures, setShowFeatures] = useState(false);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [mobileMenu, setMobileMenu] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+
+    return () => {
+      window.removeEventListener("resize", checkMobile);
+    };
+  }, []);
 
   useEffect(() => {
     const loggedIn = localStorage.getItem("transportLoggedIn");
@@ -109,7 +122,7 @@ export default function Dashboard() {
     const phone = normalizedUser.phone || "unknown";
 
     const storedActivePlans = getStorageArray(
-      `transportActivePlans_${phone}`
+      "transportActivePlans_" + phone
     );
 
     if (storedActivePlans.length > 0) {
@@ -124,23 +137,19 @@ export default function Dashboard() {
 
     const storedWithdrawable = Number(
       localStorage.getItem(
-        `transportWithdrawableReturns_${phone}`
+        "transportWithdrawableReturns_" + phone
       ) || 0
     );
 
     setWithdrawableReturns(storedWithdrawable);
 
-    const storedTransactions = getStorageArray(
-      `transportTransactions_${phone}`
+    setTransactions(
+      getStorageArray("transportTransactions_" + phone)
     );
 
-    setTransactions(storedTransactions);
-
-    const storedTeam = getStorageArray(
-      `transportTeam_${phone}`
+    setTeamMembers(
+      getStorageArray("transportTeam_" + phone)
     );
-
-    setTeamMembers(storedTeam);
 
     setLoading(false);
   }, []);
@@ -149,47 +158,38 @@ export default function Dashboard() {
 
   const totalInvestment = useMemo(() => {
     return activePlans.reduce(
-      (total, plan) =>
-        total + Number(plan.price || 0),
+      (total, plan) => total + Number(plan.price || 0),
       0
     );
   }, [activePlans]);
 
   const dailyReturn = useMemo(() => {
     return activePlans.reduce(
-      (total, plan) =>
-        total + Number(plan.daily || 0),
+      (total, plan) => total + Number(plan.daily || 0),
       0
     );
   }, [activePlans]);
 
   const earnedReturns = useMemo(() => {
     return activePlans.reduce((total, plan) => {
-      const start = Number(
-        plan.startTime || Date.now()
-      );
-
+      const start = Number(plan.startTime || Date.now());
       const now = Date.now();
 
       const daysPassed = Math.max(
         0,
         Math.floor(
-          (now - start) /
-            (1000 * 60 * 60 * 24)
+          (now - start) / (1000 * 60 * 60 * 24)
         )
       );
 
       const eligibleDays = Math.min(
         daysPassed,
-        Number(
-          plan.duration || PLAN_DURATION
-        )
+        Number(plan.duration || PLAN_DURATION)
       );
 
       return (
         total +
-        eligibleDays *
-          Number(plan.daily || 0)
+        eligibleDays * Number(plan.daily || 0)
       );
     }, 0);
   }, [activePlans]);
@@ -199,9 +199,7 @@ export default function Dashboard() {
       (total, plan) =>
         total +
         Number(plan.daily || 0) *
-          Number(
-            plan.duration || PLAN_DURATION
-          ),
+          Number(plan.duration || PLAN_DURATION),
       0
     );
   }, [activePlans]);
@@ -270,11 +268,6 @@ export default function Dashboard() {
       );
   }, [transactions]);
 
-  const todayProfit = dailyReturn;
-  const yesterdayProfit = dailyReturn;
-  const weekProfit = dailyReturn * 7;
-  const monthProfit = dailyReturn * 30;
-
   const teamInvestment = useMemo(() => {
     return teamMembers.reduce(
       (total, member) =>
@@ -292,30 +285,27 @@ export default function Dashboard() {
   }, [teamMembers]);
 
   const todayTeam = useMemo(() => {
-    return teamMembers.reduce(
-      (total, member) => {
-        if (!member.joinedAt) return total;
+    return teamMembers.reduce((total, member) => {
+      if (!member.joinedAt) return total;
 
-        const joined = new Date(
-          member.joinedAt
-        );
+      const joined = new Date(member.joinedAt);
+      const now = new Date();
 
-        const now = new Date();
+      const sameDay =
+        joined.getDate() === now.getDate() &&
+        joined.getMonth() === now.getMonth() &&
+        joined.getFullYear() === now.getFullYear();
 
-        const sameDay =
-          joined.getDate() === now.getDate() &&
-          joined.getMonth() === now.getMonth() &&
-          joined.getFullYear() ===
-            now.getFullYear();
-
-        return sameDay
-          ? total +
-              Number(member.commission || 0)
-          : total;
-      },
-      0
-    );
+      return sameDay
+        ? total + Number(member.commission || 0)
+        : total;
+    }, 0);
   }, [teamMembers]);
+
+  const todayProfit = dailyReturn;
+  const yesterdayProfit = dailyReturn;
+  const weekProfit = dailyReturn * 7;
+  const monthProfit = dailyReturn * 30;
 
   const walletBalance =
     Number(user?.balance || 0) +
@@ -325,51 +315,36 @@ export default function Dashboard() {
     user?.referralCode ||
     user?.referral ||
     (user?.phone
-      ? `TH${String(user.phone).slice(-6)}`
+      ? "TH" + String(user.phone).slice(-6)
       : "TRANSPORTHUB");
 
   const referralLink =
     typeof window !== "undefined"
-      ? `${window.location.origin}/register?ref=${referralCode}`
+      ? window.location.origin +
+        "/register?ref=" +
+        referralCode
       : "";
+
+  function goTo(path) {
+    setMenuOpen(false);
+    window.location.href = path;
+  }
 
   function copyReferral() {
     if (!referralLink) return;
 
-    navigator.clipboard
-      .writeText(referralLink)
-      .then(() => {
-        setCopied(true);
+    navigator.clipboard.writeText(referralLink);
+    setCopied(true);
 
-        setTimeout(() => {
-          setCopied(false);
-        }, 2000);
-      })
-      .catch(() => {});
-  }
-
-  function closeMobileMenu() {
-    setMobileMenu(false);
-  }
-
-  function goTo(path) {
-    closeMobileMenu();
-    window.location.href = path;
+    setTimeout(() => {
+      setCopied(false);
+    }, 2000);
   }
 
   function logout() {
-    localStorage.removeItem(
-      "transportLoggedIn"
-    );
-
-    localStorage.removeItem(
-      "transportUser"
-    );
-
-    localStorage.removeItem(
-      "transportCurrentUser"
-    );
-
+    localStorage.removeItem("transportLoggedIn");
+    localStorage.removeItem("transportUser");
+    localStorage.removeItem("transportCurrentUser");
     window.location.href = "/login";
   }
 
@@ -377,14 +352,10 @@ export default function Dashboard() {
     return (
       <div style={styles.loadingScreen}>
         <div style={styles.loadingCard}>
-          <div style={styles.loadingIcon}>
-            🚛
-          </div>
-
+          <div style={styles.loadingIcon}>🚛</div>
           <div style={styles.loadingTitle}>
             Transport Hub
           </div>
-
           <div style={styles.loadingText}>
             Loading your dashboard...
           </div>
@@ -393,58 +364,38 @@ export default function Dashboard() {
     );
   }
 
-  if (!user) {
-    return null;
-  }
-
   return (
-    <>
-      <div style={styles.dashboard}>
-        {/* MOBILE TOP HEADER */}
+    <div
+      style={{
+        ...styles.dashboard,
+        overflowX: "hidden",
+      }}
+    >
+      {isMobile && (
         <div style={styles.mobileHeader}>
-          <div
-            style={styles.mobileBrand}
-            onClick={() => goTo("/")}
-          >
-            <div style={styles.mobileLogo}>
-              🚛
-            </div>
-
-            <div>
-              <div style={styles.mobileBrandTitle}>
-                Transport Hub
-              </div>
-
-              <div style={styles.mobileBrandSubtitle}>
-                Investment Platform
-              </div>
-            </div>
-          </div>
-
           <button
-            style={styles.mobileMenuButton}
-            onClick={() =>
-              setMobileMenu(true)
-            }
+            style={styles.menuButton}
+            onClick={() => setMenuOpen(!menuOpen)}
           >
             ☰
           </button>
+
+          <div style={styles.mobileHeaderTitle}>
+            Transport Hub
+          </div>
+
+          <div style={styles.mobileHeaderUser}>
+            👤
+          </div>
         </div>
+      )}
 
-        {/* MOBILE OVERLAY */}
-        {mobileMenu && (
-          <div
-            style={styles.mobileOverlay}
-            onClick={closeMobileMenu}
-          />
-        )}
-
-        {/* SIDEBAR */}
+      {(!isMobile || menuOpen) && (
         <aside
           style={{
             ...styles.sidebar,
-            ...(mobileMenu
-              ? styles.sidebarMobileOpen
+            ...(isMobile
+              ? styles.mobileSidebar
               : {}),
           }}
         >
@@ -453,7 +404,7 @@ export default function Dashboard() {
               🚛
             </div>
 
-            <div style={{ minWidth: 0 }}>
+            <div>
               <div style={styles.logoTitle}>
                 Transport Hub
               </div>
@@ -462,21 +413,17 @@ export default function Dashboard() {
                 Investment Platform
               </div>
             </div>
-
-            <button
-              style={styles.closeSidebarButton}
-              onClick={closeMobileMenu}
-            >
-              ×
-            </button>
           </div>
 
           <div style={styles.userMiniCard}>
-            <div style={styles.avatar}>
-              👤
-            </div>
+            <div style={styles.avatar}>👤</div>
 
-            <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                minWidth: 0,
+                overflow: "hidden",
+              }}
+            >
               <div style={styles.userMiniName}>
                 {displayName}
               </div>
@@ -511,9 +458,7 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() =>
-                goTo("/deposit")
-              }
+              onClick={() => goTo("/deposit")}
             >
               <span>💰</span>
               <span>Deposit</span>
@@ -521,9 +466,7 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() =>
-                goTo("/withdraw")
-              }
+              onClick={() => goTo("/withdraw")}
             >
               <span>💸</span>
               <span>Withdraw</span>
@@ -531,9 +474,7 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() =>
-                goTo("/transactions")
-              }
+              onClick={() => goTo("/transactions")}
             >
               <span>📊</span>
               <span>Transactions</span>
@@ -571,9 +512,7 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() =>
-                goTo("/my-team")
-              }
+              onClick={() => goTo("/my-team")}
             >
               <span>👥</span>
               <span>My Team</span>
@@ -581,9 +520,7 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() =>
-                goTo("/referral")
-              }
+              onClick={() => goTo("/referral")}
             >
               <span>🔗</span>
               <span>Referral</span>
@@ -591,9 +528,7 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() =>
-                goTo("/profile")
-              }
+              onClick={() => goTo("/profile")}
             >
               <span>👤</span>
               <span>Profile</span>
@@ -601,10 +536,9 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() => {
-                closeMobileMenu();
-                setShowFeatures(true);
-              }}
+              onClick={() =>
+                setShowFeatures(true)
+              }
             >
               <span>🔐</span>
               <span>Security</span>
@@ -612,9 +546,7 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() =>
-                goTo("/support")
-              }
+              onClick={() => goTo("/support")}
             >
               <span>🎧</span>
               <span>Support</span>
@@ -629,901 +561,761 @@ export default function Dashboard() {
             </button>
           </nav>
         </aside>
+      )}
 
-        {/* MAIN CONTENT */}
-        <main style={styles.mainContent}>
-          {/* DESKTOP TOP BAR */}
-          <div style={styles.topBar}>
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.pageTitle}>
-                Dashboard
-              </div>
+      {isMobile && menuOpen && (
+        <div
+          style={styles.mobileOverlay}
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
 
-              <div style={styles.pageSubtitle}>
-                Manage your transport investment account
-              </div>
+      <main
+        style={{
+          ...styles.mainContent,
+          ...(isMobile
+            ? styles.mobileMainContent
+            : {}),
+        }}
+      >
+        <div
+          style={{
+            ...styles.topBar,
+            ...(isMobile
+              ? styles.mobileTopBar
+              : {}),
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={styles.pageTitle}>
+              Dashboard
             </div>
 
-            <div style={styles.topUser}>
-              <div style={styles.topAvatar}>
-                👤
-              </div>
-
-              <div style={{ minWidth: 0 }}>
-                <div style={styles.topUserName}>
-                  {displayName}
-                </div>
-
-                <div style={styles.topUserBalance}>
-                  Balance:{" "}
-                  {formatMoney(walletBalance)}
-                </div>
-              </div>
+            <div style={styles.pageSubtitle}>
+              Manage your transport investment account
             </div>
           </div>
 
-          {/* WELCOME */}
-          <section style={styles.welcomeCard}>
+          <div
+            style={{
+              ...styles.topUser,
+              ...(isMobile
+                ? styles.mobileTopUser
+                : {}),
+            }}
+          >
+            <div style={styles.topAvatar}>
+              👤
+            </div>
+
             <div
               style={{
                 minWidth: 0,
-                flex: 1,
+                overflow: "hidden",
               }}
             >
-              <div style={styles.welcomeSmall}>
-                Welcome back
-              </div>
-
-              <div style={styles.welcomeTitle}>
-                {displayName} 👋
-              </div>
-
-              <div style={styles.welcomeText}>
-                Track your investments, daily
-                returns and team activity from
-                one place.
-              </div>
-            </div>
-
-            <div style={styles.welcomeTruck}>
-              🚛
-            </div>
-          </section>
-
-          {/* SUMMARY */}
-          <section style={styles.summaryGrid}>
-            <div style={styles.summaryCard}>
-              <div style={styles.summaryIcon}>
-                💼
-              </div>
-
-              <div style={styles.summaryLabel}>
-                Total Investment
-              </div>
-
-              <div style={styles.summaryValue}>
-                {formatMoney(totalInvestment)}
-              </div>
-            </div>
-
-            <div style={styles.summaryCard}>
-              <div style={styles.summaryIcon}>
-                📈
-              </div>
-
-              <div style={styles.summaryLabel}>
-                Daily Return
-              </div>
-
-              <div style={styles.summaryValue}>
-                {formatMoney(dailyReturn)}
-              </div>
-            </div>
-
-            <div style={styles.summaryCard}>
-              <div style={styles.summaryIcon}>
-                💰
-              </div>
-
-              <div style={styles.summaryLabel}>
-                Wallet Balance
-              </div>
-
-              <div style={styles.summaryValue}>
-                {formatMoney(walletBalance)}
-              </div>
-            </div>
-
-            <div style={styles.summaryCard}>
-              <div style={styles.summaryIcon}>
-                🎯
-              </div>
-
-              <div style={styles.summaryLabel}>
-                Expected Return
-              </div>
-
-              <div style={styles.summaryValue}>
-                {formatMoney(expectedReturn)}
-              </div>
-            </div>
-          </section>
-
-          {/* ACTIVE PLANS */}
-          <section style={styles.largeCard}>
-            <div style={styles.sectionHeader}>
               <div
                 style={{
-                  minWidth: 0,
+                  ...styles.topUserName,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  maxWidth: isMobile
+                    ? "100px"
+                    : "180px",
                 }}
               >
-                <div style={styles.sectionTitle}>
-                  🚛 Active Transport Plans
-                </div>
+                {displayName}
+              </div>
 
-                <div style={styles.sectionSubtitle}>
-                  Your currently active investment plans
-                </div>
+              <div style={styles.topUserBalance}>
+                Balance: {formatMoney(walletBalance)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <section
+          style={{
+            ...styles.welcomeCard,
+            ...(isMobile
+              ? styles.mobileWelcomeCard
+              : {}),
+          }}
+        >
+          <div
+            style={{
+              minWidth: 0,
+              flex: 1,
+            }}
+          >
+            <div style={styles.welcomeSmall}>
+              Welcome back
+            </div>
+
+            <div
+              style={{
+                ...styles.welcomeTitle,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {displayName} 👋
+            </div>
+
+            <div style={styles.welcomeText}>
+              Track your investments, daily returns
+              and team activity from one place.
+            </div>
+          </div>
+
+          <div style={styles.welcomeTruck}>
+            🚛
+          </div>
+        </section>
+
+        <section
+          style={{
+            ...styles.summaryGrid,
+            ...(isMobile
+              ? styles.mobileSummaryGrid
+              : {}),
+          }}
+        >
+          <div style={styles.summaryCard}>
+            <div style={styles.summaryIcon}>
+              💼
+            </div>
+
+            <div style={styles.summaryLabel}>
+              Total Investment
+            </div>
+
+            <div style={styles.summaryValue}>
+              {formatMoney(totalInvestment)}
+            </div>
+          </div>
+
+          <div style={styles.summaryCard}>
+            <div style={styles.summaryIcon}>
+              📈
+            </div>
+
+            <div style={styles.summaryLabel}>
+              Daily Return
+            </div>
+
+            <div style={styles.summaryValue}>
+              {formatMoney(dailyReturn)}
+            </div>
+          </div>
+
+          <div style={styles.summaryCard}>
+            <div style={styles.summaryIcon}>
+              💰
+            </div>
+
+            <div style={styles.summaryLabel}>
+              Wallet Balance
+            </div>
+
+            <div style={styles.summaryValue}>
+              {formatMoney(walletBalance)}
+            </div>
+          </div>
+
+          <div style={styles.summaryCard}>
+            <div style={styles.summaryIcon}>
+              🎯
+            </div>
+
+            <div style={styles.summaryLabel}>
+              Expected Return
+            </div>
+
+            <div style={styles.summaryValue}>
+              {formatMoney(expectedReturn)}
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.largeCard}>
+          <div
+            style={{
+              ...styles.sectionHeader,
+              ...(isMobile
+                ? styles.mobileSectionHeader
+                : {}),
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.sectionTitle}>
+                🚛 Active Transport Plans
+              </div>
+
+              <div style={styles.sectionSubtitle}>
+                Your currently active investment plans
+              </div>
+            </div>
+
+            <button
+              style={styles.greenButton}
+              onClick={() =>
+                goTo("/transport-plans")
+              }
+            >
+              + Add Plan
+            </button>
+          </div>
+
+          {activePlans.length === 0 ? (
+            <div style={styles.emptyState}>
+              <div style={styles.emptyIcon}>
+                🚛
+              </div>
+
+              <div style={styles.emptyTitle}>
+                No Active Transport Plans
+              </div>
+
+              <div style={styles.emptyText}>
+                Select a transport plan to start
+                earning daily returns.
               </div>
 
               <button
-                style={styles.greenButton}
+                style={styles.greenButtonLarge}
                 onClick={() =>
                   goTo("/transport-plans")
                 }
               >
-                + Add Plan
+                View Transport Plans
               </button>
             </div>
+          ) : (
+            <div
+              style={{
+                ...styles.planGrid,
+                ...(isMobile
+                  ? styles.mobilePlanGrid
+                  : {}),
+              }}
+            >
+              {activePlans.map((plan, index) => {
+                const totalPlanReturn =
+                  Number(plan.daily || 0) *
+                  Number(
+                    plan.duration || PLAN_DURATION
+                  );
 
-            {activePlans.length === 0 ? (
-              <div style={styles.emptyState}>
-                <div style={styles.emptyIcon}>
-                  🚛
-                </div>
-
-                <div style={styles.emptyTitle}>
-                  No Active Transport Plans
-                </div>
-
-                <div style={styles.emptyText}>
-                  Select a transport plan to start
-                  earning daily returns.
-                </div>
-
-                <button
-                  style={styles.greenButtonLarge}
-                  onClick={() =>
-                    goTo("/transport-plans")
-                  }
-                >
-                  View Transport Plans
-                </button>
-              </div>
-            ) : (
-              <div style={styles.planGrid}>
-                {activePlans.map(
-                  (plan, index) => {
-                    const totalPlanReturn =
-                      Number(
-                        plan.daily || 0
-                      ) *
-                      Number(
-                        plan.duration ||
-                          PLAN_DURATION
-                      );
-
-                    return (
+                return (
+                  <div
+                    style={styles.planCard}
+                    key={index}
+                  >
+                    <div style={styles.planTop}>
                       <div
-                        style={styles.planCard}
-                        key={index}
+                        style={{
+                          minWidth: 0,
+                        }}
                       >
-                        <div style={styles.planTop}>
-                          <div
-                            style={{
-                              minWidth: 0,
-                            }}
-                          >
-                            <div
-                              style={
-                                styles.planName
-                              }
-                            >
-                              {plan.name}
-                            </div>
-
-                            <div
-                              style={
-                                styles.planPrice
-                              }
-                            >
-                              {formatMoney(
-                                plan.price
-                              )}
-                            </div>
-                          </div>
-
-                          <div
-                            style={
-                              styles.activeBadge
-                            }
-                          >
-                            ACTIVE
-                          </div>
+                        <div style={styles.planName}>
+                          {plan.name}
                         </div>
 
-                        <div
-                          style={
-                            styles.planStats
-                          }
-                        >
-                          <div>
-                            <span
-                              style={
-                                styles.statLabel
-                              }
-                            >
-                              Daily
-                            </span>
-
-                            <strong
-                              style={
-                                styles.statValue
-                              }
-                            >
-                              {formatMoney(
-                                plan.daily
-                              )}
-                            </strong>
-                          </div>
-
-                          <div>
-                            <span
-                              style={
-                                styles.statLabel
-                              }
-                            >
-                              Duration
-                            </span>
-
-                            <strong
-                              style={
-                                styles.statValue
-                              }
-                            >
-                              {plan.duration} Days
-                            </strong>
-                          </div>
-
-                          <div>
-                            <span
-                              style={
-                                styles.statLabel
-                              }
-                            >
-                              Total Return
-                            </span>
-
-                            <strong
-                              style={
-                                styles.statValue
-                              }
-                            >
-                              {formatMoney(
-                                totalPlanReturn
-                              )}
-                            </strong>
-                          </div>
+                        <div style={styles.planPrice}>
+                          {formatMoney(plan.price)}
                         </div>
                       </div>
-                    );
-                  }
-                )}
-              </div>
-            )}
-          </section>
 
-          {/* WALLET / RETURNS */}
-          <section style={styles.twoColumnGrid}>
-            <div style={styles.sideCard}>
-              <div style={styles.sectionTitle}>
-                💰 Wallet Overview
-              </div>
+                      <div style={styles.activeBadge}>
+                        ACTIVE
+                      </div>
+                    </div>
 
-              <div style={styles.walletRows}>
-                <div style={styles.walletRow}>
-                  <span>
-                    Available Balance
-                  </span>
+                    <div style={styles.planStats}>
+                      <div>
+                        <span style={styles.statLabel}>
+                          Daily
+                        </span>
 
-                  <strong>
-                    {formatMoney(
-                      walletBalance
-                    )}
-                  </strong>
-                </div>
+                        <strong style={styles.statValue}>
+                          {formatMoney(plan.daily)}
+                        </strong>
+                      </div>
 
-                <div style={styles.walletRow}>
-                  <span>
-                    Total Deposits
-                  </span>
+                      <div>
+                        <span style={styles.statLabel}>
+                          Duration
+                        </span>
 
-                  <strong>
-                    {formatMoney(
-                      depositTotal
-                    )}
-                  </strong>
-                </div>
+                        <strong style={styles.statValue}>
+                          {plan.duration} Days
+                        </strong>
+                      </div>
 
-                <div style={styles.walletRow}>
-                  <span>
-                    Total Withdrawals
-                  </span>
+                      <div>
+                        <span style={styles.statLabel}>
+                          Total Return
+                        </span>
 
-                  <strong>
-                    {formatMoney(
-                      withdrawalTotal
-                    )}
-                  </strong>
-                </div>
+                        <strong style={styles.statValue}>
+                          {formatMoney(
+                            totalPlanReturn
+                          )}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
-                <div style={styles.walletRow}>
-                  <span>
-                    Pending Deposits
-                  </span>
-
-                  <strong>
-                    {formatMoney(
-                      pendingDeposits
-                    )}
-                  </strong>
-                </div>
-
-                <div style={styles.walletRow}>
-                  <span>
-                    Pending Withdrawals
-                  </span>
-
-                  <strong>
-                    {formatMoney(
-                      pendingWithdrawals
-                    )}
-                  </strong>
-                </div>
-              </div>
+        <section
+          style={{
+            ...styles.twoColumnGrid,
+            ...(isMobile
+              ? styles.mobileTwoColumnGrid
+              : {}),
+          }}
+        >
+          <div style={styles.sideCard}>
+            <div style={styles.sectionTitle}>
+              💰 Wallet Overview
             </div>
 
-            <div style={styles.sideCard}>
-              <div style={styles.sectionTitle}>
-                📈 Return Summary
+            <div style={styles.walletRows}>
+              <div style={styles.walletRow}>
+                <span>Available Balance</span>
+                <strong>
+                  {formatMoney(walletBalance)}
+                </strong>
               </div>
 
-              <div style={styles.walletRows}>
-                <div style={styles.walletRow}>
-                  <span>Today</span>
-
-                  <strong>
-                    {formatMoney(
-                      todayProfit
-                    )}
-                  </strong>
-                </div>
-
-                <div style={styles.walletRow}>
-                  <span>Yesterday</span>
-
-                  <strong>
-                    {formatMoney(
-                      yesterdayProfit
-                    )}
-                  </strong>
-                </div>
-
-                <div style={styles.walletRow}>
-                  <span>
-                    Last 7 Days
-                  </span>
-
-                  <strong>
-                    {formatMoney(
-                      weekProfit
-                    )}
-                  </strong>
-                </div>
-
-                <div style={styles.walletRow}>
-                  <span>
-                    Last 30 Days
-                  </span>
-
-                  <strong>
-                    {formatMoney(
-                      monthProfit
-                    )}
-                  </strong>
-                </div>
-
-                <div style={styles.walletRow}>
-                  <span>
-                    Total Earned
-                  </span>
-
-                  <strong>
-                    {formatMoney(
-                      earnedReturns
-                    )}
-                  </strong>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* TEAM / REFERRAL */}
-          <section style={styles.twoColumnGrid}>
-            <div style={styles.sideCard}>
-              <div style={styles.sectionTitle}>
-                👥 My Team
+              <div style={styles.walletRow}>
+                <span>Total Deposits</span>
+                <strong>
+                  {formatMoney(depositTotal)}
+                </strong>
               </div>
 
-              <div style={styles.teamMainNumber}>
-                {teamMembers.length}
+              <div style={styles.walletRow}>
+                <span>Total Withdrawals</span>
+                <strong>
+                  {formatMoney(withdrawalTotal)}
+                </strong>
               </div>
 
-              <div style={styles.teamLabel}>
-                Total Team Members
+              <div style={styles.walletRow}>
+                <span>Pending Deposits</span>
+                <strong>
+                  {formatMoney(pendingDeposits)}
+                </strong>
               </div>
 
-              <div style={styles.teamStats}>
-                <div style={styles.teamStat}>
-                  <span>
-                    Team Investment
-                  </span>
-
-                  <strong>
-                    {formatMoney(
-                      teamInvestment
-                    )}
-                  </strong>
-                </div>
-
-                <div style={styles.teamStat}>
-                  <span>
-                    Paid Commission
-                  </span>
-
-                  <strong>
-                    {formatMoney(paidTeam)}
-                  </strong>
-                </div>
-
-                <div style={styles.teamStat}>
-                  <span>
-                    Today Commission
-                  </span>
-
-                  <strong>
-                    {formatMoney(
-                      todayTeam
-                    )}
-                  </strong>
-                </div>
+              <div style={styles.walletRow}>
+                <span>Pending Withdrawals</span>
+                <strong>
+                  {formatMoney(pendingWithdrawals)}
+                </strong>
               </div>
-
-              <button
-                style={styles.outlineButton}
-                onClick={() =>
-                  goTo("/my-team")
-                }
-              >
-                View My Team
-              </button>
-            </div>
-
-            <div style={styles.sideCard}>
-              <div style={styles.sectionTitle}>
-                🔗 Referral Program
-              </div>
-
-              <div style={styles.referralText}>
-                Invite friends and grow your team.
-              </div>
-
-              <div style={styles.referralCodeBox}>
-                <span
-                  style={{
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow:
-                      "ellipsis",
-                  }}
-                >
-                  {referralCode}
-                </span>
-
-                <button
-                  style={styles.copyButton}
-                  onClick={copyReferral}
-                >
-                  {copied
-                    ? "Copied"
-                    : "Copy"}
-                </button>
-              </div>
-
-              <div
-                style={
-                  styles.referralLinkBox
-                }
-              >
-                {referralLink ||
-                  "Referral link unavailable"}
-              </div>
-
-              <button
-                style={styles.greenButton}
-                onClick={() =>
-                  goTo("/referral")
-                }
-              >
-                Open Referral
-              </button>
-            </div>
-          </section>
-
-          {/* TRANSACTIONS */}
-          <section style={styles.activityCard}>
-            <div style={styles.sectionHeader}>
-              <div
-                style={{
-                  minWidth: 0,
-                }}
-              >
-                <div style={styles.sectionTitle}>
-                  📊 Recent Transactions
-                </div>
-
-                <div style={styles.sectionSubtitle}>
-                  Latest account activity
-                </div>
-              </div>
-
-              <button
-                style={styles.textButton}
-                onClick={() =>
-                  goTo("/transactions")
-                }
-              >
-                View All →
-              </button>
-            </div>
-
-            {transactions.length === 0 ? (
-              <div
-                style={
-                  styles.transactionEmpty
-                }
-              >
-                No transactions yet.
-              </div>
-            ) : (
-              <div
-                style={
-                  styles.transactionList
-                }
-              >
-                {transactions
-                  .slice(0, 5)
-                  .map(
-                    (item, index) => {
-                      const type =
-                        String(
-                          item.type || ""
-                        ).toLowerCase();
-
-                      const status =
-                        String(
-                          item.status ||
-                            "pending"
-                        ).toLowerCase();
-
-                      return (
-                        <div
-                          style={
-                            styles.transactionRow
-                          }
-                          key={index}
-                        >
-                          <div
-                            style={
-                              styles.transactionIcon
-                            }
-                          >
-                            {type ===
-                            "withdraw"
-                              ? "💸"
-                              : "💰"}
-                          </div>
-
-                          <div
-                            style={
-                              styles.transactionInfo
-                            }
-                          >
-                            <div
-                              style={
-                                styles.transactionTitle
-                              }
-                            >
-                              {type ===
-                              "withdraw"
-                                ? "Withdrawal"
-                                : "Deposit"}
-                            </div>
-
-                            <div
-                              style={
-                                styles.transactionDate
-                              }
-                            >
-                              {item.date ||
-                                item.createdAt ||
-                                item.submittedAt ||
-                                "Recently"}
-                            </div>
-                          </div>
-
-                          <div
-                            style={
-                              styles.transactionAmount
-                            }
-                          >
-                            {formatMoney(
-                              item.amount
-                            )}
-                          </div>
-
-                          <div
-                            style={{
-                              ...styles.statusBadge,
-                              ...(status ===
-                              "approved"
-                                ? styles.approvedStatus
-                                : status ===
-                                  "rejected"
-                                ? styles.rejectedStatus
-                                : styles.pendingStatus),
-                            }}
-                          >
-                            {status.toUpperCase()}
-                          </div>
-                        </div>
-                      );
-                    }
-                  )}
-              </div>
-            )}
-          </section>
-
-          {/* SUPPORT */}
-          <section
-            style={
-              styles.dashboardSupport
-            }
-          >
-            <div
-              style={
-                styles.dashboardSupportIcon
-              }
-            >
-              🎧
-            </div>
-
-            <div
-              style={
-                styles.dashboardSupportContent
-              }
-            >
-              <div
-                style={
-                  styles.dashboardSupportTitle
-                }
-              >
-                Need Help?
-              </div>
-
-              <div
-                style={
-                  styles.dashboardSupportText
-                }
-              >
-                Have questions about your account,
-                deposits, withdrawals, or transport
-                plans? Our support team is here to help.
-              </div>
-            </div>
-
-            <div
-              style={
-                styles.dashboardSupportButtons
-              }
-            >
-              <button
-                style={
-                  styles.liveChatButton
-                }
-                onClick={() =>
-                  goTo("/support")
-                }
-              >
-                💬 Live Chat
-              </button>
-
-              <a
-                href="https://wa.me/923263159327?text=Hello%20Transport%20Hub%20Support%2C%20I%20need%20help."
-                target="_blank"
-                rel="noopener noreferrer"
-                style={
-                  styles.whatsappButton
-                }
-              >
-                📱 WhatsApp
-              </a>
-            </div>
-          </section>
-        </main>
-
-        {/* SECURITY MODAL */}
-        {showFeatures && (
-          <div
-            style={
-              styles.modalOverlay
-            }
-            onClick={() =>
-              setShowFeatures(false)
-            }
-          >
-            <div
-              style={styles.modalCard}
-              onClick={(e) =>
-                e.stopPropagation()
-              }
-            >
-              <div style={styles.modalIcon}>
-                🚧
-              </div>
-
-              <div
-                style={styles.modalTitle}
-              >
-                Coming Soon
-              </div>
-
-              <div
-                style={styles.modalText}
-              >
-                This feature is currently under
-                development and will be available soon.
-              </div>
-
-              <button
-                style={
-                  styles.greenButtonLarge
-                }
-                onClick={() =>
-                  setShowFeatures(false)
-                }
-              >
-                Close
-              </button>
             </div>
           </div>
-        )}
-      </div>
 
-      {/* MOBILE RESPONSIVE CSS */}
-      <style jsx global>{`
-        * {
-          box-sizing: border-box;
-        }
+          <div style={styles.sideCard}>
+            <div style={styles.sectionTitle}>
+              📈 Return Summary
+            </div>
 
-        html,
-        body {
-          margin: 0;
-          padding: 0;
-          width: 100%;
-          min-height: 100%;
-          overflow-x: hidden;
-        }
+            <div style={styles.walletRows}>
+              <div style={styles.walletRow}>
+                <span>Today</span>
+                <strong>
+                  {formatMoney(todayProfit)}
+                </strong>
+              </div>
 
-        button,
-        input,
-        textarea,
-        select {
-          max-width: 100%;
-        }
+              <div style={styles.walletRow}>
+                <span>Yesterday</span>
+                <strong>
+                  {formatMoney(yesterdayProfit)}
+                </strong>
+              </div>
 
-        @media (max-width: 900px) {
-          .mobile-dashboard-fix {
-            width: 100%;
-          }
-        }
+              <div style={styles.walletRow}>
+                <span>Last 7 Days</span>
+                <strong>
+                  {formatMoney(weekProfit)}
+                </strong>
+              </div>
 
-        @media (max-width: 768px) {
-          body {
-            overflow-x: hidden;
-          }
-        }
-      `}</style>
-    </>
+              <div style={styles.walletRow}>
+                <span>Last 30 Days</span>
+                <strong>
+                  {formatMoney(monthProfit)}
+                </strong>
+              </div>
+
+              <div style={styles.walletRow}>
+                <span>Total Earned</span>
+                <strong>
+                  {formatMoney(earnedReturns)}
+                </strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          style={{
+            ...styles.twoColumnGrid,
+            ...(isMobile
+              ? styles.mobileTwoColumnGrid
+              : {}),
+          }}
+        >
+          <div style={styles.sideCard}>
+            <div style={styles.sectionTitle}>
+              👥 My Team
+            </div>
+
+            <div style={styles.teamMainNumber}>
+              {teamMembers.length}
+            </div>
+
+            <div style={styles.teamLabel}>
+              Total Team Members
+            </div>
+
+            <div style={styles.teamStats}>
+              <div style={styles.teamStat}>
+                <span>Team Investment</span>
+                <strong>
+                  {formatMoney(teamInvestment)}
+                </strong>
+              </div>
+
+              <div style={styles.teamStat}>
+                <span>Paid Commission</span>
+                <strong>
+                  {formatMoney(paidTeam)}
+                </strong>
+              </div>
+
+              <div style={styles.teamStat}>
+                <span>Today Commission</span>
+                <strong>
+                  {formatMoney(todayTeam)}
+                </strong>
+              </div>
+            </div>
+
+            <button
+              style={styles.outlineButton}
+              onClick={() => goTo("/my-team")}
+            >
+              View My Team
+            </button>
+          </div>
+
+          <div style={styles.sideCard}>
+            <div style={styles.sectionTitle}>
+              🔗 Referral Program
+            </div>
+
+            <div style={styles.referralText}>
+              Invite friends and grow your team.
+            </div>
+
+            <div style={styles.referralCodeBox}>
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {referralCode}
+              </span>
+
+              <button
+                style={styles.copyButton}
+                onClick={copyReferral}
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+
+            <div style={styles.referralLinkBox}>
+              {referralLink ||
+                "Referral link unavailable"}
+            </div>
+
+            <button
+              style={styles.greenButton}
+              onClick={() => goTo("/referral")}
+            >
+              Open Referral
+            </button>
+          </div>
+        </section>
+
+        <section style={styles.activityCard}>
+          <div
+            style={{
+              ...styles.sectionHeader,
+              ...(isMobile
+                ? styles.mobileSectionHeader
+                : {}),
+            }}
+          >
+            <div>
+              <div style={styles.sectionTitle}>
+                📊 Recent Transactions
+              </div>
+
+              <div style={styles.sectionSubtitle}>
+                Latest account activity
+              </div>
+            </div>
+
+            <button
+              style={styles.textButton}
+              onClick={() => goTo("/transactions")}
+            >
+              View All →
+            </button>
+          </div>
+
+          {transactions.length === 0 ? (
+            <div style={styles.transactionEmpty}>
+              No transactions yet.
+            </div>
+          ) : (
+            <div style={styles.transactionList}>
+              {transactions
+                .slice(0, 5)
+                .map((item, index) => {
+                  const type = String(
+                    item.type || ""
+                  ).toLowerCase();
+
+                  const status = String(
+                    item.status || "pending"
+                  ).toLowerCase();
+
+                  return (
+                    <div
+                      style={{
+                        ...styles.transactionRow,
+                        ...(isMobile
+                          ? styles.mobileTransactionRow
+                          : {}),
+                      }}
+                      key={index}
+                    >
+                      <div
+                        style={styles.transactionIcon}
+                      >
+                        {type === "withdraw"
+                          ? "💸"
+                          : "💰"}
+                      </div>
+
+                      <div
+                        style={
+                          styles.transactionInfo
+                        }
+                      >
+                        <div
+                          style={
+                            styles.transactionTitle
+                          }
+                        >
+                          {type === "withdraw"
+                            ? "Withdrawal"
+                            : "Deposit"}
+                        </div>
+
+                        <div
+                          style={
+                            styles.transactionDate
+                          }
+                        >
+                          {item.date ||
+                            item.createdAt ||
+                            item.submittedAt ||
+                            "Recently"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={
+                          styles.transactionAmount
+                        }
+                      >
+                        {formatMoney(item.amount)}
+                      </div>
+
+                      <div
+                        style={{
+                          ...styles.statusBadge,
+                          ...(status === "approved"
+                            ? styles.approvedStatus
+                            : status === "rejected"
+                            ? styles.rejectedStatus
+                            : styles.pendingStatus),
+                        }}
+                      >
+                        {status.toUpperCase()}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </section>
+
+        <section
+          style={{
+            ...styles.dashboardSupport,
+            ...(isMobile
+              ? styles.mobileDashboardSupport
+              : {}),
+          }}
+        >
+          <div style={styles.dashboardSupportIcon}>
+            🎧
+          </div>
+
+          <div style={styles.dashboardSupportContent}>
+            <div style={styles.dashboardSupportTitle}>
+              Need Help?
+            </div>
+
+            <div style={styles.dashboardSupportText}>
+              Have questions about your account,
+              deposits, withdrawals, or transport
+              plans? Our support team is here to help.
+            </div>
+          </div>
+
+          <div
+            style={{
+              ...styles.dashboardSupportButtons,
+              ...(isMobile
+                ? styles.mobileSupportButtons
+                : {}),
+            }}
+          >
+            <button
+              style={styles.liveChatButton}
+              onClick={() => goTo("/support")}
+            >
+              💬 Live Chat
+            </button>
+
+            <a
+              href="https://wa.me/923263159327?text=Hello%20Transport%20Hub%20Support%2C%20I%20need%20help."
+              target="_blank"
+              rel="noopener noreferrer"
+              style={styles.whatsappButton}
+            >
+              📱 WhatsApp
+            </a>
+          </div>
+        </section>
+      </main>
+
+      {showFeatures && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCard}>
+            <div style={styles.modalIcon}>
+              🚧
+            </div>
+
+            <div style={styles.modalTitle}>
+              Coming Soon
+            </div>
+
+            <div style={styles.modalText}>
+              This feature is currently under
+              development and will be available soon.
+            </div>
+
+            <button
+              style={styles.greenButtonLarge}
+              onClick={() =>
+                setShowFeatures(false)
+              }
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
 const styles = {
   dashboard: {
     minHeight: "100vh",
-    width: "100%",
     display: "flex",
     background: "#eef3f7",
     color: "#102A43",
     fontFamily: "Arial, sans-serif",
-    overflowX: "hidden",
-    position: "relative",
   },
 
   mobileHeader: {
-    display: "none",
-  },
-
-  mobileBrand: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "58px",
+    background: "#102A43",
+    color: "#ffffff",
     display: "flex",
     alignItems: "center",
-    gap: "9px",
-    minWidth: 0,
+    justifyContent: "space-between",
+    padding: "0 14px",
+    boxSizing: "border-box",
+    zIndex: 1100,
+    boxShadow: "0 3px 15px rgba(0,0,0,.15)",
+  },
+
+  menuButton: {
+    width: "38px",
+    height: "38px",
+    border: "1px solid #294B66",
+    borderRadius: "9px",
+    background: "#173B5A",
+    color: "#ffffff",
+    fontSize: "20px",
     cursor: "pointer",
   },
 
-  mobileLogo: {
-    width: "40px",
-    height: "40px",
-    borderRadius: "11px",
+  mobileHeaderTitle: {
+    fontSize: "15px",
+    fontWeight: 900,
+  },
+
+  mobileHeaderUser: {
+    width: "34px",
+    height: "34px",
+    borderRadius: "50%",
     background: "#1E3A56",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "20px",
-    flexShrink: 0,
-  },
-
-  mobileBrandTitle: {
-    color: "#ffffff",
-    fontSize: "14px",
-    fontWeight: 900,
-    whiteSpace: "nowrap",
-  },
-
-  mobileBrandSubtitle: {
-    color: "#9FB3C8",
-    fontSize: "8px",
-    marginTop: "2px",
-  },
-
-  mobileMenuButton: {
-    width: "42px",
-    height: "42px",
-    border: "1px solid #294B66",
-    borderRadius: "10px",
-    background: "#173B5A",
-    color: "#ffffff",
-    fontSize: "21px",
-    cursor: "pointer",
-    flexShrink: 0,
   },
 
   mobileOverlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(5,18,30,0.72)",
-    zIndex: 9998,
+    background: "rgba(0,0,0,.55)",
+    zIndex: 999,
   },
 
   sidebar: {
@@ -1538,25 +1330,13 @@ const styles = {
     top: 0,
     bottom: 0,
     overflowY: "auto",
-    zIndex: 9999,
+    zIndex: 1000,
   },
 
-  sidebarMobileOpen: {
-    transform: "translateX(0)",
-  },
-
-  closeSidebarButton: {
-    display: "none",
-    marginLeft: "auto",
-    width: "34px",
-    height: "34px",
-    border: "1px solid #294B66",
-    background: "#173B5A",
-    color: "#ffffff",
-    borderRadius: "8px",
-    fontSize: "23px",
-    cursor: "pointer",
-    flexShrink: 0,
+  mobileSidebar: {
+    width: "270px",
+    maxWidth: "82vw",
+    boxShadow: "8px 0 25px rgba(0,0,0,.25)",
   },
 
   logoArea: {
@@ -1583,7 +1363,6 @@ const styles = {
     fontSize: "16px",
     fontWeight: 900,
     color: "#ffffff",
-    whiteSpace: "nowrap",
   },
 
   logoSubtitle: {
@@ -1624,9 +1403,6 @@ const styles = {
     color: "#9FB3C8",
     fontSize: "9px",
     marginTop: "2px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
 
   navigation: {
@@ -1679,7 +1455,13 @@ const styles = {
     minHeight: "100vh",
     padding: "22px",
     boxSizing: "border-box",
-    overflowX: "hidden",
+    minWidth: 0,
+  },
+
+  mobileMainContent: {
+    marginLeft: 0,
+    width: "100%",
+    padding: "76px 12px 20px",
   },
 
   topBar: {
@@ -1688,6 +1470,11 @@ const styles = {
     justifyContent: "space-between",
     gap: "20px",
     marginBottom: "18px",
+  },
+
+  mobileTopBar: {
+    alignItems: "flex-start",
+    gap: "8px",
   },
 
   pageTitle: {
@@ -1710,7 +1497,11 @@ const styles = {
     padding: "8px 12px",
     borderRadius: "12px",
     border: "1px solid #dce5ec",
-    minWidth: 0,
+    flexShrink: 0,
+  },
+
+  mobileTopUser: {
+    padding: "6px 8px",
   },
 
   topAvatar: {
@@ -1729,17 +1520,12 @@ const styles = {
     fontSize: "11px",
     fontWeight: 900,
     color: "#102A43",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    maxWidth: "140px",
   },
 
   topUserBalance: {
     fontSize: "9px",
     color: "#6B8297",
     marginTop: "2px",
-    whiteSpace: "nowrap",
   },
 
   welcomeCard: {
@@ -1753,8 +1539,12 @@ const styles = {
     gap: "15px",
     marginBottom: "18px",
     border: "1px solid #1E3A56",
-    width: "100%",
-    overflow: "hidden",
+    minWidth: 0,
+    boxSizing: "border-box",
+  },
+
+  mobileWelcomeCard: {
+    padding: "18px",
   },
 
   welcomeSmall: {
@@ -1768,13 +1558,13 @@ const styles = {
     fontSize: "24px",
     fontWeight: 900,
     marginBottom: "7px",
-    overflowWrap: "anywhere",
   },
 
   welcomeText: {
     color: "#C9D8E6",
     fontSize: "11px",
     lineHeight: 1.6,
+    overflowWrap: "anywhere",
   },
 
   welcomeTruck: {
@@ -1795,7 +1585,12 @@ const styles = {
       "repeat(4, minmax(0, 1fr))",
     gap: "14px",
     marginBottom: "18px",
-    width: "100%",
+  },
+
+  mobileSummaryGrid: {
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
+    gap: "10px",
   },
 
   summaryCard: {
@@ -1804,6 +1599,7 @@ const styles = {
     padding: "17px",
     border: "1px solid #1E3A56",
     minWidth: 0,
+    boxSizing: "border-box",
     overflow: "hidden",
   },
 
@@ -1833,8 +1629,8 @@ const styles = {
     padding: "20px",
     border: "1px solid #1E3A56",
     marginBottom: "18px",
-    width: "100%",
     minWidth: 0,
+    boxSizing: "border-box",
     overflow: "hidden",
   },
 
@@ -1844,7 +1640,10 @@ const styles = {
     justifyContent: "space-between",
     gap: "12px",
     marginBottom: "15px",
-    minWidth: 0,
+  },
+
+  mobileSectionHeader: {
+    alignItems: "flex-start",
   },
 
   sectionTitle: {
@@ -1871,8 +1670,8 @@ const styles = {
     cursor: "pointer",
     fontSize: "10px",
     fontWeight: 800,
-    flexShrink: 0,
     whiteSpace: "nowrap",
+    flexShrink: 0,
   },
 
   greenButtonLarge: {
@@ -1893,8 +1692,7 @@ const styles = {
     padding: "35px 15px",
     background: "#173B5A",
     borderRadius: "14px",
-    width: "100%",
-    overflow: "hidden",
+    boxSizing: "border-box",
   },
 
   emptyIcon: {
@@ -1906,12 +1704,14 @@ const styles = {
     color: "#ffffff",
     fontSize: "15px",
     fontWeight: 900,
+    overflowWrap: "anywhere",
   },
 
   emptyText: {
     color: "#9FB3C8",
     fontSize: "10px",
     margin: "6px 0 14px",
+    overflowWrap: "anywhere",
   },
 
   planGrid: {
@@ -1919,8 +1719,11 @@ const styles = {
     gridTemplateColumns:
       "repeat(2, minmax(0, 1fr))",
     gap: "12px",
-    width: "100%",
     minWidth: 0,
+  },
+
+  mobilePlanGrid: {
+    gridTemplateColumns: "minmax(0, 1fr)",
   },
 
   planCard: {
@@ -1929,6 +1732,7 @@ const styles = {
     padding: "15px",
     border: "1px solid #294B66",
     minWidth: 0,
+    boxSizing: "border-box",
     overflow: "hidden",
   },
 
@@ -1997,8 +1801,13 @@ const styles = {
       "repeat(2, minmax(0, 1fr))",
     gap: "18px",
     marginBottom: "18px",
-    width: "100%",
     minWidth: 0,
+  },
+
+  mobileTwoColumnGrid: {
+    gridTemplateColumns:
+      "minmax(0, 1fr)",
+    gap: "12px",
   },
 
   sideCard: {
@@ -2007,12 +1816,12 @@ const styles = {
     padding: "20px",
     border: "1px solid #1E3A56",
     minWidth: 0,
+    boxSizing: "border-box",
     overflow: "hidden",
   },
 
   walletRows: {
     marginTop: "12px",
-    width: "100%",
   },
 
   walletRow: {
@@ -2052,7 +1861,7 @@ const styles = {
     borderBottom: "1px solid #1E3A56",
     color: "#C9D8E6",
     fontSize: "10px",
-    minWidth: 0,
+    overflowWrap: "anywhere",
   },
 
   outlineButton: {
@@ -2072,6 +1881,7 @@ const styles = {
     fontSize: "10px",
     marginTop: "10px",
     marginBottom: "10px",
+    overflowWrap: "anywhere",
   },
 
   referralCodeBox: {
@@ -2086,7 +1896,7 @@ const styles = {
     fontSize: "11px",
     fontWeight: 900,
     minWidth: 0,
-    overflow: "hidden",
+    boxSizing: "border-box",
   },
 
   copyButton: {
@@ -2112,7 +1922,7 @@ const styles = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     marginBottom: "12px",
-    width: "100%",
+    boxSizing: "border-box",
   },
 
   activityCard: {
@@ -2121,8 +1931,8 @@ const styles = {
     padding: "20px",
     border: "1px solid #1E3A56",
     marginBottom: "20px",
-    width: "100%",
     minWidth: 0,
+    boxSizing: "border-box",
     overflow: "hidden",
   },
 
@@ -2134,7 +1944,6 @@ const styles = {
     fontSize: "10px",
     fontWeight: 800,
     whiteSpace: "nowrap",
-    flexShrink: 0,
   },
 
   transactionEmpty: {
@@ -2149,7 +1958,6 @@ const styles = {
   transactionList: {
     display: "flex",
     flexDirection: "column",
-    width: "100%",
     minWidth: 0,
   },
 
@@ -2160,7 +1968,10 @@ const styles = {
     padding: "11px 0",
     borderBottom: "1px solid #1E3A56",
     minWidth: 0,
-    width: "100%",
+  },
+
+  mobileTransactionRow: {
+    gap: "7px",
   },
 
   transactionIcon: {
@@ -2237,9 +2048,14 @@ const styles = {
     gap: "16px",
     boxShadow:
       "0 8px 24px rgba(16,42,67,.12)",
-    width: "100%",
     minWidth: 0,
-    overflow: "hidden",
+    boxSizing: "border-box",
+  },
+
+  mobileDashboardSupport: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    textAlign: "center",
   },
 
   dashboardSupportIcon: {
@@ -2252,6 +2068,7 @@ const styles = {
     justifyContent: "center",
     fontSize: "25px",
     flexShrink: 0,
+    alignSelf: "center",
   },
 
   dashboardSupportContent: {
@@ -2278,6 +2095,11 @@ const styles = {
     alignItems: "center",
     gap: "8px",
     flexShrink: 0,
+  },
+
+  mobileSupportButtons: {
+    justifyContent: "center",
+    width: "100%",
   },
 
   liveChatButton: {
@@ -2307,7 +2129,6 @@ const styles = {
 
   loadingScreen: {
     minHeight: "100vh",
-    width: "100%",
     background: "#eef3f7",
     display: "flex",
     alignItems: "center",
@@ -2351,7 +2172,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 10000,
+    zIndex: 2000,
     padding: "20px",
     boxSizing: "border-box",
   },
