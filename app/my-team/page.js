@@ -26,22 +26,76 @@ export default function MyTeam() {
 
     const savedUser = localStorage.getItem("transportUser");
 
+    let currentUser = null;
+
     if (savedUser) {
       try {
-        setUser(JSON.parse(savedUser));
+        currentUser = JSON.parse(savedUser);
+        setUser(currentUser);
       } catch (error) {
         console.log("Could not load user");
       }
     }
 
-    const savedTeam = localStorage.getItem("transportTeam");
+    // Get current user's phone for user-specific team data
+    const phone =
+      currentUser?.phone ||
+      currentUser?.mobile ||
+      currentUser?.phoneNumber ||
+      "";
+
+    let savedTeam = null;
+
+    // First priority: current user's team
+    if (phone) {
+      savedTeam = localStorage.getItem(
+        "transportTeam_" + String(phone)
+      );
+    }
+
+    // Fallback: older/global team storage
+    if (!savedTeam) {
+      savedTeam = localStorage.getItem("transportTeam");
+    }
 
     if (savedTeam) {
       try {
-        setTeam(JSON.parse(savedTeam));
+        const parsedTeam = JSON.parse(savedTeam);
+
+        if (Array.isArray(parsedTeam)) {
+          // Make sure team data belongs to the current user
+          const filteredTeam = parsedTeam.filter((member) => {
+            if (!member || typeof member !== "object") {
+              return false;
+            }
+
+            const memberOwner =
+              member.ownerPhone ||
+              member.referrerPhone ||
+              member.parentPhone ||
+              member.uplinePhone ||
+              member.userPhone ||
+              "";
+
+            // If team member has no owner information,
+            // keep it for compatibility with older stored data.
+            if (!memberOwner) {
+              return true;
+            }
+
+            return String(memberOwner) === String(phone);
+          });
+
+          setTeam(filteredTeam);
+        } else {
+          setTeam([]);
+        }
       } catch (error) {
         console.log("Could not load team");
+        setTeam([]);
       }
+    } else {
+      setTeam([]);
     }
 
     setLoading(false);
@@ -52,7 +106,9 @@ export default function MyTeam() {
   }
 
   const getLevelMembers = (level) => {
-    return team.filter((member) => Number(member.level || 1) === level);
+    return team.filter(
+      (member) => Number(member.level || 1) === level
+    );
   };
 
   const getMemberBonus = (member) => {
@@ -92,7 +148,9 @@ export default function MyTeam() {
             border: "1px solid #1E3A56",
           }}
         >
-          <div style={{ fontSize: "42px", marginBottom: "8px" }}>👥</div>
+          <div style={{ fontSize: "42px", marginBottom: "8px" }}>
+            👥
+          </div>
 
           <h1
             style={{
@@ -410,7 +468,8 @@ export default function MyTeam() {
                         key={index}
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "45px 1.5fr 1fr 1fr 1fr",
+                          gridTemplateColumns:
+                            "45px 1.5fr 1fr 1fr 1fr",
                           alignItems: "center",
                           gap: "12px",
                           padding: "14px 10px",
@@ -528,7 +587,8 @@ export default function MyTeam() {
                               marginTop: "3px",
                             }}
                           >
-                            PKR {getMemberBonus(member).toLocaleString()}
+                            PKR{" "}
+                            {getMemberBonus(member).toLocaleString()}
                           </div>
                         </div>
                       </div>

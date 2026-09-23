@@ -15,6 +15,19 @@ const PAGE_BG = "#eef3f7";
 const DURATION_YEARS = 5;
 const DURATION_WEEKS = 260;
 
+/* =========================
+   REFERRAL BONUS LEVELS
+========================= */
+
+const REFERRAL_LEVELS = [
+  { level: 1, percent: 10 },
+  { level: 2, percent: 5 },
+  { level: 3, percent: 3 },
+  { level: 4, percent: 2 },
+  { level: 5, percent: 1 },
+  { level: 6, percent: 0.5 },
+];
+
 export default function Admin() {
   const [depositRequests, setDepositRequests] = useState([]);
   const [withdrawRequests, setWithdrawRequests] = useState([]);
@@ -321,6 +334,704 @@ export default function Admin() {
   };
 
   /* =========================
+     PHONE NORMALIZER
+  ========================= */
+
+  const normalizePhone = (value) => {
+    if (
+      value === null ||
+      value === undefined
+    ) {
+      return "";
+    }
+
+    return String(value)
+      .replace(/\s+/g, "")
+      .replace(/-/g, "")
+      .trim();
+  };
+
+  /* =========================
+     FIND USER BY PHONE
+  ========================= */
+
+  const findUserByPhone = (phone) => {
+    const normalized =
+      normalizePhone(phone);
+
+    if (!normalized) {
+      return null;
+    }
+
+    return (
+      users.find((user) => {
+        const userPhone =
+          normalizePhone(
+            user.phone ||
+              user.mobile ||
+              user.mobileNumber ||
+              user.phoneNumber
+          );
+
+        return (
+          userPhone === normalized
+        );
+      }) || null
+    );
+  };
+
+  /* =========================
+     GET USER PHONE
+  ========================= */
+
+  const getUserPhone = (user) => {
+    if (!user) {
+      return "";
+    }
+
+    return normalizePhone(
+      user.phone ||
+        user.mobile ||
+        user.mobileNumber ||
+        user.phoneNumber
+    );
+  };
+
+  /* =========================
+     GET REFERRER VALUE
+  ========================= */
+
+  const getReferrerValue = (user) => {
+    if (!user) {
+      return "";
+    }
+
+    return (
+      user.referrerPhone ||
+      user.referrerMobile ||
+      user.referrerNumber ||
+      user.parentPhone ||
+      user.uplinePhone ||
+      user.referredByPhone ||
+      user.referredByMobile ||
+      user.sponsorPhone ||
+      user.sponsorMobile ||
+      user.referrerCode ||
+      user.referredBy ||
+      user.referralBy ||
+      user.parent ||
+      user.upline ||
+      user.sponsor ||
+      user.referralCodeUsed ||
+      user.usedReferralCode ||
+      user.usedReferral ||
+      user.joinedWithReferral ||
+      user.referredByCode ||
+      ""
+    );
+  };
+
+  /* =========================
+     FIND REFERRER
+  ========================= */
+
+  const findReferrer = (user) => {
+    if (!user) {
+      return null;
+    }
+
+    const referrerValue =
+      getReferrerValue(user);
+
+    if (!referrerValue) {
+      return null;
+    }
+
+    const value = String(
+      referrerValue
+    ).trim();
+
+    if (!value) {
+      return null;
+    }
+
+    /* Try phone first */
+    const byPhone =
+      findUserByPhone(value);
+
+    if (byPhone) {
+      return byPhone;
+    }
+
+    /* Try referral code */
+    const lowerValue =
+      value.toLowerCase();
+
+    const byCode =
+      users.find((item) => {
+        const code =
+          item.referralCode ||
+          item.referral ||
+          item.referralId ||
+          item.myReferralCode ||
+          "";
+
+        return (
+          String(code)
+            .trim()
+            .toLowerCase() ===
+          lowerValue
+        );
+      });
+
+    return byCode || null;
+  };
+
+  /* =========================
+     GET REFERRAL CHAIN
+  ========================= */
+
+  const getReferralChain = (
+    startingUser
+  ) => {
+    const chain = [];
+    const visited = {};
+
+    let currentUser =
+      startingUser;
+
+    for (
+      let level = 1;
+      level <= REFERRAL_LEVELS.length;
+      level++
+    ) {
+      if (!currentUser) {
+        break;
+      }
+
+      const currentPhone =
+        getUserPhone(currentUser);
+
+      if (
+        !currentPhone ||
+        visited[currentPhone]
+      ) {
+        break;
+      }
+
+      visited[currentPhone] = true;
+
+      const referrer =
+        findReferrer(currentUser);
+
+      if (!referrer) {
+        break;
+      }
+
+      const referrerPhone =
+        getUserPhone(referrer);
+
+      if (
+        !referrerPhone ||
+        visited[referrerPhone]
+      ) {
+        break;
+      }
+
+      chain.push({
+        level: level,
+        user: referrer,
+        phone: referrerPhone,
+        percent:
+          REFERRAL_LEVELS[
+            level - 1
+          ].percent,
+      });
+
+      currentUser = referrer;
+    }
+
+    return chain;
+  };
+
+  /* =========================
+     UPDATE USER BALANCE
+     + WITHDRAWABLE BALANCE
+  ========================= */
+
+  const updateUserBalance = (
+    phone,
+    bonusAmount
+  ) => {
+    const normalizedPhone =
+      normalizePhone(phone);
+
+    if (
+      !normalizedPhone ||
+      !bonusAmount ||
+      bonusAmount <= 0
+    ) {
+      return null;
+    }
+
+    const savedUsers =
+      localStorage.getItem(
+        "transportUsers"
+      );
+
+    if (!savedUsers) {
+      return null;
+    }
+
+    let allUsers = [];
+
+    try {
+      const parsed =
+        JSON.parse(savedUsers);
+
+      if (Array.isArray(parsed)) {
+        allUsers = parsed;
+      }
+    } catch (error) {
+      return null;
+    }
+
+    let updatedUser = null;
+
+    const updatedUsers =
+      allUsers.map((user) => {
+        const userPhone =
+          getUserPhone(user);
+
+        if (
+          userPhone !==
+          normalizedPhone
+        ) {
+          return user;
+        }
+
+        const currentBalance =
+          Number(
+            user.balance || 0
+          );
+
+        const newBalance =
+          currentBalance +
+          bonusAmount;
+
+        updatedUser = {
+          ...user,
+
+          /* Main Balance */
+          balance:
+            newBalance,
+
+          /* Referral Bonus Records */
+          referralBonus:
+            Number(
+              user.referralBonus ||
+                0
+            ) + bonusAmount,
+
+          totalReferralBonus:
+            Number(
+              user.totalReferralBonus ||
+                0
+            ) + bonusAmount,
+        };
+
+        return updatedUser;
+      });
+
+    if (updatedUser) {
+      /* SAVE UPDATED USER */
+      localStorage.setItem(
+        "transportUsers",
+        JSON.stringify(
+          updatedUsers
+        )
+      );
+
+      /* =========================
+         ADD REFERRAL BONUS TO
+         WITHDRAWABLE BALANCE
+      ========================= */
+
+      const withdrawableKey =
+        "transportWithdrawableReturns_" +
+        normalizedPhone;
+
+      const savedWithdrawable =
+        localStorage.getItem(
+          withdrawableKey
+        );
+
+      const currentWithdrawable =
+        savedWithdrawable !== null
+          ? Number(
+              savedWithdrawable
+            ) || 0
+          : 0;
+
+      const newWithdrawable =
+        currentWithdrawable +
+        bonusAmount;
+
+      localStorage.setItem(
+        withdrawableKey,
+        String(
+          newWithdrawable
+        )
+      );
+    }
+
+    return updatedUser;
+  };
+
+  /* =========================
+     UPDATE TEAM MEMBER BONUS
+  ========================= */
+
+  const updateTeamMemberBonus = (
+    referrerPhone,
+    referredPhone,
+    bonusAmount,
+    level
+  ) => {
+    if (
+      !referrerPhone ||
+      !referredPhone ||
+      !bonusAmount
+    ) {
+      return;
+    }
+
+    const teamKey =
+      "transportTeam_" +
+      referrerPhone;
+
+    const savedTeam =
+      localStorage.getItem(
+        teamKey
+      );
+
+    if (!savedTeam) {
+      return;
+    }
+
+    let team = [];
+
+    try {
+      const parsed =
+        JSON.parse(savedTeam);
+
+      if (Array.isArray(parsed)) {
+        team = parsed;
+      }
+    } catch (error) {
+      return;
+    }
+
+    let changed = false;
+
+    const updatedTeam =
+      team.map((member) => {
+        const memberPhone =
+          normalizePhone(
+            member.phone ||
+              member.mobile ||
+              member.mobileNumber ||
+              member.userPhone
+          );
+
+        const ownerPhone =
+          normalizePhone(
+            member.ownerPhone ||
+              member.referrerPhone ||
+              member.parentPhone ||
+              member.uplinePhone
+          );
+
+        if (
+          memberPhone ===
+            normalizePhone(
+              referredPhone
+            ) &&
+          (
+            !ownerPhone ||
+            ownerPhone ===
+              normalizePhone(
+                referrerPhone
+              )
+          )
+        ) {
+          changed = true;
+
+          return {
+            ...member,
+
+            bonusEarned:
+              Number(
+                member.bonusEarned ||
+                  member.bonus ||
+                  0
+              ) + bonusAmount,
+
+            referralBonus:
+              Number(
+                member.referralBonus ||
+                  0
+              ) + bonusAmount,
+
+            lastReferralBonus:
+              bonusAmount,
+
+            lastReferralBonusLevel:
+              level,
+          };
+        }
+
+        return member;
+      });
+
+    if (changed) {
+      localStorage.setItem(
+        teamKey,
+        JSON.stringify(
+          updatedTeam
+        )
+      );
+    }
+  };
+
+  /* =========================
+     CHECK DUPLICATE REFERRAL
+  ========================= */
+
+  const referralBonusAlreadyCredited = (
+    request,
+    referrerPhone
+  ) => {
+    if (!request || !referrerPhone) {
+      return false;
+    }
+
+    const marker =
+      "referral-bonus-" +
+      request.id +
+      "-L";
+
+    const transactionsKey =
+      "transportTransactions_" +
+      referrerPhone;
+
+    const saved =
+      localStorage.getItem(
+        transactionsKey
+      );
+
+    if (!saved) {
+      return false;
+    }
+
+    try {
+      const transactions =
+        JSON.parse(saved);
+
+      if (!Array.isArray(transactions)) {
+        return false;
+      }
+
+      return transactions.some(
+        (item) =>
+          item.id &&
+          String(item.id).indexOf(
+            marker
+          ) === 0
+      );
+    } catch (error) {
+      return false;
+    }
+  };
+
+  /* =========================
+     CREDIT REFERRAL BONUSES
+  ========================= */
+
+  const creditReferralBonuses = (
+    request,
+    referredUser,
+    depositAmount
+  ) => {
+    if (
+      !request ||
+      !referredUser ||
+      !depositAmount ||
+      depositAmount <= 0
+    ) {
+      return {
+        credited: false,
+        totalBonus: 0,
+        details: [],
+      };
+    }
+
+    const chain =
+      getReferralChain(
+        referredUser
+      );
+
+    if (chain.length === 0) {
+      return {
+        credited: false,
+        totalBonus: 0,
+        details: [],
+      };
+    }
+
+    let totalBonus = 0;
+    const details = [];
+
+    chain.forEach((item) => {
+      const referrerPhone =
+        item.phone;
+
+      const percent =
+        Number(item.percent || 0);
+
+      if (
+        !referrerPhone ||
+        percent <= 0
+      ) {
+        return;
+      }
+
+      const alreadyCredited =
+        referralBonusAlreadyCredited(
+          request,
+          referrerPhone
+        );
+
+      if (alreadyCredited) {
+        return;
+      }
+
+      const bonusAmount =
+        Number(
+          (
+            depositAmount *
+            percent /
+            100
+          ).toFixed(2)
+        );
+
+      if (
+        !bonusAmount ||
+        bonusAmount <= 0
+      ) {
+        return;
+      }
+
+      const referrerUser =
+        updateUserBalance(
+          referrerPhone,
+          bonusAmount
+        );
+
+      if (!referrerUser) {
+        return;
+      }
+
+      const transactionId =
+        "referral-bonus-" +
+        request.id +
+        "-L" +
+        item.level;
+
+      saveTransaction(
+        {
+          id:
+            transactionId,
+
+          type:
+            "Referral Bonus",
+
+          amount:
+            bonusAmount,
+
+          depositAmount:
+            depositAmount,
+
+          percentage:
+            percent,
+
+          level:
+            item.level,
+
+          referredPhone:
+            getUserPhone(
+              referredUser
+            ),
+
+          referredName:
+            referredUser.fullName ||
+            referredUser.name ||
+            referredUser.username ||
+            "User",
+
+          status:
+            "Completed",
+
+          phone:
+            referrerPhone,
+
+          transactionId:
+            transactionId,
+
+          number:
+            referrerPhone,
+
+          date:
+            new Date().toLocaleString(),
+        },
+        referrerPhone
+      );
+
+      updateTeamMemberBonus(
+        referrerPhone,
+        getUserPhone(
+          referredUser
+        ),
+        bonusAmount,
+        item.level
+      );
+
+      totalBonus +=
+        bonusAmount;
+
+      details.push({
+        level:
+          item.level,
+        percent:
+          percent,
+        amount:
+          bonusAmount,
+        phone:
+          referrerPhone,
+      });
+    });
+
+    return {
+      credited:
+        details.length > 0,
+      totalBonus:
+        totalBonus,
+      details:
+        details,
+    };
+  };
+
+  /* =========================
      UPDATE DEPOSIT STATUS
   ========================= */
 
@@ -438,7 +1149,6 @@ export default function Admin() {
         weekly:
           weeklyReturn,
 
-        /* Compatibility */
         daily:
           weeklyReturn,
 
@@ -448,7 +1158,6 @@ export default function Admin() {
         durationWeeks:
           DURATION_WEEKS,
 
-        /* Compatibility */
         duration:
           DURATION_WEEKS,
 
@@ -456,7 +1165,6 @@ export default function Admin() {
           totalReturn,
       },
 
-      /* Top-level compatibility */
       planName:
         planName,
 
@@ -506,7 +1214,8 @@ export default function Admin() {
       newStatus === "Rejected"
     ) {
       setMessage(
-        `${planName} deposit request rejected.`
+        planName +
+          " deposit request rejected."
       );
 
       return;
@@ -588,7 +1297,6 @@ export default function Admin() {
       weekly:
         weeklyReturn,
 
-      /* Compatibility */
       daily:
         weeklyReturn,
 
@@ -598,7 +1306,6 @@ export default function Admin() {
       durationWeeks:
         DURATION_WEEKS,
 
-      /* Compatibility */
       duration:
         DURATION_WEEKS,
 
@@ -611,7 +1318,6 @@ export default function Admin() {
       approvedAt:
         approvedAt,
 
-      /* First return already paid */
       lastReturnAt:
         approvedAt,
 
@@ -735,17 +1441,70 @@ export default function Admin() {
     }
 
     /* =========================
+       REFERRAL BONUS
+       CREDIT ON APPROVAL
+    ========================= */
+
+    let referralResult = {
+      credited: false,
+      totalBonus: 0,
+      details: [],
+    };
+
+    const referredUser =
+      findUserByPhone(phone);
+
+    if (
+      referredUser &&
+      planAmount > 0
+    ) {
+      referralResult =
+        creditReferralBonuses(
+          request,
+          referredUser,
+          planAmount
+        );
+    }
+
+    /* =========================
+       REFERRAL MESSAGE
+    ========================= */
+
+    let referralMessage = "";
+
+    if (
+      referralResult.credited
+    ) {
+      referralMessage =
+        " Referral bonus of PKR " +
+        referralResult.totalBonus.toLocaleString() +
+        " credited to eligible referrer(s).";
+    } else {
+      referralMessage =
+        " No eligible referral bonus was found for this user.";
+    }
+
+    /* =========================
        SUCCESS MESSAGE
     ========================= */
 
     setMessage(
-      `${planName} for ${
-        request.fullName ||
-        request.user?.fullName ||
-        request.user?.name ||
-        "user"
-      } approved successfully. First weekly return of PKR ${weeklyReturn.toLocaleString()} has been credited immediately. Next return will be available in 7 days.`
+      planName +
+        " for " +
+        (
+          request.fullName ||
+          request.user?.fullName ||
+          request.user?.name ||
+          "user"
+        ) +
+        " approved successfully. First weekly return of PKR " +
+        weeklyReturn.toLocaleString() +
+        " has been credited immediately. Next return will be available in 7 days." +
+        referralMessage
     );
+
+    /* Refresh users because referral balance may have changed */
+    loadUsers();
   };
 
   /* =========================
@@ -823,7 +1582,8 @@ export default function Admin() {
       withdrawAmount > availableReturns
     ) {
       setMessage(
-        `Insufficient earned returns. Available: PKR ${availableReturns.toLocaleString()}`
+        "Insufficient earned returns. Available: PKR " +
+          availableReturns.toLocaleString()
       );
       return;
     }
@@ -911,9 +1671,12 @@ export default function Admin() {
 
     if (newStatus === "Approved") {
       setMessage(
-        `Withdrawal of PKR ${withdrawAmount.toLocaleString()} for ${
-          request.fullName || "user"
-        } approved successfully.`
+        "Withdrawal of PKR " +
+          withdrawAmount.toLocaleString() +
+          " for " +
+          (request.fullName ||
+            "user") +
+          " approved successfully."
       );
     } else {
       setMessage(
@@ -1015,7 +1778,8 @@ export default function Admin() {
           request.mobile ||
           request.mobileNumber ||
           request.user?.phone ||
-          `deposit-unknown-${index}`;
+          "deposit-unknown-" +
+            index;
 
         if (!groups[phone]) {
           groups[phone] = {
@@ -1091,7 +1855,8 @@ export default function Admin() {
           request.phone ||
           request.mobile ||
           request.mobileNumber ||
-          `withdraw-unknown-${index}`;
+          "withdraw-unknown-" +
+            index;
 
         if (!groups[phone]) {
           groups[phone] = {
@@ -1355,7 +2120,10 @@ export default function Admin() {
           <StatCard
             icon="💰"
             title="Approved Deposits"
-            value={`PKR ${stats.approvedDeposits.toLocaleString()}`}
+            value={
+              "PKR " +
+              stats.approvedDeposits.toLocaleString()
+            }
           />
 
           <StatCard
@@ -1373,7 +2141,10 @@ export default function Admin() {
           <StatCard
             icon="📤"
             title="Approved Withdrawals"
-            value={`PKR ${stats.approvedWithdrawals.toLocaleString()}`}
+            value={
+              "PKR " +
+              stats.approvedWithdrawals.toLocaleString()
+            }
           />
         </div>
 
@@ -1385,7 +2156,8 @@ export default function Admin() {
           style={{
             background: NAVY,
             border:
-              `1px solid ${BORDER}`,
+              "1px solid " +
+              BORDER,
             borderRadius: "16px",
             padding: "8px",
             display: "flex",
@@ -1504,7 +2276,11 @@ export default function Admin() {
             <AdminCard
               icon="💳"
               title="User Transactions"
-              text={`There are ${groupedUsers.length} user card(s) containing deposit and withdrawal requests.`}
+              text={
+                "There are " +
+                groupedUsers.length +
+                " user card(s) containing deposit and withdrawal requests."
+              }
               buttonText="View Transactions"
               onClick={() =>
                 setActiveTab(
@@ -1516,7 +2292,13 @@ export default function Admin() {
             <AdminCard
               icon="💰"
               title="Deposit Management"
-              text={`Total ${stats.totalRequests} deposit request(s), including ${stats.pendingDeposits} pending request(s).`}
+              text={
+                "Total " +
+                stats.totalRequests +
+                " deposit request(s), including " +
+                stats.pendingDeposits +
+                " pending request(s)."
+              }
               buttonText="View Transactions"
               onClick={() =>
                 setActiveTab(
@@ -1528,7 +2310,13 @@ export default function Admin() {
             <AdminCard
               icon="💸"
               title="Withdrawal Management"
-              text={`Total ${stats.totalWithdrawRequests} withdrawal request(s), including ${stats.pendingWithdrawals} pending request(s).`}
+              text={
+                "Total " +
+                stats.totalWithdrawRequests +
+                " withdrawal request(s), including " +
+                stats.pendingWithdrawals +
+                " pending request(s)."
+              }
               buttonText="View Transactions"
               onClick={() =>
                 setActiveTab(
@@ -1540,7 +2328,11 @@ export default function Admin() {
             <AdminCard
               icon="👥"
               title="Registered Users"
-              text={`There are ${stats.users} registered account(s) in Transport Hub.`}
+              text={
+                "There are " +
+                stats.users +
+                " registered account(s) in Transport Hub."
+              }
               buttonText="View Users"
               onClick={() =>
                 setActiveTab(
@@ -1582,7 +2374,8 @@ export default function Admin() {
                         background:
                           NAVY,
                         border:
-                          `1px solid ${BORDER}`,
+                          "1px solid " +
+                          BORDER,
                         borderRadius:
                           "20px",
                         padding:
@@ -1628,7 +2421,8 @@ export default function Admin() {
                               background:
                                 NAVY_2,
                               border:
-                                `1px solid ${BORDER}`,
+                                "1px solid " +
+                                BORDER,
                               display:
                                 "flex",
                               alignItems:
@@ -1769,9 +2563,7 @@ export default function Admin() {
                         />
                       </DetailsGrid>
 
-                      {/* =====================
-                          DEPOSITS
-                      ===================== */}
+                      {/* DEPOSITS */}
 
                       {user.deposits
                         .length >
@@ -1873,7 +2665,8 @@ export default function Admin() {
                                       background:
                                         NAVY_2,
                                       border:
-                                        `1px solid ${BORDER}`,
+                                        "1px solid " +
+                                        BORDER,
                                       borderRadius:
                                         "14px",
                                       padding:
@@ -1937,13 +2730,19 @@ export default function Admin() {
                                     <DetailsGrid>
                                       <Detail
                                         label="Amount"
-                                        value={`PKR ${displayAmount.toLocaleString()}`}
+                                        value={
+                                          "PKR " +
+                                          displayAmount.toLocaleString()
+                                        }
                                         highlight
                                       />
 
                                       <Detail
                                         label="Weekly Return"
-                                        value={`PKR ${displayWeekly.toLocaleString()}`}
+                                        value={
+                                          "PKR " +
+                                          displayWeekly.toLocaleString()
+                                        }
                                       />
 
                                       <Detail
@@ -1989,8 +2788,6 @@ export default function Admin() {
                                       />
                                     </DetailsGrid>
 
-                                    {/* DEPOSIT SCREENSHOT */}
-
                                     {(request.screenshot ||
                                       request.paymentScreenshot ||
                                       request.receipt) && (
@@ -2001,7 +2798,8 @@ export default function Admin() {
                                           background:
                                             "#102A43",
                                           border:
-                                            `1px solid ${BORDER}`,
+                                            "1px solid " +
+                                            BORDER,
                                           borderRadius:
                                             "12px",
                                           padding:
@@ -2051,8 +2849,6 @@ export default function Admin() {
                                         />
                                       </div>
                                     )}
-
-                                    {/* DEPOSIT ACTION */}
 
                                     {request.status ===
                                       "Pending" && (
@@ -2108,7 +2904,7 @@ export default function Admin() {
                                             "700",
                                         }}
                                       >
-                                        ✅ Plan Activated • First Weekly Return Credited
+                                        ✅ Plan Activated • First Weekly Return Credited • Referral Bonus Processed
                                       </div>
                                     )}
 
@@ -2137,9 +2933,7 @@ export default function Admin() {
                         </div>
                       )}
 
-                      {/* =====================
-                          WITHDRAWALS
-                      ===================== */}
+                      {/* WITHDRAWALS */}
 
                       {user.withdrawals
                         .length >
@@ -2214,7 +3008,8 @@ export default function Admin() {
                                     background:
                                       NAVY_2,
                                     border:
-                                      `1px solid ${BORDER}`,
+                                      "1px solid " +
+                                      BORDER,
                                     borderRadius:
                                       "14px",
                                     padding:
@@ -2276,10 +3071,13 @@ export default function Admin() {
                                   <DetailsGrid>
                                     <Detail
                                       label="Withdrawal Amount"
-                                      value={`PKR ${Number(
-                                        request.amount ||
-                                          0
-                                      ).toLocaleString()}`}
+                                      value={
+                                        "PKR " +
+                                        Number(
+                                          request.amount ||
+                                            0
+                                        ).toLocaleString()
+                                      }
                                       highlight
                                     />
 
@@ -2335,8 +3133,6 @@ export default function Admin() {
                                     />
                                   </DetailsGrid>
 
-                                  {/* WITHDRAW SCREENSHOT */}
-
                                   {(request.screenshot ||
                                     request.paymentScreenshot ||
                                     request.receipt) && (
@@ -2347,7 +3143,8 @@ export default function Admin() {
                                         background:
                                           "#102A43",
                                         border:
-                                          `1px solid ${BORDER}`,
+                                          "1px solid " +
+                                          BORDER,
                                         borderRadius:
                                           "12px",
                                         padding:
@@ -2397,8 +3194,6 @@ export default function Admin() {
                                       />
                                     </div>
                                   )}
-
-                                  {/* WITHDRAW ACTION */}
 
                                   {request.status ===
                                     "Pending" && (
@@ -2529,7 +3324,8 @@ export default function Admin() {
                         background:
                           NAVY,
                         border:
-                          `1px solid ${BORDER}`,
+                          "1px solid " +
+                          BORDER,
                         borderRadius:
                           "17px",
                         padding:
@@ -2561,7 +3357,8 @@ export default function Admin() {
                             background:
                               NAVY_2,
                             border:
-                              `1px solid ${BORDER}`,
+                              "1px solid " +
+                              BORDER,
                             display:
                               "flex",
                             alignItems:
@@ -2629,10 +3426,13 @@ export default function Admin() {
 
                         <Detail
                           label="Balance"
-                          value={`PKR ${Number(
-                            user.balance ||
-                              0
-                          ).toLocaleString()}`}
+                          value={
+                            "PKR " +
+                            Number(
+                              user.balance ||
+                                0
+                            ).toLocaleString()
+                          }
                           highlight
                         />
 
@@ -2692,7 +3492,8 @@ function StatCard({
       style={{
         background: NAVY,
         border:
-          `1px solid ${BORDER}`,
+          "1px solid " +
+          BORDER,
         borderRadius: "17px",
         padding: "18px",
         boxShadow:
@@ -2713,7 +3514,8 @@ function StatCard({
             borderRadius: "13px",
             background: NAVY_2,
             border:
-              `1px solid ${BORDER}`,
+              "1px solid " +
+              BORDER,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -2912,7 +3714,8 @@ function Detail({
       style={{
         background: NAVY_2,
         border:
-          `1px solid ${BORDER}`,
+          "1px solid " +
+          BORDER,
         borderRadius:
           "11px",
         padding:
@@ -3012,7 +3815,8 @@ function SectionHeader({
       style={{
         background: NAVY,
         border:
-          `1px solid ${BORDER}`,
+          "1px solid " +
+          BORDER,
         borderRadius:
           "17px",
         padding:
@@ -3035,7 +3839,8 @@ function SectionHeader({
           background:
             NAVY_2,
           border:
-            `1px solid ${BORDER}`,
+            "1px solid " +
+            BORDER,
           display:
             "flex",
           alignItems:
@@ -3093,7 +3898,8 @@ function AdminCard({
       style={{
         background: NAVY,
         border:
-          `1px solid ${BORDER}`,
+          "1px solid " +
+          BORDER,
         borderRadius:
           "18px",
         padding:
@@ -3111,7 +3917,8 @@ function AdminCard({
           background:
             NAVY_2,
           border:
-            `1px solid ${BORDER}`,
+            "1px solid " +
+            BORDER,
           display:
             "flex",
           alignItems:
@@ -3159,7 +3966,8 @@ function AdminCard({
         onClick={onClick}
         style={{
           border:
-            `1px solid ${BORDER}`,
+            "1px solid " +
+            BORDER,
           background:
             NAVY_2,
           color:
@@ -3196,7 +4004,8 @@ function EmptyState({
       style={{
         background: NAVY,
         border:
-          `1px solid ${BORDER}`,
+          "1px solid " +
+          BORDER,
         borderRadius:
           "18px",
         padding:
@@ -3216,7 +4025,8 @@ function EmptyState({
           background:
             NAVY_2,
           border:
-            `1px solid ${BORDER}`,
+            "1px solid " +
+            BORDER,
           display:
             "flex",
           alignItems:

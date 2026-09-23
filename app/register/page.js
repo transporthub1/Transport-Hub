@@ -15,18 +15,91 @@ export default function Register() {
     const ref = params.get("ref");
 
     if (ref) {
-      setReferralCode(ref);
+      setReferralCode(ref.trim());
     }
   }, []);
+
+  const normalizePhone = (value) => {
+    return String(value || "").replace(/\D/g, "");
+  };
+
+  const normalizeCode = (value) => {
+    return String(value || "").trim().toLowerCase();
+  };
+
+  const generateReferralCode = (
+    cleanPhone,
+    cleanName,
+    existingUsers
+  ) => {
+    const namePart = String(cleanName || "")
+      .replace(/[^a-zA-Z]/g, "")
+      .substring(0, 3)
+      .toUpperCase();
+
+    const phonePart = normalizePhone(cleanPhone).slice(-6);
+
+    let baseCode = "TH" + namePart + phonePart;
+
+    if (!baseCode || baseCode.length < 5) {
+      baseCode = "TH" + Date.now().toString().slice(-6);
+    }
+
+    let finalCode = baseCode;
+    let counter = 1;
+
+    while (
+      existingUsers.some(
+        (user) =>
+          normalizeCode(user.referralCode) ===
+          normalizeCode(finalCode)
+      )
+    ) {
+      finalCode = baseCode + counter;
+      counter++;
+    }
+
+    return finalCode;
+  };
+
+  const findReferrer = (cleanReferral, users) => {
+    if (!cleanReferral) {
+      return null;
+    }
+
+    const normalizedReferral =
+      normalizeCode(cleanReferral);
+
+    const referrer = users.find((user) => {
+      const possibleCodes = [
+        user.referralCode,
+        user.referral,
+        user.referralId,
+        user.myReferralCode,
+      ];
+
+      return possibleCodes.some(
+        (code) =>
+          normalizeCode(code) === normalizedReferral
+      );
+    });
+
+    return referrer || null;
+  };
 
   const handleRegister = () => {
     setMessage("");
 
     const cleanName = fullName.trim();
-    const cleanPhone = phone.trim();
+    const cleanPhone = normalizePhone(phone);
     const cleanReferral = referralCode.trim();
 
-    if (!cleanName || !cleanPhone || !password || !confirmPassword) {
+    if (
+      !cleanName ||
+      !cleanPhone ||
+      !password ||
+      !confirmPassword
+    ) {
       setMessage("Please fill in all fields.");
       return;
     }
@@ -42,7 +115,9 @@ export default function Register() {
     }
 
     if (password.length < 6) {
-      setMessage("Password must be at least 6 characters.");
+      setMessage(
+        "Password must be at least 6 characters."
+      );
       return;
     }
 
@@ -54,7 +129,8 @@ export default function Register() {
     let users = [];
 
     try {
-      const savedUsers = localStorage.getItem("transportUsers");
+      const savedUsers =
+        localStorage.getItem("transportUsers");
 
       if (savedUsers) {
         const parsedUsers = JSON.parse(savedUsers);
@@ -68,27 +144,67 @@ export default function Register() {
     }
 
     const existingUser = users.find(
-      (user) => user.phone === cleanPhone
+      (user) =>
+        normalizePhone(user.phone) === cleanPhone
     );
 
     if (existingUser) {
-      setMessage("An account with this number already exists.");
+      setMessage(
+        "An account with this number already exists."
+      );
       return;
     }
+
+    const referrer = findReferrer(
+      cleanReferral,
+      users
+    );
+
+    const newReferralCode =
+      generateReferralCode(
+        cleanPhone,
+        cleanName,
+        users
+      );
+
+    const createdAt =
+      new Date().toISOString();
 
     const newUser = {
       id:
         "user-" +
         Date.now() +
         "-" +
-        Math.random().toString(36).substring(2, 8),
+        Math.random()
+          .toString(36)
+          .substring(2, 8),
 
       fullName: cleanName,
+
       phone: cleanPhone,
+
       password: password,
+
       balance: 0,
-      createdAt: new Date().toISOString(),
-      referredBy: cleanReferral || null,
+
+      referralBonus: 0,
+
+      totalReferralBonus: 0,
+
+      referralCode: newReferralCode,
+
+      referredBy:
+        cleanReferral || null,
+
+      referrerCode:
+        cleanReferral || null,
+
+      referrerPhone:
+        referrer
+          ? normalizePhone(referrer.phone)
+          : null,
+
+      createdAt: createdAt,
     };
 
     users.push(newUser);
@@ -113,10 +229,13 @@ export default function Register() {
 
       try {
         const savedReferrals =
-          localStorage.getItem("transportReferrals");
+          localStorage.getItem(
+            "transportReferrals"
+          );
 
         if (savedReferrals) {
-          const parsedReferrals = JSON.parse(savedReferrals);
+          const parsedReferrals =
+            JSON.parse(savedReferrals);
 
           if (Array.isArray(parsedReferrals)) {
             referrals = parsedReferrals;
@@ -128,9 +247,18 @@ export default function Register() {
 
       referrals.push({
         id: newUser.id,
+
         fullName: newUser.fullName,
+
         phone: newUser.phone,
+
         referredBy: cleanReferral,
+
+        referrerCode: cleanReferral,
+
+        referrerPhone:
+          newUser.referrerPhone,
+
         createdAt: newUser.createdAt,
       });
 
@@ -139,6 +267,12 @@ export default function Register() {
         JSON.stringify(referrals)
       );
     }
+
+    localStorage.setItem(
+      "transportReferralCode_" +
+        cleanPhone,
+      newReferralCode
+    );
 
     setMessage(
       "Registration successful! Redirecting to login..."
@@ -188,7 +322,8 @@ export default function Register() {
           background: "#102A43",
           borderRadius: "20px",
           padding: "34px",
-          boxShadow: "0 15px 45px rgba(16,42,67,0.20)",
+          boxShadow:
+            "0 15px 45px rgba(16,42,67,0.20)",
           border: "1px solid #1E3A56",
         }}
       >
@@ -249,7 +384,9 @@ export default function Register() {
           <input
             type="text"
             value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
+            onChange={(e) =>
+              setFullName(e.target.value)
+            }
             placeholder="Enter your full name"
             style={inputStyle}
           />
@@ -265,7 +402,9 @@ export default function Register() {
             type="text"
             inputMode="numeric"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) =>
+              setPhone(e.target.value)
+            }
             placeholder="Enter mobile number"
             style={inputStyle}
           />
@@ -280,7 +419,9 @@ export default function Register() {
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) =>
+              setPassword(e.target.value)
+            }
             placeholder="Create password"
             style={inputStyle}
           />
@@ -335,17 +476,20 @@ export default function Register() {
               marginBottom: "18px",
               padding: "12px 14px",
               borderRadius: "10px",
-              background: message.includes("successful")
-                ? "#173F31"
-                : "#573533",
-              color: message.includes("successful")
-                ? "#8FD694"
-                : "#FF9F96",
+              background:
+                message.includes("successful")
+                  ? "#173F31"
+                  : "#573533",
+              color:
+                message.includes("successful")
+                  ? "#8FD694"
+                  : "#FF9F96",
               fontSize: "14px",
               textAlign: "center",
-              border: message.includes("successful")
-                ? "1px solid #2E6B4A"
-                : "1px solid #754640",
+              border:
+                message.includes("successful")
+                  ? "1px solid #2E6B4A"
+                  : "1px solid #754640",
             }}
           >
             {message}
@@ -367,7 +511,8 @@ export default function Register() {
             fontSize: "16px",
             fontWeight: "700",
             cursor: "pointer",
-            boxShadow: "0 6px 18px rgba(46,107,74,0.25)",
+            boxShadow:
+              "0 6px 18px rgba(46,107,74,0.25)",
           }}
         >
           Create Account
