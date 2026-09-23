@@ -56,6 +56,28 @@ export default function TransportPlans() {
         fontFamily: "Arial, sans-serif"
       }}
     >
+      {/* Mobile Responsive CSS */}
+      <style jsx>{`
+        .plans-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 15px;
+        }
+
+        @media (max-width: 768px) {
+          .plans-grid {
+            grid-template-columns: 1fr;
+            gap: 15px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .plans-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+
       <div
         style={{
           maxWidth: "1200px",
@@ -145,13 +167,7 @@ export default function TransportPlans() {
         </div>
 
         {/* Plans */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: "15px"
-          }}
-        >
+        <div className="plans-grid">
           {plans.map(function (plan, index) {
             const totalReturn = plan.daily * plan.duration;
 

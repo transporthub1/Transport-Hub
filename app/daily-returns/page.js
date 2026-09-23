@@ -559,14 +559,14 @@ export default function DailyReturns() {
 
           {/* SUMMARY */}
 
-          <div style={styles.statsGrid}>
+          <div className="statsGrid">
 
             <div style={styles.statCard}>
               <div style={styles.statIcon}>
                 🚛
               </div>
 
-              <div>
+              <div style={styles.statContent}>
                 <p style={styles.statLabel}>
                   Active Plans
                 </p>
@@ -582,7 +582,7 @@ export default function DailyReturns() {
                 💵
               </div>
 
-              <div>
+              <div style={styles.statContent}>
                 <p style={styles.statLabel}>
                   Total Investment
                 </p>
@@ -601,7 +601,7 @@ export default function DailyReturns() {
                 📅
               </div>
 
-              <div>
+              <div style={styles.statContent}>
                 <p style={styles.statLabel}>
                   Daily Return
                 </p>
@@ -620,7 +620,7 @@ export default function DailyReturns() {
                 💎
               </div>
 
-              <div>
+              <div style={styles.statContent}>
                 <p style={styles.statLabel}>
                   Total Earned
                 </p>
@@ -1023,6 +1023,42 @@ export default function DailyReturns() {
 
         </main>
       </div>
+
+      {/* MOBILE RESPONSIVE FIX */}
+      <style jsx>{`
+        .statsGrid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 16px;
+          margin-bottom: 28px;
+        }
+
+        .statsGrid > * {
+          min-width: 0;
+        }
+
+        .statContent {
+          min-width: 0;
+          flex: 1;
+        }
+
+        @media (max-width: 900px) {
+          .statsGrid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 600px) {
+          .statsGrid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+          }
+
+          .statsGrid > * {
+            width: 100%;
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -1229,6 +1265,9 @@ const styles = {
     border: "1px solid #1E3A56",
     boxShadow:
       "0 5px 16px rgba(16,42,67,0.13)",
+    boxSizing: "border-box",
+    minWidth: 0,
+    width: "100%",
   },
 
   statIcon: {
@@ -1253,12 +1292,14 @@ const styles = {
     margin: "5px 0 0",
     color: "#ffffff",
     fontSize: "17px",
+    whiteSpace: "nowrap",
   },
 
   greenValue: {
     margin: "5px 0 0",
     color: "#8FD694",
     fontSize: "17px",
+    whiteSpace: "nowrap",
   },
 
   emptyCard: {
@@ -1493,8 +1534,6 @@ const styles = {
     fontSize: "12px",
     fontWeight: "700",
   },
-
-  /* SIMPLE INFORMATION LINES */
 
   simpleInfoSection: {
     marginBottom: "25px",
