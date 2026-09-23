@@ -111,11 +111,13 @@ export default function PlanConfirmation() {
 
             <div style={styles.divider}></div>
 
-            <div style={styles.details}>
+            <div className="details-grid" style={styles.details}>
 
               {/* Investment */}
-              <div style={styles.detailCard}>
-
+              <div
+                className="detail-card"
+                style={styles.detailCard}
+              >
                 <div style={styles.detailIcon}>
                   💰
                 </div>
@@ -132,12 +134,13 @@ export default function PlanConfirmation() {
                     ).toLocaleString()}
                   </strong>
                 </div>
-
               </div>
 
               {/* Daily Return */}
-              <div style={styles.detailCard}>
-
+              <div
+                className="detail-card"
+                style={styles.detailCard}
+              >
                 <div style={styles.detailIcon}>
                   📈
                 </div>
@@ -154,12 +157,13 @@ export default function PlanConfirmation() {
                     ).toLocaleString()}
                   </strong>
                 </div>
-
               </div>
 
               {/* Duration */}
-              <div style={styles.detailCard}>
-
+              <div
+                className="detail-card"
+                style={styles.detailCard}
+              >
                 <div style={styles.detailIcon}>
                   📅
                 </div>
@@ -173,12 +177,13 @@ export default function PlanConfirmation() {
                     {currentPlan.duration} Days
                   </strong>
                 </div>
-
               </div>
 
               {/* Total Return */}
-              <div style={styles.totalCard}>
-
+              <div
+                className="total-card"
+                style={styles.totalCard}
+              >
                 <div style={styles.totalIcon}>
                   💎
                 </div>
@@ -192,12 +197,11 @@ export default function PlanConfirmation() {
                     PKR{" "}
                     {Number(
                       currentPlan.total ||
-                      currentPlan.daily *
-                        currentPlan.duration
+                        currentPlan.daily *
+                          currentPlan.duration
                     ).toLocaleString()}
                   </strong>
                 </div>
-
               </div>
 
             </div>
@@ -249,30 +253,39 @@ export default function PlanConfirmation() {
         </main>
       </div>
 
-      {/* Mobile Responsive Fix */}
+      {/* Responsive Mobile CSS */}
       <style jsx>{`
         * {
           box-sizing: border-box;
         }
 
-        @media (max-width: 600px) {
-          .mobile-page {
-            width: 100%;
-            overflow-x: hidden;
-          }
+        :global(html),
+        :global(body) {
+          width: 100%;
+          max-width: 100%;
+          overflow-x: hidden;
         }
 
         @media (max-width: 600px) {
-          :global(body) {
-            margin: 0;
-            overflow-x: hidden;
+          .details-grid {
+            grid-template-columns: 1fr !important;
+            gap: 14px !important;
+          }
+
+          .detail-card,
+          .total-card {
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 88px !important;
+            padding: 20px !important;
           }
         }
 
-        @media (max-width: 600px) {
-          .mobile-content {
-            width: 100%;
-            max-width: 100%;
+        @media (max-width: 480px) {
+          .detail-card,
+          .total-card {
+            min-height: 92px !important;
+            padding: 20px 18px !important;
           }
         }
       `}</style>
@@ -335,14 +348,16 @@ const styles = {
     margin: 0,
     fontSize: "30px",
     fontWeight: "800",
-    overflowWrap: "anywhere",
+    overflowWrap: "break-word",
+    wordBreak: "break-word",
   },
 
   subtitle: {
     margin: "6px 0 0",
     color: "#C9D8E6",
     fontSize: "15px",
-    overflowWrap: "anywhere",
+    overflowWrap: "break-word",
+    wordBreak: "break-word",
   },
 
   content: {
@@ -399,7 +414,7 @@ const styles = {
     fontSize: "24px",
     color: "#FFFFFF",
     fontWeight: "800",
-    overflowWrap: "anywhere",
+    overflowWrap: "break-word",
     wordBreak: "break-word",
   },
 
@@ -488,27 +503,26 @@ const styles = {
     color: "#9FB3C8",
     fontSize: "13px",
     fontWeight: "600",
-    overflowWrap: "anywhere",
   },
 
   investment: {
     color: "#8FD694",
     fontSize: "19px",
-    overflowWrap: "anywhere",
+    overflowWrap: "break-word",
     wordBreak: "break-word",
   },
 
   value: {
     color: "#C9D8E6",
     fontSize: "17px",
-    overflowWrap: "anywhere",
+    overflowWrap: "break-word",
     wordBreak: "break-word",
   },
 
   total: {
     color: "#F4D77A",
     fontSize: "19px",
-    overflowWrap: "anywhere",
+    overflowWrap: "break-word",
     wordBreak: "break-word",
   },
 
@@ -548,7 +562,6 @@ const styles = {
     margin: 0,
     color: "#F4D77A",
     fontSize: "17px",
-    overflowWrap: "anywhere",
   },
 
   noticeText: {
@@ -556,7 +569,7 @@ const styles = {
     color: "#C9D8E6",
     fontSize: "13px",
     lineHeight: "1.5",
-    overflowWrap: "anywhere",
+    overflowWrap: "break-word",
     wordBreak: "break-word",
   },
 
@@ -585,8 +598,8 @@ const styles = {
     boxShadow:
       "0 6px 15px rgba(46,107,74,0.25)",
     boxSizing: "border-box",
-    overflowWrap: "anywhere",
     whiteSpace: "normal",
+    overflowWrap: "break-word",
   },
 
   backButton: {
