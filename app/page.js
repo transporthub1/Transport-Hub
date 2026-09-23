@@ -311,12 +311,38 @@ export default function Dashboard() {
     Number(user?.balance || 0) +
     Number(withdrawableReturns || 0);
 
-  const referralCode =
-    user?.referralCode ||
-    user?.referral ||
-    (user?.phone
-      ? "TH" + String(user.phone).slice(-6)
-      : "TRANSPORTHUB");
+  /* REFERRAL CODE - AUTO GENERATED AND SAVED */
+  const referralCode = useMemo(() => {
+    if (!user) return "";
+
+    const userKey =
+      user.phone ||
+      user.mobile ||
+      user.username ||
+      user.email ||
+      user.name ||
+      "user";
+
+    const storageKey =
+      "transportReferralCode_" + String(userKey);
+
+    let savedCode = localStorage.getItem(storageKey);
+
+    if (!savedCode) {
+      savedCode =
+        "TH" +
+        Math.floor(
+          100000 + Math.random() * 900000
+        ).toString();
+
+      localStorage.setItem(
+        storageKey,
+        savedCode
+      );
+    }
+
+    return savedCode;
+  }, [user]);
 
   const referralLink =
     typeof window !== "undefined"
@@ -371,6 +397,35 @@ export default function Dashboard() {
         overflowX: "hidden",
       }}
     >
+      <style jsx global>{`
+        @keyframes transportCardFloat {
+          0%,
+          100% {
+            transform: translateY(0px);
+          }
+
+          50% {
+            transform: translateY(-5px);
+          }
+        }
+
+        .transport-animated-card {
+          animation: transportCardFloat 5s ease-in-out infinite;
+        }
+
+        .transport-animated-card:hover {
+          animation-play-state: paused;
+          transform: translateY(-8px);
+          box-shadow: 0 12px 28px rgba(16, 42, 67, 0.2);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .transport-animated-card {
+            animation: none !important;
+          }
+        }
+      `}</style>
+
       {isMobile && (
         <div style={styles.mobileHeader}>
           <button
@@ -636,6 +691,7 @@ export default function Dashboard() {
         </div>
 
         <section
+          className="transport-animated-card"
           style={{
             ...styles.welcomeCard,
             ...(isMobile
@@ -681,7 +737,10 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={styles.summaryCard}>
+          <div
+            className="transport-animated-card"
+            style={styles.summaryCard}
+          >
             <div style={styles.summaryIcon}>
               💼
             </div>
@@ -695,7 +754,13 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div style={styles.summaryCard}>
+          <div
+            className="transport-animated-card"
+            style={{
+              ...styles.summaryCard,
+              animationDelay: "0.5s",
+            }}
+          >
             <div style={styles.summaryIcon}>
               📈
             </div>
@@ -709,7 +774,13 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div style={styles.summaryCard}>
+          <div
+            className="transport-animated-card"
+            style={{
+              ...styles.summaryCard,
+              animationDelay: "1s",
+            }}
+          >
             <div style={styles.summaryIcon}>
               💰
             </div>
@@ -723,7 +794,13 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div style={styles.summaryCard}>
+          <div
+            className="transport-animated-card"
+            style={{
+              ...styles.summaryCard,
+              animationDelay: "1.5s",
+            }}
+          >
             <div style={styles.summaryIcon}>
               🎯
             </div>
@@ -738,7 +815,10 @@ export default function Dashboard() {
           </div>
         </section>
 
-        <section style={styles.largeCard}>
+        <section
+          className="transport-animated-card"
+          style={styles.largeCard}
+        >
           <div
             style={{
               ...styles.sectionHeader,
@@ -809,7 +889,11 @@ export default function Dashboard() {
 
                 return (
                   <div
-                    style={styles.planCard}
+                    className="transport-animated-card"
+                    style={{
+                      ...styles.planCard,
+                      animationDelay: `${index * 0.35}s`,
+                    }}
                     key={index}
                   >
                     <div style={styles.planTop}>
@@ -880,7 +964,13 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={styles.sideCard}>
+          <div
+            className="transport-animated-card"
+            style={{
+              ...styles.sideCard,
+              animationDelay: "0.4s",
+            }}
+          >
             <div style={styles.sectionTitle}>
               💰 Wallet Overview
             </div>
@@ -923,7 +1013,13 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div style={styles.sideCard}>
+          <div
+            className="transport-animated-card"
+            style={{
+              ...styles.sideCard,
+              animationDelay: "0.9s",
+            }}
+          >
             <div style={styles.sectionTitle}>
               📈 Return Summary
             </div>
@@ -975,7 +1071,13 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={styles.sideCard}>
+          <div
+            className="transport-animated-card"
+            style={{
+              ...styles.sideCard,
+              animationDelay: "0.6s",
+            }}
+          >
             <div style={styles.sectionTitle}>
               👥 My Team
             </div>
@@ -1019,7 +1121,13 @@ export default function Dashboard() {
             </button>
           </div>
 
-          <div style={styles.sideCard}>
+          <div
+            className="transport-animated-card"
+            style={{
+              ...styles.sideCard,
+              animationDelay: "1.1s",
+            }}
+          >
             <div style={styles.sectionTitle}>
               🔗 Referral Program
             </div>
@@ -1061,7 +1169,10 @@ export default function Dashboard() {
           </div>
         </section>
 
-        <section style={styles.activityCard}>
+        <section
+          className="transport-animated-card"
+          style={styles.activityCard}
+        >
           <div
             style={{
               ...styles.sectionHeader,
@@ -1178,6 +1289,7 @@ export default function Dashboard() {
         </section>
 
         <section
+          className="transport-animated-card"
           style={{
             ...styles.dashboardSupport,
             ...(isMobile
@@ -1601,6 +1713,8 @@ const styles = {
     minWidth: 0,
     boxSizing: "border-box",
     overflow: "hidden",
+    transition:
+      "transform 0.3s ease, box-shadow 0.3s ease",
   },
 
   summaryIcon: {

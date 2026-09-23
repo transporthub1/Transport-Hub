@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function Referral() {
   const [user, setUser] = useState(null);
@@ -30,11 +30,37 @@ export default function Referral() {
     user?.name ||
     "Fakhar Abbas";
 
-  const referralCode =
-    user?.referralCode ||
-    user?.mobile ||
-    user?.phone ||
-    "03455096922";
+  const referralCode = useMemo(() => {
+    if (!user) return "";
+
+    const userKey =
+      user.phone ||
+      user.mobile ||
+      user.username ||
+      user.email ||
+      user.name ||
+      "user";
+
+    const storageKey =
+      "transportReferralCode_" + String(userKey);
+
+    let savedCode = localStorage.getItem(storageKey);
+
+    if (!savedCode) {
+      savedCode =
+        "TH" +
+        Math.floor(
+          100000 + Math.random() * 900000
+        ).toString();
+
+      localStorage.setItem(
+        storageKey,
+        savedCode
+      );
+    }
+
+    return savedCode;
+  }, [user]);
 
   const referralLink =
     typeof window !== "undefined"

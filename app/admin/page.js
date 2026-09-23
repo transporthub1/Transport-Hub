@@ -21,15 +21,17 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-  const loggedIn = localStorage.getItem("transportAdminLoggedIn");
+    const loggedIn = localStorage.getItem(
+      "transportAdminLoggedIn"
+    );
 
-  if (loggedIn !== "true") {
-    window.location.href = "/admin/login";
-    return;
-  }
+    if (loggedIn !== "true") {
+      window.location.href = "/admin/login";
+      return;
+    }
 
-  loadAllData();
-}, []);
+    loadAllData();
+  }, []);
 
   const loadAllData = () => {
     loadUsers();
@@ -43,7 +45,9 @@ export default function Admin() {
   ========================= */
 
   const loadUsers = () => {
-    const savedUsers = localStorage.getItem("transportUsers");
+    const savedUsers = localStorage.getItem(
+      "transportUsers"
+    );
 
     if (!savedUsers) {
       setUsers([]);
@@ -87,10 +91,6 @@ export default function Admin() {
       }
     }
 
-    /*
-      Support old single deposit request.
-    */
-
     if (requests.length === 0) {
       const oldRequest = localStorage.getItem(
         "transportDepositRequest"
@@ -133,10 +133,6 @@ export default function Admin() {
   const loadWithdrawRequests = () => {
     let requests = [];
 
-    /*
-      New multiple withdrawal requests.
-    */
-
     const savedRequests = localStorage.getItem(
       "transportWithdrawRequests"
     );
@@ -154,10 +150,6 @@ export default function Admin() {
         );
       }
     }
-
-    /*
-      Support old single withdrawal request.
-    */
 
     if (requests.length === 0) {
       const oldRequest = localStorage.getItem(
@@ -242,7 +234,7 @@ export default function Admin() {
   };
 
   /* =========================
-     UPDATE DEPOSIT LIST
+     SAVE DEPOSIT LIST
   ========================= */
 
   const saveDepositRequests = (requests) => {
@@ -255,7 +247,7 @@ export default function Admin() {
   };
 
   /* =========================
-     UPDATE WITHDRAW LIST
+     SAVE WITHDRAW LIST
   ========================= */
 
   const saveWithdrawRequests = (requests) => {
@@ -263,11 +255,6 @@ export default function Admin() {
       "transportWithdrawRequests",
       JSON.stringify(requests)
     );
-
-    /*
-      Keep old key synchronized with
-      latest request for compatibility.
-    */
 
     if (requests.length > 0) {
       localStorage.setItem(
@@ -370,11 +357,6 @@ export default function Admin() {
       return;
     }
 
-    /*
-      Do not activate the plan if
-      user's phone is missing.
-    */
-
     if (
       newStatus === "Approved" &&
       !request.phone
@@ -403,10 +385,6 @@ export default function Admin() {
     saveDepositRequests(
       updatedRequests
     );
-
-    /* =========================
-       APPROVED DEPOSIT
-    ========================= */
 
     if (newStatus === "Approved") {
       const phone = request.phone;
@@ -464,11 +442,6 @@ export default function Admin() {
         phone
       );
 
-      /*
-        Save approved deposit
-        transaction for this user.
-      */
-
       saveTransaction(
         {
           id:
@@ -491,6 +464,24 @@ export default function Admin() {
 
           phone:
             phone,
+
+          transactionId:
+            request.transactionId ||
+            request.txId ||
+            request.transectionId ||
+            "",
+
+          number:
+            request.number ||
+            request.depositNumber ||
+            request.mobileNumber ||
+            "",
+
+          screenshot:
+            request.screenshot ||
+            request.paymentScreenshot ||
+            request.receipt ||
+            "",
 
           date:
             request.submittedAt
@@ -582,10 +573,6 @@ export default function Admin() {
     const withdrawAmount =
       Number(request.amount || 0);
 
-    /*
-      Check available earned returns.
-    */
-
     if (
       newStatus === "Approved" &&
       withdrawAmount > availableReturns
@@ -595,10 +582,6 @@ export default function Admin() {
       );
       return;
     }
-
-    /*
-      Approved withdrawal.
-    */
 
     if (newStatus === "Approved") {
       const newBalance =
@@ -627,6 +610,24 @@ export default function Admin() {
 
           phone:
             phone,
+
+          transactionId:
+            request.transactionId ||
+            request.txId ||
+            request.transectionId ||
+            "",
+
+          number:
+            request.number ||
+            request.withdrawNumber ||
+            request.mobileNumber ||
+            "",
+
+          screenshot:
+            request.screenshot ||
+            request.paymentScreenshot ||
+            request.receipt ||
+            "",
 
           date:
             request.submittedAt
@@ -739,6 +740,153 @@ export default function Admin() {
     };
   }, [
     users,
+    depositRequests,
+    withdrawRequests,
+  ]);
+
+  /* =========================
+     GROUP ALL USER REQUESTS
+  ========================= */
+
+  const groupedUsers = useMemo(() => {
+    const groups = {};
+
+    depositRequests.forEach(
+      (request, index) => {
+        const phone =
+          request.phone ||
+          request.mobile ||
+          request.mobileNumber ||
+          `deposit-unknown-${index}`;
+
+        if (!groups[phone]) {
+          groups[phone] = {
+            key: phone,
+            fullName:
+              request.fullName ||
+              request.name ||
+              "User",
+            phone:
+              request.phone ||
+              request.mobile ||
+              request.mobileNumber ||
+              "N/A",
+            bankName:
+              request.bankName ||
+              "N/A",
+            accountNumber:
+              request.accountNumber ||
+              "N/A",
+            deposits: [],
+            withdrawals: [],
+          };
+        }
+
+        groups[phone].deposits.push(
+          request
+        );
+
+        if (
+          groups[phone].fullName ===
+            "User" &&
+          (request.fullName ||
+            request.name)
+        ) {
+          groups[phone].fullName =
+            request.fullName ||
+            request.name;
+        }
+
+        if (
+          groups[phone].bankName ===
+            "N/A" &&
+          request.bankName
+        ) {
+          groups[phone].bankName =
+            request.bankName;
+        }
+
+        if (
+          groups[phone]
+            .accountNumber ===
+            "N/A" &&
+          request.accountNumber
+        ) {
+          groups[phone].accountNumber =
+            request.accountNumber;
+        }
+      }
+    );
+
+    withdrawRequests.forEach(
+      (request, index) => {
+        const phone =
+          request.phone ||
+          request.mobile ||
+          request.mobileNumber ||
+          `withdraw-unknown-${index}`;
+
+        if (!groups[phone]) {
+          groups[phone] = {
+            key: phone,
+            fullName:
+              request.fullName ||
+              request.name ||
+              "User",
+            phone:
+              request.phone ||
+              request.mobile ||
+              request.mobileNumber ||
+              "N/A",
+            bankName:
+              request.bankName ||
+              "N/A",
+            accountNumber:
+              request.accountNumber ||
+              "N/A",
+            deposits: [],
+            withdrawals: [],
+          };
+        }
+
+        groups[phone].withdrawals.push(
+          request
+        );
+
+        if (
+          groups[phone].fullName ===
+            "User" &&
+          (request.fullName ||
+            request.name)
+        ) {
+          groups[phone].fullName =
+            request.fullName ||
+            request.name;
+        }
+
+        if (
+          groups[phone].bankName ===
+            "N/A" &&
+          request.bankName
+        ) {
+          groups[phone].bankName =
+            request.bankName;
+        }
+
+        if (
+          groups[phone]
+            .accountNumber ===
+            "N/A" &&
+          request.accountNumber
+        ) {
+          groups[phone].accountNumber =
+            request.accountNumber;
+        }
+      }
+    );
+
+    return Object.values(groups);
+  }, [
     depositRequests,
     withdrawRequests,
   ]);
@@ -994,43 +1142,22 @@ export default function Admin() {
           <TabButton
             active={
               activeTab ===
-              "deposits"
+              "transactions"
             }
             onClick={() =>
               setActiveTab(
-                "deposits"
+                "transactions"
               )
             }
           >
-            💰 Deposits
-            {stats.pendingDeposits >
-              0 && (
-              <Badge>
-                {
-                  stats.pendingDeposits
-                }
-              </Badge>
-            )}
-          </TabButton>
+            💳 Transactions
 
-          <TabButton
-            active={
-              activeTab ===
-              "withdrawals"
-            }
-            onClick={() =>
-              setActiveTab(
-                "withdrawals"
-              )
-            }
-          >
-            💸 Withdrawals
-            {stats.pendingWithdrawals >
+            {(stats.pendingDeposits +
+              stats.pendingWithdrawals) >
               0 && (
               <Badge>
-                {
-                  stats.pendingWithdrawals
-                }
+                {stats.pendingDeposits +
+                  stats.pendingWithdrawals}
               </Badge>
             )}
           </TabButton>
@@ -1106,13 +1233,25 @@ export default function Admin() {
             }}
           >
             <AdminCard
+              icon="💳"
+              title="User Transactions"
+              text={`There are ${groupedUsers.length} user card(s) containing deposit and withdrawal requests.`}
+              buttonText="View Transactions"
+              onClick={() =>
+                setActiveTab(
+                  "transactions"
+                )
+              }
+            />
+
+            <AdminCard
               icon="💰"
               title="Deposit Management"
               text={`Total ${stats.totalRequests} deposit request(s), including ${stats.pendingDeposits} pending request(s).`}
-              buttonText="View Deposits"
+              buttonText="View Transactions"
               onClick={() =>
                 setActiveTab(
-                  "deposits"
+                  "transactions"
                 )
               }
             />
@@ -1121,10 +1260,10 @@ export default function Admin() {
               icon="💸"
               title="Withdrawal Management"
               text={`Total ${stats.totalWithdrawRequests} withdrawal request(s), including ${stats.pendingWithdrawals} pending request(s).`}
-              buttonText="View Withdrawals"
+              buttonText="View Transactions"
               onClick={() =>
                 setActiveTab(
-                  "withdrawals"
+                  "transactions"
                 )
               }
             />
@@ -1140,47 +1279,35 @@ export default function Admin() {
                 )
               }
             />
-
-            <AdminCard
-              icon="📈"
-              title="Approved Investment"
-              text={`Approved deposit volume is PKR ${stats.approvedDeposits.toLocaleString()}.`}
-              buttonText="View Deposits"
-              onClick={() =>
-                setActiveTab(
-                  "deposits"
-                )
-              }
-            />
           </div>
         )}
 
         {/* =========================
-            DEPOSITS
+            COMBINED USER TRANSACTIONS
         ========================= */}
 
         {activeTab ===
-          "deposits" && (
+          "transactions" && (
           <div>
             <SectionHeader
-              title="Deposit Requests"
-              subtitle="Review and manage submitted plan deposits."
-              icon="💰"
+              title="User Transactions"
+              subtitle="Each user has one card containing all deposits and withdrawals."
+              icon="💳"
             />
 
-            {depositRequests.length >
+            {groupedUsers.length >
             0 ? (
               <div
                 style={{
                   display: "grid",
-                  gap: "16px",
+                  gap: "18px",
                 }}
               >
-                {depositRequests.map(
-                  (request) => (
+                {groupedUsers.map(
+                  (user) => (
                     <div
                       key={
-                        request.id
+                        user.key
                       }
                       style={{
                         background:
@@ -1188,443 +1315,861 @@ export default function Admin() {
                         border:
                           `1px solid ${BORDER}`,
                         borderRadius:
-                          "18px",
+                          "20px",
                         padding:
                           "21px",
                         boxShadow:
-                          "0 9px 25px rgba(16,42,67,0.12)",
+                          "0 10px 28px rgba(16,42,67,0.13)",
                       }}
                     >
+                      {/* USER HEADER */}
+
                       <div
                         style={{
                           display:
                             "flex",
-                          justifyContent:
-                            "space-between",
                           alignItems:
                             "center",
-                          gap: "12px",
+                          justifyContent:
+                            "space-between",
+                          gap: "15px",
                           marginBottom:
-                            "17px",
+                            "18px",
                           flexWrap:
                             "wrap",
                         }}
                       >
-                        <div>
-                          <h2
-                            style={{
-                              margin: 0,
-                              fontSize:
-                                "20px",
-                              color:
-                                "#ffffff",
-                            }}
-                          >
-                            {request.planName ||
-                              "Deposit"}
-                          </h2>
-
-                          <p
-                            style={{
-                              margin:
-                                "5px 0 0",
-                              color:
-                                MUTED,
-                              fontSize:
-                                "12px",
-                            }}
-                          >
-                            ID:{" "}
-                            {request.id ||
-                              "N/A"}
-                          </p>
-                        </div>
-
-                        <StatusBadge
-                          status={
-                            request.status ||
-                            "Pending"
-                          }
-                        />
-                      </div>
-
-                      <DetailsGrid>
-                        <Detail
-                          label="Full Name"
-                          value={
-                            request.fullName ||
-                            "N/A"
-                          }
-                        />
-
-                        <Detail
-                          label="Mobile Number"
-                          value={
-                            request.phone ||
-                            "N/A"
-                          }
-                        />
-
-                        <Detail
-                          label="Bank Name"
-                          value={
-                            request.bankName ||
-                            "N/A"
-                          }
-                        />
-
-                        <Detail
-                          label="Amount"
-                          value={`PKR ${Number(
-                            request.amount ||
-                              0
-                          ).toLocaleString()}`}
-                          highlight
-                        />
-
-                        <Detail
-                          label="Daily Return"
-                          value={`PKR ${Number(
-                            request.dailyReturn ||
-                              0
-                          ).toLocaleString()}`}
-                        />
-
-                        <Detail
-                          label="Duration"
-                          value={`${Number(
-                            request.duration ||
-                              0
-                          )} Days`}
-                        />
-
-                        <Detail
-                          label="Total Return"
-                          value={`PKR ${Number(
-                            request.totalReturn ||
-                              0
-                          ).toLocaleString()}`}
-                          highlight
-                        />
-
-                        <Detail
-                          label="Submitted"
-                          value={
-                            request.submittedAt
-                              ? new Date(
-                                  request.submittedAt
-                                ).toLocaleString()
-                              : "N/A"
-                          }
-                        />
-                      </DetailsGrid>
-
-                      {request.status ===
-                        "Pending" && (
                         <div
                           style={{
                             display:
                               "flex",
-                            gap: "10px",
-                            marginTop:
-                              "18px",
+                            alignItems:
+                              "center",
+                            gap: "13px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width:
+                                "50px",
+                              height:
+                                "50px",
+                              borderRadius:
+                                "15px",
+                              background:
+                                NAVY_2,
+                              border:
+                                `1px solid ${BORDER}`,
+                              display:
+                                "flex",
+                              alignItems:
+                                "center",
+                              justifyContent:
+                                "center",
+                              fontSize:
+                                "23px",
+                            }}
+                          >
+                            👤
+                          </div>
+
+                          <div>
+                            <h2
+                              style={{
+                                margin: 0,
+                                color:
+                                  "#ffffff",
+                                fontSize:
+                                  "20px",
+                              }}
+                            >
+                              {user.fullName}
+                            </h2>
+
+                            <p
+                              style={{
+                                margin:
+                                  "5px 0 0",
+                                color:
+                                  MUTED,
+                                fontSize:
+                                  "12px",
+                              }}
+                            >
+                              📱{" "}
+                              {user.phone}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            display:
+                              "flex",
+                            gap:
+                              "8px",
                             flexWrap:
                               "wrap",
                           }}
                         >
-                          <ActionButton
-                            type="approve"
-                            onClick={() =>
-                              updateDepositStatus(
-                                request.id,
-                                "Approved"
-                              )
-                            }
-                          >
-                            ✅ Approve Deposit
-                          </ActionButton>
-
-                          <ActionButton
-                            type="reject"
-                            onClick={() =>
-                              updateDepositStatus(
-                                request.id,
-                                "Rejected"
-                              )
-                            }
-                          >
-                            ❌ Reject Deposit
-                          </ActionButton>
-                        </div>
-                      )}
-
-                      {request.status ===
-                        "Approved" && (
-                        <div
-                          style={{
-                            marginTop:
-                              "14px",
-                            color:
-                              GREEN,
-                            fontSize:
-                              "13px",
-                            fontWeight:
-                              "700",
-                          }}
-                        >
-                          ✅ Plan Activated
-                        </div>
-                      )}
-
-                      {request.status ===
-                        "Rejected" && (
-                        <div
-                          style={{
-                            marginTop:
-                              "14px",
-                            color:
-                              RED,
-                            fontSize:
-                              "13px",
-                            fontWeight:
-                              "700",
-                          }}
-                        >
-                          ❌ Deposit Rejected
-                        </div>
-                      )}
-                    </div>
-                  )
-                )}
-              </div>
-            ) : (
-              <EmptyState
-                icon="📭"
-                title="No Deposit Requests"
-                text="There are currently no deposit requests."
-              />
-            )}
-          </div>
-        )}
-
-        {/* =========================
-            WITHDRAWALS
-        ========================= */}
-
-        {activeTab ===
-          "withdrawals" && (
-          <div>
-            <SectionHeader
-              title="Withdrawal Requests"
-              subtitle="Review and manage submitted withdrawal requests."
-              icon="💸"
-            />
-
-            {withdrawRequests.length >
-            0 ? (
-              <div
-                style={{
-                  display: "grid",
-                  gap: "16px",
-                }}
-              >
-                {withdrawRequests.map(
-                  (request) => (
-                    <div
-                      key={
-                        request.id
-                      }
-                      style={{
-                        background:
-                          NAVY,
-                        border:
-                          `1px solid ${BORDER}`,
-                        borderRadius:
-                          "18px",
-                        padding:
-                          "21px",
-                        boxShadow:
-                          "0 9px 25px rgba(16,42,67,0.12)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display:
-                            "flex",
-                          justifyContent:
-                            "space-between",
-                          alignItems:
-                            "center",
-                          gap: "12px",
-                          marginBottom:
-                            "17px",
-                          flexWrap:
-                            "wrap",
-                        }}
-                      >
-                        <div>
-                          <h2
+                          <span
                             style={{
-                              margin: 0,
-                              fontSize:
+                              background:
+                                "rgba(143,214,148,0.12)",
+                              color:
+                                GREEN,
+                              border:
+                                "1px solid rgba(143,214,148,0.22)",
+                              borderRadius:
                                 "20px",
-                              color:
-                                "#ffffff",
-                            }}
-                          >
-                            Withdrawal Request
-                          </h2>
-
-                          <p
-                            style={{
-                              margin:
-                                "5px 0 0",
-                              color:
-                                MUTED,
+                              padding:
+                                "7px 11px",
                               fontSize:
-                                "12px",
+                                "11px",
+                              fontWeight:
+                                "700",
                             }}
                           >
-                            ID:{" "}
-                            {request.id ||
-                              "N/A"}
-                          </p>
-                        </div>
+                            💰{" "}
+                            {
+                              user
+                                .deposits
+                                .length
+                            }{" "}
+                            Deposits
+                          </span>
 
-                        <StatusBadge
-                          status={
-                            request.status ||
-                            "Pending"
-                          }
-                        />
+                          <span
+                            style={{
+                              background:
+                                "rgba(244,215,122,0.12)",
+                              color:
+                                GOLD,
+                              border:
+                                "1px solid rgba(244,215,122,0.22)",
+                              borderRadius:
+                                "20px",
+                              padding:
+                                "7px 11px",
+                              fontSize:
+                                "11px",
+                              fontWeight:
+                                "700",
+                            }}
+                          >
+                            💸{" "}
+                            {
+                              user
+                                .withdrawals
+                                .length
+                            }{" "}
+                            Withdrawals
+                          </span>
+                        </div>
                       </div>
+
+                      {/* USER BANK DETAILS */}
 
                       <DetailsGrid>
                         <Detail
                           label="Full Name"
                           value={
-                            request.fullName ||
-                            "N/A"
+                            user.fullName
                           }
                         />
 
                         <Detail
                           label="Mobile Number"
                           value={
-                            request.phone ||
-                            "N/A"
+                            user.phone
                           }
                         />
 
                         <Detail
                           label="Bank Name"
                           value={
-                            request.bankName ||
-                            "N/A"
+                            user.bankName
                           }
                         />
 
                         <Detail
                           label="Account Number"
                           value={
-                            request.accountNumber ||
-                            "N/A"
-                          }
-                        />
-
-                        <Detail
-                          label="Withdrawal Amount"
-                          value={`PKR ${Number(
-                            request.amount ||
-                              0
-                          ).toLocaleString()}`}
-                          highlight
-                        />
-
-                        <Detail
-                          label="Submitted"
-                          value={
-                            request.submittedAt
-                              ? new Date(
-                                  request.submittedAt
-                                ).toLocaleString()
-                              : "N/A"
+                            user.accountNumber
                           }
                         />
                       </DetailsGrid>
 
-                      {request.status ===
-                        "Pending" && (
+                      {/* =====================
+                          DEPOSITS
+                      ===================== */}
+
+                      {user.deposits
+                        .length >
+                        0 && (
                         <div
                           style={{
-                            display:
-                              "flex",
-                            gap: "10px",
                             marginTop:
-                              "18px",
-                            flexWrap:
-                              "wrap",
+                              "20px",
                           }}
                         >
-                          <ActionButton
-                            type="approve"
-                            onClick={() =>
-                              updateWithdrawStatus(
-                                request.id,
-                                "Approved"
-                              )
-                            }
+                          <div
+                            style={{
+                              display:
+                                "flex",
+                              alignItems:
+                                "center",
+                              justifyContent:
+                                "space-between",
+                              gap:
+                                "10px",
+                              marginBottom:
+                                "10px",
+                            }}
                           >
-                            ✅ Approve Withdrawal
-                          </ActionButton>
+                            <h3
+                              style={{
+                                margin:
+                                  0,
+                                color:
+                                  "#ffffff",
+                                fontSize:
+                                  "16px",
+                              }}
+                            >
+                              💰 Deposits
+                            </h3>
 
-                          <ActionButton
-                            type="reject"
-                            onClick={() =>
-                              updateWithdrawStatus(
-                                request.id,
-                                "Rejected"
-                              )
-                            }
+                            <span
+                              style={{
+                                color:
+                                  MUTED,
+                                fontSize:
+                                  "11px",
+                              }}
+                            >
+                              {
+                                user
+                                  .deposits
+                                  .length
+                              }{" "}
+                              request(s)
+                            </span>
+                          </div>
+
+                          <div
+                            style={{
+                              display:
+                                "grid",
+                              gap:
+                                "10px",
+                            }}
                           >
-                            ❌ Reject Withdrawal
-                          </ActionButton>
+                            {user.deposits.map(
+                              (
+                                request
+                              ) => (
+                                <div
+                                  key={
+                                    request.id
+                                  }
+                                  style={{
+                                    background:
+                                      NAVY_2,
+                                    border:
+                                      `1px solid ${BORDER}`,
+                                    borderRadius:
+                                      "14px",
+                                    padding:
+                                      "15px",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display:
+                                        "flex",
+                                      justifyContent:
+                                        "space-between",
+                                      alignItems:
+                                        "center",
+                                      gap:
+                                        "10px",
+                                      marginBottom:
+                                        "12px",
+                                      flexWrap:
+                                        "wrap",
+                                    }}
+                                  >
+                                    <div>
+                                      <strong
+                                        style={{
+                                          color:
+                                            "#ffffff",
+                                          fontSize:
+                                            "14px",
+                                        }}
+                                      >
+                                        {request.planName ||
+                                          "Deposit"}
+                                      </strong>
+
+                                      <p
+                                        style={{
+                                          margin:
+                                            "4px 0 0",
+                                          color:
+                                            MUTED,
+                                          fontSize:
+                                            "10px",
+                                        }}
+                                      >
+                                        ID:{" "}
+                                        {request.id ||
+                                          "N/A"}
+                                      </p>
+                                    </div>
+
+                                    <StatusBadge
+                                      status={
+                                        request.status ||
+                                        "Pending"
+                                      }
+                                    />
+                                  </div>
+
+                                  <DetailsGrid>
+                                    <Detail
+                                      label="Amount"
+                                      value={`PKR ${Number(
+                                        request.amount ||
+                                          0
+                                      ).toLocaleString()}`}
+                                      highlight
+                                    />
+
+                                    <Detail
+                                      label="Transaction ID"
+                                      value={
+                                        request.transactionId ||
+                                        request.txId ||
+                                        request.transectionId ||
+                                        request.transactionID ||
+                                        "N/A"
+                                      }
+                                    />
+
+                                    <Detail
+                                      label="Deposit Number"
+                                      value={
+                                        request.number ||
+                                        request.depositNumber ||
+                                        request.mobileNumber ||
+                                        request.depositPhone ||
+                                        "N/A"
+                                      }
+                                    />
+
+                                    <Detail
+                                      label="Submitted"
+                                      value={
+                                        request.submittedAt
+                                          ? new Date(
+                                              request.submittedAt
+                                            ).toLocaleString()
+                                          : "N/A"
+                                      }
+                                    />
+                                  </DetailsGrid>
+
+                                  {/* DEPOSIT SCREENSHOT */}
+
+                                  {(request.screenshot ||
+                                    request.paymentScreenshot ||
+                                    request.receipt) && (
+                                    <div
+                                      style={{
+                                        marginTop:
+                                          "12px",
+                                        background:
+                                          "#102A43",
+                                        border:
+                                          `1px solid ${BORDER}`,
+                                        borderRadius:
+                                          "12px",
+                                        padding:
+                                          "12px",
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          color:
+                                            MUTED,
+                                          fontSize:
+                                            "10px",
+                                          textTransform:
+                                            "uppercase",
+                                          marginBottom:
+                                            "8px",
+                                          fontWeight:
+                                            "700",
+                                        }}
+                                      >
+                                        📷 Deposit Screenshot
+                                      </div>
+
+                                      <img
+                                        src={
+                                          request.screenshot ||
+                                          request.paymentScreenshot ||
+                                          request.receipt
+                                        }
+                                        alt="Deposit Screenshot"
+                                        style={{
+                                          width:
+                                            "100%",
+                                          maxWidth:
+                                            "420px",
+                                          maxHeight:
+                                            "500px",
+                                          objectFit:
+                                            "contain",
+                                          display:
+                                            "block",
+                                          borderRadius:
+                                            "9px",
+                                          background:
+                                            "#ffffff",
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* DEPOSIT ACTION */}
+
+                                  {request.status ===
+                                    "Pending" && (
+                                    <div
+                                      style={{
+                                        display:
+                                          "flex",
+                                        gap:
+                                          "10px",
+                                        marginTop:
+                                          "14px",
+                                        flexWrap:
+                                          "wrap",
+                                      }}
+                                    >
+                                      <ActionButton
+                                        type="approve"
+                                        onClick={() =>
+                                          updateDepositStatus(
+                                            request.id,
+                                            "Approved"
+                                          )
+                                        }
+                                      >
+                                        ✅ Approve Deposit
+                                      </ActionButton>
+
+                                      <ActionButton
+                                        type="reject"
+                                        onClick={() =>
+                                          updateDepositStatus(
+                                            request.id,
+                                            "Rejected"
+                                          )
+                                        }
+                                      >
+                                        ❌ Reject Deposit
+                                      </ActionButton>
+                                    </div>
+                                  )}
+
+                                  {request.status ===
+                                    "Approved" && (
+                                    <div
+                                      style={{
+                                        marginTop:
+                                          "12px",
+                                        color:
+                                          GREEN,
+                                        fontSize:
+                                          "12px",
+                                        fontWeight:
+                                          "700",
+                                      }}
+                                    >
+                                      ✅ Plan Activated
+                                    </div>
+                                  )}
+
+                                  {request.status ===
+                                    "Rejected" && (
+                                    <div
+                                      style={{
+                                        marginTop:
+                                          "12px",
+                                        color:
+                                          RED,
+                                        fontSize:
+                                          "12px",
+                                        fontWeight:
+                                          "700",
+                                      }}
+                                    >
+                                      ❌ Deposit Rejected
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            )}
+                          </div>
                         </div>
                       )}
 
-                      {request.status ===
-                        "Approved" && (
-                        <div
-                          style={{
-                            marginTop:
-                              "14px",
-                            color:
-                              GREEN,
-                            fontSize:
-                              "13px",
-                            fontWeight:
-                              "700",
-                          }}
-                        >
-                          ✅ Withdrawal Approved
-                        </div>
-                      )}
+                      {/* =====================
+                          WITHDRAWALS
+                      ===================== */}
 
-                      {request.status ===
-                        "Rejected" && (
+                      {user.withdrawals
+                        .length >
+                        0 && (
                         <div
                           style={{
                             marginTop:
-                              "14px",
-                            color:
-                              RED,
-                            fontSize:
-                              "13px",
-                            fontWeight:
-                              "700",
+                              "22px",
                           }}
                         >
-                          ❌ Withdrawal Rejected
+                          <div
+                            style={{
+                              display:
+                                "flex",
+                              alignItems:
+                                "center",
+                              justifyContent:
+                                "space-between",
+                              gap:
+                                "10px",
+                              marginBottom:
+                                "10px",
+                            }}
+                          >
+                            <h3
+                              style={{
+                                margin:
+                                  0,
+                                color:
+                                  "#ffffff",
+                                fontSize:
+                                  "16px",
+                              }}
+                            >
+                              💸 Withdrawals
+                            </h3>
+
+                            <span
+                              style={{
+                                color:
+                                  MUTED,
+                                fontSize:
+                                  "11px",
+                              }}
+                            >
+                              {
+                                user
+                                  .withdrawals
+                                  .length
+                              }{" "}
+                              request(s)
+                            </span>
+                          </div>
+
+                          <div
+                            style={{
+                              display:
+                                "grid",
+                              gap:
+                                "10px",
+                            }}
+                          >
+                            {user.withdrawals.map(
+                              (
+                                request
+                              ) => (
+                                <div
+                                  key={
+                                    request.id
+                                  }
+                                  style={{
+                                    background:
+                                      NAVY_2,
+                                    border:
+                                      `1px solid ${BORDER}`,
+                                    borderRadius:
+                                      "14px",
+                                    padding:
+                                      "15px",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display:
+                                        "flex",
+                                      justifyContent:
+                                        "space-between",
+                                      alignItems:
+                                        "center",
+                                      gap:
+                                        "10px",
+                                      marginBottom:
+                                        "12px",
+                                      flexWrap:
+                                        "wrap",
+                                    }}
+                                  >
+                                    <div>
+                                      <strong
+                                        style={{
+                                          color:
+                                            "#ffffff",
+                                          fontSize:
+                                            "14px",
+                                        }}
+                                      >
+                                        Withdrawal Request
+                                      </strong>
+
+                                      <p
+                                        style={{
+                                          margin:
+                                            "4px 0 0",
+                                          color:
+                                            MUTED,
+                                          fontSize:
+                                            "10px",
+                                        }}
+                                      >
+                                        ID:{" "}
+                                        {request.id ||
+                                          "N/A"}
+                                      </p>
+                                    </div>
+
+                                    <StatusBadge
+                                      status={
+                                        request.status ||
+                                        "Pending"
+                                      }
+                                    />
+                                  </div>
+
+                                  <DetailsGrid>
+                                    <Detail
+                                      label="Withdrawal Amount"
+                                      value={`PKR ${Number(
+                                        request.amount ||
+                                          0
+                                      ).toLocaleString()}`}
+                                      highlight
+                                    />
+
+                                    <Detail
+                                      label="Transaction ID"
+                                      value={
+                                        request.transactionId ||
+                                        request.txId ||
+                                        request.transectionId ||
+                                        request.transactionID ||
+                                        "N/A"
+                                      }
+                                    />
+
+                                    <Detail
+                                      label="Withdrawal Number"
+                                      value={
+                                        request.number ||
+                                        request.withdrawNumber ||
+                                        request.mobileNumber ||
+                                        request.withdrawPhone ||
+                                        "N/A"
+                                      }
+                                    />
+
+                                    <Detail
+                                      label="Bank Name"
+                                      value={
+                                        request.bankName ||
+                                        user.bankName ||
+                                        "N/A"
+                                      }
+                                    />
+
+                                    <Detail
+                                      label="Account Number"
+                                      value={
+                                        request.accountNumber ||
+                                        user.accountNumber ||
+                                        "N/A"
+                                      }
+                                    />
+
+                                    <Detail
+                                      label="Submitted"
+                                      value={
+                                        request.submittedAt
+                                          ? new Date(
+                                              request.submittedAt
+                                            ).toLocaleString()
+                                          : "N/A"
+                                      }
+                                    />
+                                  </DetailsGrid>
+
+                                  {/* WITHDRAW SCREENSHOT */}
+
+                                  {(request.screenshot ||
+                                    request.paymentScreenshot ||
+                                    request.receipt) && (
+                                    <div
+                                      style={{
+                                        marginTop:
+                                          "12px",
+                                        background:
+                                          "#102A43",
+                                        border:
+                                          `1px solid ${BORDER}`,
+                                        borderRadius:
+                                          "12px",
+                                        padding:
+                                          "12px",
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          color:
+                                            MUTED,
+                                          fontSize:
+                                            "10px",
+                                          textTransform:
+                                            "uppercase",
+                                          marginBottom:
+                                            "8px",
+                                          fontWeight:
+                                            "700",
+                                        }}
+                                      >
+                                        📷 Withdrawal Screenshot
+                                      </div>
+
+                                      <img
+                                        src={
+                                          request.screenshot ||
+                                          request.paymentScreenshot ||
+                                          request.receipt
+                                        }
+                                        alt="Withdrawal Screenshot"
+                                        style={{
+                                          width:
+                                            "100%",
+                                          maxWidth:
+                                            "420px",
+                                          maxHeight:
+                                            "500px",
+                                          objectFit:
+                                            "contain",
+                                          display:
+                                            "block",
+                                          borderRadius:
+                                            "9px",
+                                          background:
+                                            "#ffffff",
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* WITHDRAW ACTION */}
+
+                                  {request.status ===
+                                    "Pending" && (
+                                    <div
+                                      style={{
+                                        display:
+                                          "flex",
+                                        gap:
+                                          "10px",
+                                        marginTop:
+                                          "14px",
+                                        flexWrap:
+                                          "wrap",
+                                      }}
+                                    >
+                                      <ActionButton
+                                        type="approve"
+                                        onClick={() =>
+                                          updateWithdrawStatus(
+                                            request.id,
+                                            "Approved"
+                                          )
+                                        }
+                                      >
+                                        ✅ Approve Withdrawal
+                                      </ActionButton>
+
+                                      <ActionButton
+                                        type="reject"
+                                        onClick={() =>
+                                          updateWithdrawStatus(
+                                            request.id,
+                                            "Rejected"
+                                          )
+                                        }
+                                      >
+                                        ❌ Reject Withdrawal
+                                      </ActionButton>
+                                    </div>
+                                  )}
+
+                                  {request.status ===
+                                    "Approved" && (
+                                    <div
+                                      style={{
+                                        marginTop:
+                                          "12px",
+                                        color:
+                                          GREEN,
+                                        fontSize:
+                                          "12px",
+                                        fontWeight:
+                                          "700",
+                                      }}
+                                    >
+                                      ✅ Withdrawal Approved
+                                    </div>
+                                  )}
+
+                                  {request.status ===
+                                    "Rejected" && (
+                                    <div
+                                      style={{
+                                        marginTop:
+                                          "12px",
+                                        color:
+                                          RED,
+                                        fontSize:
+                                          "12px",
+                                        fontWeight:
+                                          "700",
+                                      }}
+                                    >
+                                      ❌ Withdrawal Rejected
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1634,8 +2179,8 @@ export default function Admin() {
             ) : (
               <EmptyState
                 icon="📭"
-                title="No Withdraw Requests"
-                text="There are currently no withdrawal requests."
+                title="No Transactions"
+                text="There are currently no deposit or withdrawal requests."
               />
             )}
           </div>

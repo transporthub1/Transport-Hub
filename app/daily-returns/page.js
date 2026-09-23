@@ -78,7 +78,6 @@ export default function DailyReturns() {
       }
     }
 
-    // Old single-plan compatibility
     if (plans.length === 0) {
       const oldPlan = readJSON(
         "transportActivePlan",
@@ -130,7 +129,8 @@ export default function DailyReturns() {
   const totalDailyReturn = useMemo(() => {
     return activePlans.reduce(
       (total, plan) =>
-        total + Number(
+        total +
+        Number(
           plan.daily ||
           plan.dailyReturn ||
           0
@@ -348,7 +348,6 @@ export default function DailyReturns() {
       updatedPlans
     );
 
-    // Keep old single-plan storage compatible
     if (updatedPlans.length === 1) {
       saveJSON(
         "transportActivePlan",
@@ -356,7 +355,6 @@ export default function DailyReturns() {
       );
     }
 
-    // Update withdrawable returns
     const oldWithdrawable = Number(
       localStorage.getItem(
         `transportWithdrawableReturns_${phone}`
@@ -371,7 +369,6 @@ export default function DailyReturns() {
       String(newWithdrawable)
     );
 
-    // Save daily return transaction
     const transactionKey =
       `transportTransactions_${phone}`;
 
@@ -544,7 +541,8 @@ export default function DailyReturns() {
               </p>
 
               <h2 style={styles.walletAmount}>
-                PKR {formatMoney(
+                PKR{" "}
+                {formatMoney(
                   withdrawableReturns
                 )}
               </h2>
@@ -590,7 +588,8 @@ export default function DailyReturns() {
                 </p>
 
                 <h3 style={styles.statValue}>
-                  PKR {formatMoney(
+                  PKR{" "}
+                  {formatMoney(
                     totalInvestment
                   )}
                 </h3>
@@ -608,7 +607,8 @@ export default function DailyReturns() {
                 </p>
 
                 <h3 style={styles.greenValue}>
-                  PKR {formatMoney(
+                  PKR{" "}
+                  {formatMoney(
                     totalDailyReturn
                   )}
                 </h3>
@@ -626,7 +626,8 @@ export default function DailyReturns() {
                 </p>
 
                 <h3 style={styles.greenValue}>
-                  PKR {formatMoney(
+                  PKR{" "}
+                  {formatMoney(
                     totalEarned
                   )}
                 </h3>
@@ -914,84 +915,74 @@ export default function DailyReturns() {
             </div>
           )}
 
-          {/* INFORMATION */}
+          {/* SIMPLE INFORMATION LINES */}
 
-          <div style={styles.infoCard}>
-            <h2 style={styles.infoTitle}>
-              📊 How Daily Returns Work
-            </h2>
+          <div style={styles.simpleInfoSection}>
 
-            <div style={styles.infoGrid}>
+            <div style={styles.simpleInfoLine}>
+              <span style={styles.infoNumber}>
+                1
+              </span>
 
-              <div style={styles.infoItem}>
-                <div style={styles.infoNumber}>
-                  1
-                </div>
+              <div style={styles.simpleInfoContent}>
+                <strong style={styles.simpleInfoTitle}>
+                  Plan Approval
+                </strong>
 
-                <div>
-                  <strong>
-                    Plan Approval
-                  </strong>
-
-                  <p>
-                    Your deposit must be approved
-                    by the admin before returns begin.
-                  </p>
-                </div>
+                <p style={styles.simpleInfoText}>
+                  Your deposit must be approved by the admin before returns begin.
+                </p>
               </div>
-
-              <div style={styles.infoItem}>
-                <div style={styles.infoNumber}>
-                  2
-                </div>
-
-                <div>
-                  <strong>
-                    24-Hour Cycle
-                  </strong>
-
-                  <p>
-                    A daily return becomes available
-                    after each completed 24-hour cycle.
-                  </p>
-                </div>
-              </div>
-
-              <div style={styles.infoItem}>
-                <div style={styles.infoNumber}>
-                  3
-                </div>
-
-                <div>
-                  <strong>
-                    Claim Return
-                  </strong>
-
-                  <p>
-                    Click the claim button when your
-                    daily return becomes available.
-                  </p>
-                </div>
-              </div>
-
-              <div style={styles.infoItem}>
-                <div style={styles.infoNumber}>
-                  4
-                </div>
-
-                <div>
-                  <strong>
-                    Withdrawable Balance
-                  </strong>
-
-                  <p>
-                    Claimed returns are added to your
-                    withdrawable returns balance.
-                  </p>
-                </div>
-              </div>
-
             </div>
+
+            <div style={styles.simpleInfoLine}>
+              <span style={styles.infoNumber}>
+                2
+              </span>
+
+              <div style={styles.simpleInfoContent}>
+                <strong style={styles.simpleInfoTitle}>
+                  24-Hour Cycle
+                </strong>
+
+                <p style={styles.simpleInfoText}>
+                  A daily return becomes available after each completed 24-hour cycle.
+                </p>
+              </div>
+            </div>
+
+            <div style={styles.simpleInfoLine}>
+              <span style={styles.infoNumber}>
+                3
+              </span>
+
+              <div style={styles.simpleInfoContent}>
+                <strong style={styles.simpleInfoTitle}>
+                  Claim Return
+                </strong>
+
+                <p style={styles.simpleInfoText}>
+                  Click the claim button when your daily return becomes available.
+                </p>
+              </div>
+            </div>
+
+            <div style={styles.simpleInfoLine}>
+              <span style={styles.infoNumber}>
+                4
+              </span>
+
+              <div style={styles.simpleInfoContent}>
+                <strong style={styles.simpleInfoTitle}>
+                  Withdrawable Balance
+                </strong>
+
+                <p style={styles.simpleInfoText}>
+                  Claimed returns are added to your withdrawable returns balance.
+                </p>
+              </div>
+            </div>
+
           </div>
 
           {/* BUTTONS */}
@@ -1503,48 +1494,53 @@ const styles = {
     fontWeight: "700",
   },
 
-  infoCard: {
-    background: "#102A43",
-    borderRadius: "19px",
-    padding: "25px",
-    border: "1px solid #1E3A56",
-    boxShadow:
-      "0 7px 22px rgba(16,42,67,0.14)",
+  /* SIMPLE INFORMATION LINES */
+
+  simpleInfoSection: {
     marginBottom: "25px",
+    background: "transparent",
   },
 
-  infoTitle: {
-    margin: "0 0 20px",
-    color: "#ffffff",
-    fontSize: "20px",
-  },
-
-  infoGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(2, minmax(0, 1fr))",
-    gap: "15px",
-  },
-
-  infoItem: {
+  simpleInfoLine: {
     display: "flex",
+    alignItems: "flex-start",
     gap: "12px",
-    background: "#173B5A",
-    borderRadius: "11px",
-    padding: "15px",
+    padding: "12px 0",
+    borderBottom: "1px solid #d8e1e8",
+  },
+
+  simpleInfoContent: {
+    minWidth: 0,
+    flex: 1,
   },
 
   infoNumber: {
-    width: "30px",
-    height: "30px",
+    width: "28px",
+    height: "28px",
     borderRadius: "50%",
-    background: "#3E8E5B",
+    background: "#102A43",
     color: "#ffffff",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontWeight: "800",
+    fontSize: "12px",
     flexShrink: 0,
+  },
+
+  simpleInfoTitle: {
+    display: "block",
+    color: "#102A43",
+    fontSize: "13px",
+    fontWeight: "800",
+    marginTop: "2px",
+  },
+
+  simpleInfoText: {
+    margin: "3px 0 0",
+    color: "#60758A",
+    fontSize: "11px",
+    lineHeight: 1.5,
   },
 
   buttons: {
