@@ -14,17 +14,195 @@ export default function WithdrawHistory() {
       return;
     }
 
-    const savedWithdraw = localStorage.getItem("transportWithdrawRequest");
+    const userRaw = localStorage.getItem("transportUser");
 
-    if (savedWithdraw) {
-      try {
-        const withdrawal = JSON.parse(savedWithdraw);
-        setWithdrawals([withdrawal]);
-      } catch (error) {
-        console.log("Could not load withdrawal history");
+    if (!userRaw) {
+      setLoading(false);
+      return;
+    }
+
+    let currentUser = null;
+
+    try {
+      currentUser = JSON.parse(userRaw);
+    } catch (error) {
+      console.log("Could not load user");
+      setLoading(false);
+      return;
+    }
+
+    const phone =
+      currentUser?.phone ||
+      currentUser?.mobile ||
+      currentUser?.phoneNumber ||
+      "";
+
+    let userWithdrawals = [];
+
+    /* CURRENT USER WITHDRAW HISTORY */
+    if (phone) {
+      const savedUserWithdrawals = localStorage.getItem(
+        "transportWithdrawRequests_" + phone
+      );
+
+      if (savedUserWithdrawals) {
+        try {
+          const parsed = JSON.parse(savedUserWithdrawals);
+
+          if (Array.isArray(parsed)) {
+            userWithdrawals = parsed;
+          } else if (parsed) {
+            userWithdrawals = [parsed];
+          }
+        } catch (error) {
+          console.log("Could not load user withdrawal history");
+        }
       }
     }
 
+    /* FALLBACK TO GLOBAL WITHDRAW HISTORY */
+    if (userWithdrawals.length === 0) {
+      const savedAllWithdrawals = localStorage.getItem(
+        "transportWithdrawRequests"
+      );
+
+      if (savedAllWithdrawals) {
+        try {
+          const parsed = JSON.parse(savedAllWithdrawals);
+
+          if (Array.isArray(parsed)) {
+            userWithdrawals = parsed.filter((withdrawal) => {
+              const withdrawalPhone =
+                withdrawal?.phone ||
+                withdrawal?.userPhone ||
+                withdrawal?.mobile ||
+                withdrawal?.phoneNumber ||
+                "";
+
+              if (!withdrawalPhone) {
+                return false;
+              }
+
+              return String(withdrawalPhone) === String(phone);
+            });
+          } else if (parsed) {
+            const withdrawalPhone =
+              parsed?.phone ||
+              parsed?.userPhone ||
+              parsed?.mobile ||
+              parsed?.phoneNumber ||
+              "";
+
+            if (
+              withdrawalPhone &&
+              String(withdrawalPhone) === String(phone)
+            ) {
+              userWithdrawals = [parsed];
+            }
+          }
+        } catch (error) {
+          console.log("Could not load withdrawal history");
+        }
+      }
+    }
+
+    /* OLD SINGLE REQUEST FALLBACK */
+    if (userWithdrawals.length === 0) {
+      const oldRequest = localStorage.getItem(
+        "transportWithdrawRequest_" + phone
+      );
+
+      if (oldRequest) {
+        try {
+          const parsed = JSON.parse(oldRequest);
+
+          if (Array.isArray(parsed)) {
+            userWithdrawals = parsed;
+          } else if (parsed) {
+            userWithdrawals = [parsed];
+          }
+        } catch (error) {
+          console.log("Could not load old withdrawal request");
+        }
+      }
+    }
+
+    /* FINAL OLD GLOBAL FALLBACK */
+    if (userWithdrawals.length === 0) {
+      const oldGlobalRequest = localStorage.getItem(
+        "transportWithdrawRequest"
+      );
+
+      if (oldGlobalRequest) {
+        try {
+          const parsed = JSON.parse(oldGlobalRequest);
+
+          if (Array.isArray(parsed)) {
+            userWithdrawals = parsed.filter((withdrawal) => {
+              const withdrawalPhone =
+                withdrawal?.phone ||
+                withdrawal?.userPhone ||
+                withdrawal?.mobile ||
+                withdrawal?.phoneNumber ||
+                "";
+
+              return (
+                withdrawalPhone &&
+                String(withdrawalPhone) === String(phone)
+              );
+            });
+          } else if (parsed) {
+            const withdrawalPhone =
+              parsed?.phone ||
+              parsed?.userPhone ||
+              parsed?.mobile ||
+              parsed?.phoneNumber ||
+              "";
+
+            if (
+              withdrawalPhone &&
+              String(withdrawalPhone) === String(phone)
+            ) {
+              userWithdrawals = [parsed];
+            }
+          }
+        } catch (error) {
+          console.log("Could not load old withdrawal history");
+        }
+      }
+    }
+
+    /* NORMALIZE + SORT */
+    const normalizedWithdrawals = userWithdrawals
+      .map((withdrawal) => {
+        return {
+          ...withdrawal,
+          status: withdrawal?.status || "Pending",
+          returnType:
+            withdrawal?.returnType ||
+            withdrawal?.type ||
+            "Weekly",
+        };
+      })
+      .sort((a, b) => {
+        const dateA = new Date(
+          a?.submittedAt ||
+            a?.createdAt ||
+            a?.date ||
+            0
+        ).getTime();
+
+        const dateB = new Date(
+          b?.submittedAt ||
+            b?.createdAt ||
+            b?.date ||
+            0
+        ).getTime();
+
+        return dateB - dateA;
+      });
+
+    setWithdrawals(normalizedWithdrawals);
     setLoading(false);
   }, []);
 
@@ -126,7 +304,7 @@ export default function WithdrawHistory() {
           <div>
             {withdrawals.map((withdrawal, index) => (
               <div
-                key={index}
+                key={withdrawal?.id || index}
                 style={{
                   background: "#102A43",
                   border: "1px solid #1E3A56",
@@ -267,7 +445,9 @@ export default function WithdrawHistory() {
                       }}
                     >
                       PKR{" "}
-                      {Number(withdrawal.amount || 0).toLocaleString()}
+                      {Number(
+                        withdrawal.amount || 0
+                      ).toLocaleString()}
                     </strong>
                   </div>
 
@@ -338,6 +518,39 @@ export default function WithdrawHistory() {
                     </strong>
                   </div>
 
+                  {/* RETURN TYPE */}
+                  <div
+                    style={{
+                      background: "#173B5A",
+                      border: "1px solid #29435A",
+                      borderRadius: "12px",
+                      padding: "14px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: "11px",
+                        color: "#9FB3C8",
+                        marginBottom: "6px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.4px",
+                      }}
+                    >
+                      Return Type
+                    </span>
+
+                    <strong
+                      style={{
+                        display: "block",
+                        fontSize: "14px",
+                        color: "#FFFFFF",
+                      }}
+                    >
+                      {withdrawal.returnType || "Weekly"}
+                    </strong>
+                  </div>
+
                   {/* DATE */}
                   <div
                     style={{
@@ -345,6 +558,7 @@ export default function WithdrawHistory() {
                       border: "1px solid #29435A",
                       borderRadius: "12px",
                       padding: "14px",
+                      gridColumn: "1 / -1",
                     }}
                   >
                     <span
@@ -371,6 +585,10 @@ export default function WithdrawHistory() {
                       {withdrawal.submittedAt
                         ? new Date(
                             withdrawal.submittedAt
+                          ).toLocaleString()
+                        : withdrawal.createdAt
+                        ? new Date(
+                            withdrawal.createdAt
                           ).toLocaleString()
                         : "N/A"}
                     </strong>
