@@ -77,7 +77,7 @@ export default function PlanConfirmation() {
             🚛
           </div>
 
-          <div>
+          <div style={styles.headerText}>
             <h1 style={styles.title}>
               Confirm Your Plan
             </h1>
@@ -98,7 +98,7 @@ export default function PlanConfirmation() {
                 🚛
               </div>
 
-              <div>
+              <div style={styles.planHeaderText}>
                 <h2 style={styles.planName}>
                   {currentPlan.name}
                 </h2>
@@ -115,11 +115,12 @@ export default function PlanConfirmation() {
 
               {/* Investment */}
               <div style={styles.detailCard}>
+
                 <div style={styles.detailIcon}>
                   💰
                 </div>
 
-                <div>
+                <div style={styles.detailContent}>
                   <p style={styles.label}>
                     Investment
                   </p>
@@ -131,15 +132,17 @@ export default function PlanConfirmation() {
                     ).toLocaleString()}
                   </strong>
                 </div>
+
               </div>
 
               {/* Daily Return */}
               <div style={styles.detailCard}>
+
                 <div style={styles.detailIcon}>
                   📈
                 </div>
 
-                <div>
+                <div style={styles.detailContent}>
                   <p style={styles.label}>
                     Daily Return
                   </p>
@@ -151,15 +154,17 @@ export default function PlanConfirmation() {
                     ).toLocaleString()}
                   </strong>
                 </div>
+
               </div>
 
               {/* Duration */}
               <div style={styles.detailCard}>
+
                 <div style={styles.detailIcon}>
                   📅
                 </div>
 
-                <div>
+                <div style={styles.detailContent}>
                   <p style={styles.label}>
                     Duration
                   </p>
@@ -168,15 +173,17 @@ export default function PlanConfirmation() {
                     {currentPlan.duration} Days
                   </strong>
                 </div>
+
               </div>
 
               {/* Total Return */}
               <div style={styles.totalCard}>
+
                 <div style={styles.totalIcon}>
                   💎
                 </div>
 
-                <div>
+                <div style={styles.detailContent}>
                   <p style={styles.label}>
                     Total Return
                   </p>
@@ -190,6 +197,7 @@ export default function PlanConfirmation() {
                     ).toLocaleString()}
                   </strong>
                 </div>
+
               </div>
 
             </div>
@@ -197,11 +205,12 @@ export default function PlanConfirmation() {
 
           {/* Notice */}
           <div style={styles.noticeCard}>
+
             <div style={styles.noticeIcon}>
               ℹ️
             </div>
 
-            <div>
+            <div style={styles.noticeContent}>
               <h3 style={styles.noticeTitle}>
                 Plan Review
               </h3>
@@ -212,6 +221,7 @@ export default function PlanConfirmation() {
                 deposit page.
               </p>
             </div>
+
           </div>
 
           {/* Actions */}
@@ -238,6 +248,34 @@ export default function PlanConfirmation() {
 
         </main>
       </div>
+
+      {/* Mobile Responsive Fix */}
+      <style jsx>{`
+        * {
+          box-sizing: border-box;
+        }
+
+        @media (max-width: 600px) {
+          .mobile-page {
+            width: 100%;
+            overflow-x: hidden;
+          }
+        }
+
+        @media (max-width: 600px) {
+          :global(body) {
+            margin: 0;
+            overflow-x: hidden;
+          }
+        }
+
+        @media (max-width: 600px) {
+          .mobile-content {
+            width: 100%;
+            max-width: 100%;
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -245,16 +283,20 @@ export default function PlanConfirmation() {
 const styles = {
   page: {
     minHeight: "100vh",
+    width: "100%",
+    overflowX: "hidden",
     background: "#eef3f7",
     color: "#FFFFFF",
     fontFamily: "Arial, sans-serif",
     paddingBottom: "50px",
+    boxSizing: "border-box",
   },
 
   container: {
     width: "100%",
     maxWidth: "1100px",
     margin: "0 auto",
+    boxSizing: "border-box",
   },
 
   header: {
@@ -267,6 +309,8 @@ const styles = {
     gap: "18px",
     boxShadow:
       "0 5px 18px rgba(16,42,67,0.18)",
+    boxSizing: "border-box",
+    width: "100%",
   },
 
   headerIcon: {
@@ -279,25 +323,38 @@ const styles = {
     justifyContent: "center",
     fontSize: "29px",
     border: "1px solid #294B66",
+    flexShrink: 0,
+  },
+
+  headerText: {
+    minWidth: 0,
+    flex: 1,
   },
 
   title: {
     margin: 0,
     fontSize: "30px",
     fontWeight: "800",
+    overflowWrap: "anywhere",
   },
 
   subtitle: {
     margin: "6px 0 0",
     color: "#C9D8E6",
     fontSize: "15px",
+    overflowWrap: "anywhere",
   },
 
   content: {
     padding: "30px 20px",
+    boxSizing: "border-box",
+    width: "100%",
+    maxWidth: "100%",
+    overflowX: "hidden",
   },
 
   planCard: {
+    width: "100%",
     maxWidth: "850px",
     margin: "0 auto 22px",
     background: "#102A43",
@@ -306,12 +363,16 @@ const styles = {
     border: "1px solid #1E3A56",
     boxShadow:
       "0 7px 22px rgba(16,42,67,0.15)",
+    boxSizing: "border-box",
+    overflow: "hidden",
   },
 
   planHeader: {
     display: "flex",
     alignItems: "center",
     gap: "18px",
+    width: "100%",
+    minWidth: 0,
   },
 
   planIcon: {
@@ -324,6 +385,13 @@ const styles = {
     justifyContent: "center",
     fontSize: "30px",
     border: "1px solid #294B66",
+    flexShrink: 0,
+  },
+
+  planHeaderText: {
+    minWidth: 0,
+    flex: 1,
+    overflow: "hidden",
   },
 
   planName: {
@@ -331,6 +399,8 @@ const styles = {
     fontSize: "24px",
     color: "#FFFFFF",
     fontWeight: "800",
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
   },
 
   selectedText: {
@@ -343,6 +413,7 @@ const styles = {
     height: "1px",
     background: "#294B66",
     margin: "28px 0",
+    width: "100%",
   },
 
   details: {
@@ -350,6 +421,8 @@ const styles = {
     gridTemplateColumns:
       "repeat(2, minmax(0, 1fr))",
     gap: "16px",
+    width: "100%",
+    minWidth: 0,
   },
 
   detailCard: {
@@ -360,6 +433,10 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "14px",
+    minWidth: 0,
+    width: "100%",
+    boxSizing: "border-box",
+    overflow: "hidden",
   },
 
   totalCard: {
@@ -370,6 +447,16 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "14px",
+    minWidth: 0,
+    width: "100%",
+    boxSizing: "border-box",
+    overflow: "hidden",
+  },
+
+  detailContent: {
+    minWidth: 0,
+    flex: 1,
+    overflow: "hidden",
   },
 
   detailIcon: {
@@ -401,24 +488,32 @@ const styles = {
     color: "#9FB3C8",
     fontSize: "13px",
     fontWeight: "600",
+    overflowWrap: "anywhere",
   },
 
   investment: {
     color: "#8FD694",
     fontSize: "19px",
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
   },
 
   value: {
     color: "#C9D8E6",
     fontSize: "17px",
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
   },
 
   total: {
     color: "#F4D77A",
     fontSize: "19px",
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
   },
 
   noticeCard: {
+    width: "100%",
     maxWidth: "850px",
     margin: "0 auto 24px",
     background: "#102A43",
@@ -428,6 +523,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "15px",
+    boxSizing: "border-box",
+    overflow: "hidden",
   },
 
   noticeIcon: {
@@ -442,10 +539,16 @@ const styles = {
     flexShrink: 0,
   },
 
+  noticeContent: {
+    minWidth: 0,
+    flex: 1,
+  },
+
   noticeTitle: {
     margin: 0,
     color: "#F4D77A",
     fontSize: "17px",
+    overflowWrap: "anywhere",
   },
 
   noticeText: {
@@ -453,18 +556,23 @@ const styles = {
     color: "#C9D8E6",
     fontSize: "13px",
     lineHeight: "1.5",
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
   },
 
   actions: {
+    width: "100%",
     maxWidth: "850px",
     margin: "0 auto",
     display: "flex",
     flexDirection: "column",
     gap: "12px",
+    boxSizing: "border-box",
   },
 
   confirmButton: {
     width: "100%",
+    maxWidth: "100%",
     border: "none",
     background:
       "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
@@ -476,10 +584,14 @@ const styles = {
     cursor: "pointer",
     boxShadow:
       "0 6px 15px rgba(46,107,74,0.25)",
+    boxSizing: "border-box",
+    overflowWrap: "anywhere",
+    whiteSpace: "normal",
   },
 
   backButton: {
     width: "100%",
+    maxWidth: "100%",
     border: "1px solid #294B66",
     background: "#102A43",
     color: "#C9D8E6",
@@ -488,5 +600,6 @@ const styles = {
     fontWeight: "700",
     fontSize: "14px",
     cursor: "pointer",
+    boxSizing: "border-box",
   },
 };
