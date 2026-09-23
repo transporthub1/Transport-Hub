@@ -14,14 +14,142 @@ export default function Transactions() {
       return;
     }
 
-    const savedTransactions =
-      localStorage.getItem("transportTransactions");
+    const savedUser = localStorage.getItem("transportUser");
+
+    let user = null;
+
+    try {
+      user = savedUser ? JSON.parse(savedUser) : null;
+    } catch (error) {
+      console.log("Could not load user");
+    }
+
+    const phone =
+      user?.phone ||
+      user?.mobile ||
+      user?.number ||
+      "";
+
+    let savedTransactions = null;
+
+    /*
+      First load current user's transactions.
+    */
+    if (phone) {
+      savedTransactions = localStorage.getItem(
+        "transportTransactions_" + phone
+      );
+    }
+
+    /*
+      Compatibility fallback for old global transactions.
+    */
+    if (!savedTransactions) {
+      savedTransactions = localStorage.getItem(
+        "transportTransactions"
+      );
+    }
 
     if (savedTransactions) {
       try {
-        setTransactions(JSON.parse(savedTransactions));
+        const parsedTransactions = JSON.parse(
+          savedTransactions
+        );
+
+        if (Array.isArray(parsedTransactions)) {
+          let userTransactions = parsedTransactions;
+
+          /*
+            If transaction records contain user information,
+            only show the currently logged-in user's records.
+          */
+          if (phone) {
+            const containsUserData =
+              parsedTransactions.some(
+                (transaction) =>
+                  transaction?.phone ||
+                  transaction?.userPhone ||
+                  transaction?.mobile
+              );
+
+            if (containsUserData) {
+              userTransactions =
+                parsedTransactions.filter(
+                  (transaction) => {
+                    const transactionPhone =
+                      transaction?.phone ||
+                      transaction?.userPhone ||
+                      transaction?.mobile ||
+                      "";
+
+                    return (
+                      String(transactionPhone) ===
+                      String(phone)
+                    );
+                  }
+                );
+            }
+          }
+
+          /*
+            Convert all Return transactions
+            to Weekly Return.
+          */
+          const normalizedTransactions =
+            userTransactions.map(
+              (transaction) => {
+                const originalType = String(
+                  transaction?.type || ""
+                );
+
+                const isReturn =
+                  originalType
+                    .toLowerCase()
+                    .includes("return");
+
+                if (isReturn) {
+                  return {
+                    ...transaction,
+                    type: "Weekly Return",
+                    returnType: "Weekly",
+                  };
+                }
+
+                return transaction;
+              }
+            );
+
+          /*
+            Newest transactions first.
+          */
+          normalizedTransactions.sort(
+            (a, b) => {
+              const dateA = new Date(
+                a?.date ||
+                  a?.createdAt ||
+                  a?.submittedAt ||
+                  0
+              ).getTime();
+
+              const dateB = new Date(
+                b?.date ||
+                  b?.createdAt ||
+                  b?.submittedAt ||
+                  0
+              ).getTime();
+
+              return dateB - dateA;
+            }
+          );
+
+          setTransactions(
+            normalizedTransactions
+          );
+        }
       } catch (error) {
-        console.log("Could not load transactions");
+        console.log(
+          "Could not load transactions"
+        );
       }
     }
 
@@ -75,7 +203,8 @@ export default function Transactions() {
             borderRadius: "22px",
             padding: "28px 30px",
             color: "#ffffff",
-            boxShadow: "0 12px 30px rgba(16, 42, 67, 0.20)",
+            boxShadow:
+              "0 12px 30px rgba(16, 42, 67, 0.20)",
             marginBottom: "22px",
             display: "flex",
             alignItems: "center",
@@ -133,258 +262,383 @@ export default function Transactions() {
               gap: "15px",
             }}
           >
-            {transactions.map((transaction, index) => {
-              const type = String(
-                transaction.type || ""
-              ).toLowerCase();
+            {transactions.map(
+              (transaction, index) => {
+                const originalType = String(
+                  transaction.type || ""
+                );
 
-              const isDeposit = type.includes("deposit");
-              const isWithdrawal = type.includes("withdraw");
-              const isReturn = type.includes("return");
+                const type =
+                  originalType.toLowerCase();
 
-              let colors = {
-                border: "#80651d",
-                iconBackground: "#29435A",
-                icon: "📋",
-                title: "#ffffff",
-                amount: "#8FD694",
-              };
+                const isDeposit =
+                  type.includes("deposit");
 
-              if (isDeposit) {
-                colors = {
-                  border: "#2E6B4A",
-                  iconBackground: "#24543E",
-                  icon: "💰",
+                const isWithdrawal =
+                  type.includes("withdraw");
+
+                const isReturn =
+                  type.includes("return");
+
+                let colors = {
+                  border: "#80651d",
+                  iconBackground: "#29435A",
+                  icon: "📋",
                   title: "#ffffff",
                   amount: "#8FD694",
                 };
-              }
 
-              if (isWithdrawal) {
-                colors = {
-                  border: "#75433F",
-                  iconBackground: "#573533",
-                  icon: "💸",
-                  title: "#ffffff",
-                  amount: "#FF9F96",
-                };
-              }
+                if (isDeposit) {
+                  colors = {
+                    border: "#2E6B4A",
+                    iconBackground: "#24543E",
+                    icon: "💰",
+                    title: "#ffffff",
+                    amount: "#8FD694",
+                  };
+                }
 
-              if (isReturn) {
-                colors = {
-                  border: "#315D7C",
-                  iconBackground: "#254A66",
-                  icon: "📈",
-                  title: "#ffffff",
-                  amount: "#8FD694",
-                };
-              }
+                if (isWithdrawal) {
+                  colors = {
+                    border: "#75433F",
+                    iconBackground: "#573533",
+                    icon: "💸",
+                    title: "#ffffff",
+                    amount: "#FF9F96",
+                  };
+                }
 
-              const status =
-                String(
-                  transaction.status || ""
-                ).toLowerCase();
+                if (isReturn) {
+                  colors = {
+                    border: "#315D7C",
+                    iconBackground: "#254A66",
+                    icon: "📈",
+                    title: "#ffffff",
+                    amount: "#8FD694",
+                  };
+                }
 
-              let statusBackground = "#29435A";
-              let statusColor = "#F4D77A";
+                const status =
+                  String(
+                    transaction.status || ""
+                  ).toLowerCase();
 
-              if (status === "approved") {
-                statusBackground = "#24543E";
-                statusColor = "#8FD694";
-              }
+                let statusBackground =
+                  "#29435A";
 
-              if (status === "rejected") {
-                statusBackground = "#573533";
-                statusColor = "#FF9F96";
-              }
+                let statusColor =
+                  "#F4D77A";
 
-              return (
-                <div
-                  key={index}
-                  style={{
-                    background: "#102A43",
-                    border:
-                      "1px solid " + colors.border,
-                    borderRadius: "18px",
-                    padding: "20px",
-                    boxShadow:
-                      "0 8px 22px rgba(16, 42, 67, 0.16)",
-                  }}
-                >
+                if (status === "approved") {
+                  statusBackground =
+                    "#24543E";
+                  statusColor =
+                    "#8FD694";
+                }
 
-                  {/* TOP */}
+                if (status === "rejected") {
+                  statusBackground =
+                    "#573533";
+                  statusColor =
+                    "#FF9F96";
+                }
 
+                const displayType =
+                  isReturn
+                    ? "Weekly Return"
+                    : transaction.type ||
+                      "Transaction";
+
+                const displayDate =
+                  transaction.date ||
+                  transaction.createdAt ||
+                  transaction.submittedAt ||
+                  "N/A";
+
+                return (
                   <div
+                    key={
+                      transaction.id ||
+                      index
+                    }
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                      marginBottom: "17px",
+                      background: "#102A43",
+                      border:
+                        "1px solid " +
+                        colors.border,
+                      borderRadius: "18px",
+                      padding: "20px",
+                      boxShadow:
+                        "0 8px 22px rgba(16, 42, 67, 0.16)",
                     }}
                   >
+
+                    {/* TOP */}
 
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
+                        justifyContent:
+                          "space-between",
                         gap: "12px",
+                        marginBottom: "17px",
                       }}
                     >
+
                       <div
                         style={{
-                          width: "46px",
-                          height: "46px",
-                          borderRadius: "13px",
-                          background:
-                            colors.iconBackground,
                           display: "flex",
                           alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "22px",
-                          flexShrink: 0,
+                          gap: "12px",
                         }}
                       >
-                        {colors.icon}
-                      </div>
-
-                      <div>
-                        <strong
+                        <div
                           style={{
-                            display: "block",
-                            fontSize: "17px",
-                            color: colors.title,
-                            textTransform: "capitalize",
+                            width: "46px",
+                            height: "46px",
+                            borderRadius: "13px",
+                            background:
+                              colors.iconBackground,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent:
+                              "center",
+                            fontSize: "22px",
+                            flexShrink: 0,
                           }}
                         >
-                          {transaction.type}
-                        </strong>
+                          {colors.icon}
+                        </div>
 
+                        <div>
+                          <strong
+                            style={{
+                              display: "block",
+                              fontSize: "17px",
+                              color:
+                                colors.title,
+                              textTransform:
+                                "capitalize",
+                            }}
+                          >
+                            {displayType}
+                          </strong>
+
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: "3px",
+                              fontSize: "12px",
+                              color: "#9FB3C8",
+                            }}
+                          >
+                            Transaction #
+                            {index + 1}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* STATUS */}
+
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems:
+                            "center",
+                          justifyContent:
+                            "center",
+                          padding: "7px 12px",
+                          borderRadius: "20px",
+                          background:
+                            statusBackground,
+                          color:
+                            statusColor,
+                          fontSize: "12px",
+                          fontWeight: "700",
+                          whiteSpace:
+                            "nowrap",
+                          border:
+                            "1px solid rgba(255,255,255,0.08)",
+                        }}
+                      >
+                        {transaction.status ||
+                          "Completed"}
+                      </span>
+
+                    </div>
+
+                    {/* DETAILS */}
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(2, minmax(0, 1fr))",
+                        gap: "11px",
+                      }}
+                    >
+
+                      {/* AMOUNT */}
+
+                      <div
+                        style={{
+                          background:
+                            "#173B5A",
+                          border:
+                            "1px solid " +
+                            colors.border,
+                          borderRadius:
+                            "12px",
+                          padding:
+                            "13px 14px",
+                        }}
+                      >
                         <span
                           style={{
-                            display: "block",
-                            marginTop: "3px",
-                            fontSize: "12px",
-                            color: "#9FB3C8",
+                            display:
+                              "block",
+                            fontSize:
+                              "10px",
+                            color:
+                              "#9FB3C8",
+                            marginBottom:
+                              "5px",
+                            textTransform:
+                              "uppercase",
+                            letterSpacing:
+                              "0.5px",
                           }}
                         >
-                          Transaction #{index + 1}
+                          Amount
                         </span>
+
+                        <strong
+                          style={{
+                            display:
+                              "block",
+                            fontSize:
+                              "17px",
+                            color:
+                              colors.amount,
+                          }}
+                        >
+                          PKR{" "}
+                          {Number(
+                            transaction.amount ||
+                              0
+                          ).toLocaleString()}
+                        </strong>
                       </div>
-                    </div>
 
-                    {/* STATUS */}
+                      {/* DATE */}
 
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: "7px 12px",
-                        borderRadius: "20px",
-                        background: statusBackground,
-                        color: statusColor,
-                        fontSize: "12px",
-                        fontWeight: "700",
-                        whiteSpace: "nowrap",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                      }}
-                    >
-                      {transaction.status || "Pending"}
-                    </span>
-
-                  </div>
-
-                  {/* DETAILS */}
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(2, minmax(0, 1fr))",
-                      gap: "11px",
-                    }}
-                  >
-
-                    {/* AMOUNT */}
-
-                    <div
-                      style={{
-                        background: "#173B5A",
-                        border:
-                          "1px solid " + colors.border,
-                        borderRadius: "12px",
-                        padding: "13px 14px",
-                      }}
-                    >
-                      <span
+                      <div
                         style={{
-                          display: "block",
-                          fontSize: "10px",
-                          color: "#9FB3C8",
-                          marginBottom: "5px",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.5px",
+                          background:
+                            "#173B5A",
+                          border:
+                            "1px solid " +
+                            colors.border,
+                          borderRadius:
+                            "12px",
+                          padding:
+                            "13px 14px",
                         }}
                       >
-                        Amount
-                      </span>
+                        <span
+                          style={{
+                            display:
+                              "block",
+                            fontSize:
+                              "10px",
+                            color:
+                              "#9FB3C8",
+                            marginBottom:
+                              "5px",
+                            textTransform:
+                              "uppercase",
+                            letterSpacing:
+                              "0.5px",
+                          }}
+                        >
+                          Date & Time
+                        </span>
 
-                      <strong
-                        style={{
-                          display: "block",
-                          fontSize: "17px",
-                          color: colors.amount,
-                        }}
-                      >
-                        PKR{" "}
-                        {Number(
-                          transaction.amount || 0
-                        ).toLocaleString()}
-                      </strong>
-                    </div>
+                        <strong
+                          style={{
+                            display:
+                              "block",
+                            fontSize:
+                              "13px",
+                            color:
+                              "#ffffff",
+                            lineHeight:
+                              "1.4",
+                          }}
+                        >
+                          {displayDate}
+                        </strong>
+                      </div>
 
-                    {/* DATE */}
+                      {/* WEEKLY RETURN */}
 
-                    <div
-                      style={{
-                        background: "#173B5A",
-                        border:
-                          "1px solid " + colors.border,
-                        borderRadius: "12px",
-                        padding: "13px 14px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "block",
-                          fontSize: "10px",
-                          color: "#9FB3C8",
-                          marginBottom: "5px",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.5px",
-                        }}
-                      >
-                        Date & Time
-                      </span>
+                      {isReturn && (
+                        <div
+                          style={{
+                            background:
+                              "#173B5A",
+                            border:
+                              "1px solid " +
+                              colors.border,
+                            borderRadius:
+                              "12px",
+                            padding:
+                              "13px 14px",
+                            gridColumn:
+                              "1 / -1",
+                          }}
+                        >
+                          <span
+                            style={{
+                              display:
+                                "block",
+                              fontSize:
+                                "10px",
+                              color:
+                                "#9FB3C8",
+                              marginBottom:
+                                "5px",
+                              textTransform:
+                                "uppercase",
+                              letterSpacing:
+                                "0.5px",
+                            }}
+                          >
+                            Return Type
+                          </span>
 
-                      <strong
-                        style={{
-                          display: "block",
-                          fontSize: "13px",
-                          color: "#ffffff",
-                          lineHeight: "1.4",
-                        }}
-                      >
-                        {transaction.date || "N/A"}
-                      </strong>
+                          <strong
+                            style={{
+                              display:
+                                "block",
+                              fontSize:
+                                "14px",
+                              color:
+                                "#8FD694",
+                            }}
+                          >
+                            Weekly Return
+                          </strong>
+                        </div>
+                      )}
+
                     </div>
 
                   </div>
-
-                </div>
-              );
-            })}
+                );
+              }
+            )}
           </div>
         ) : (
 
@@ -393,7 +647,8 @@ export default function Transactions() {
           <div
             style={{
               background: "#102A43",
-              border: "1px solid #1E3A56",
+              border:
+                "1px solid #1E3A56",
               borderRadius: "18px",
               padding: "40px 25px",
               textAlign: "center",
@@ -433,7 +688,8 @@ export default function Transactions() {
                 color: "#9FB3C8",
               }}
             >
-              Your deposits and withdrawals will appear here.
+              Your deposits and withdrawals
+              will appear here.
             </span>
           </div>
         )}
@@ -448,7 +704,8 @@ export default function Transactions() {
             width: "100%",
             minHeight: "50px",
             marginTop: "18px",
-            border: "1px solid #1E3A56",
+            border:
+              "1px solid #1E3A56",
             borderRadius: "12px",
             background: "#102A43",
             color: "#ffffff",

@@ -77,8 +77,13 @@ export default function Withdraw() {
       return;
     }
 
+    /*
+      Weekly return balance is stored
+      separately for every user.
+    */
+
     const returnsKey =
-      `transportWithdrawableReturns_${phone}`;
+      "transportWithdrawableReturns_" + phone;
 
     const savedReturns =
       localStorage.getItem(returnsKey);
@@ -88,33 +93,11 @@ export default function Withdraw() {
         Number(savedReturns) || 0
       );
     } else {
-      const oldReturns =
-        localStorage.getItem(
-          "transportWithdrawableReturns"
-        );
-
-      if (oldReturns !== null) {
-        const oldValue =
-          Number(oldReturns) || 0;
-
-        setWithdrawableReturns(oldValue);
-
-        localStorage.setItem(
-          returnsKey,
-          String(oldValue)
-        );
-      } else {
-        setWithdrawableReturns(0);
-      }
+      setWithdrawableReturns(0);
     }
 
     /*
       Load withdrawal requests.
-      New system:
-      transportWithdrawRequests
-
-      Old system:
-      transportWithdrawRequest
     */
 
     let requests =
@@ -127,6 +110,10 @@ export default function Withdraw() {
       requests = [];
     }
 
+    /*
+      Old compatibility request.
+    */
+
     const oldRequest =
       readJSON(
         "transportWithdrawRequest",
@@ -136,7 +123,8 @@ export default function Withdraw() {
     if (oldRequest) {
       const oldId =
         oldRequest.id ||
-        `withdraw-old-${oldRequest.submittedAt || Date.now()}`;
+        "withdraw-old-" +
+          (oldRequest.submittedAt || Date.now());
 
       const alreadyExists =
         requests.some(
@@ -166,7 +154,8 @@ export default function Withdraw() {
     const userRequests =
       requests.filter(
         (request) =>
-          request.phone === phone
+          String(request.phone || "") ===
+          String(phone)
       );
 
     userRequests.sort(
@@ -182,6 +171,10 @@ export default function Withdraw() {
     setWithdrawRequests(
       userRequests
     );
+
+    /*
+      Pending withdrawal amount is reserved.
+    */
 
     const pendingTotal =
       userRequests
@@ -203,6 +196,11 @@ export default function Withdraw() {
     setLoading(false);
   }, []);
 
+  /*
+    Current user's total weekly return
+    balance available in withdrawal wallet.
+  */
+
   const availableReturns =
     Math.max(
       0,
@@ -211,8 +209,6 @@ export default function Withdraw() {
 
   /*
     Pending requests are temporarily reserved.
-    This prevents the same earned balance
-    from being requested multiple times.
   */
 
   const availableForNewWithdrawal =
@@ -289,9 +285,9 @@ export default function Withdraw() {
       withdrawAmount < MIN_CASHOUT
     ) {
       setMessage(
-        `Minimum cashout amount is PKR ${formatMoney(
-          MIN_CASHOUT
-        )}.`
+        "Minimum cashout amount is PKR " +
+          formatMoney(MIN_CASHOUT) +
+          "."
       );
       setMessageType("error");
       setSubmitting(false);
@@ -302,9 +298,9 @@ export default function Withdraw() {
       withdrawAmount > MAX_CASHOUT
     ) {
       setMessage(
-        `Maximum cashout amount is PKR ${formatMoney(
-          MAX_CASHOUT
-        )}.`
+        "Maximum cashout amount is PKR " +
+          formatMoney(MAX_CASHOUT) +
+          "."
       );
       setMessageType("error");
       setSubmitting(false);
@@ -316,9 +312,11 @@ export default function Withdraw() {
       availableForNewWithdrawal
     ) {
       setMessage(
-        `You can withdraw up to PKR ${formatMoney(
-          availableForNewWithdrawal
-        )}. Your pending withdrawal amount is already reserved.`
+        "You can withdraw up to PKR " +
+          formatMoney(
+            availableForNewWithdrawal
+          ) +
+          ". Your pending withdrawal amount is already reserved."
       );
       setMessageType("error");
       setSubmitting(false);
@@ -330,9 +328,12 @@ export default function Withdraw() {
 
     const newRequest = {
       id:
-        `withdraw-${Date.now()}-${Math.random()
+        "withdraw-" +
+        Date.now() +
+        "-" +
+        Math.random()
           .toString(36)
-          .slice(2, 8)}`,
+          .slice(2, 8),
 
       fullName,
 
@@ -346,6 +347,19 @@ export default function Withdraw() {
 
       amount:
         withdrawAmount,
+
+      /*
+        Weekly return system information.
+      */
+
+      returnType:
+        "Weekly",
+
+      withdrawableBalance:
+        availableReturns,
+
+      availableBalanceAtRequest:
+        availableForNewWithdrawal,
 
       status:
         "Pending",
@@ -361,7 +375,7 @@ export default function Withdraw() {
     };
 
     /*
-      Save new request in array
+      Save new request in global array.
     */
 
     const allRequests =
@@ -385,6 +399,34 @@ export default function Withdraw() {
     );
 
     /*
+      Save current user's withdrawal history separately.
+    */
+
+    const userWithdrawKey =
+      "transportWithdrawRequests_" +
+      phone;
+
+    const savedUserRequests =
+      readJSON(
+        userWithdrawKey,
+        []
+      );
+
+    const userRequestList =
+      Array.isArray(savedUserRequests)
+        ? savedUserRequests
+        : [];
+
+    userRequestList.unshift(
+      newRequest
+    );
+
+    saveJSON(
+      userWithdrawKey,
+      userRequestList
+    );
+
+    /*
       Keep old key for compatibility
       with existing Admin Panel / History.
     */
@@ -395,11 +437,14 @@ export default function Withdraw() {
     );
 
     /*
-      Update local state
+      Update local state.
     */
 
     const updatedUserRequests =
-      [newRequest, ...withdrawRequests];
+      [
+        newRequest,
+        ...withdrawRequests,
+      ];
 
     setWithdrawRequests(
       updatedUserRequests
@@ -474,7 +519,7 @@ export default function Withdraw() {
             </h1>
 
             <p style={styles.headerSubtitle}>
-              Cash out your earned daily returns
+              Cash out your earned weekly returns
             </p>
           </div>
         </div>
@@ -487,13 +532,14 @@ export default function Withdraw() {
           </h2>
 
           <span style={styles.greenAmount}>
-            PKR {formatMoney(
+            PKR{" "}
+            {formatMoney(
               availableReturns
             )}
           </span>
 
           <small style={styles.cardDescription}>
-            Total daily returns currently available
+            Total weekly returns currently available
             in your withdrawal balance.
           </small>
         </div>
@@ -506,22 +552,25 @@ export default function Withdraw() {
           </h2>
 
           <span style={styles.greenAmount}>
-            PKR {formatMoney(
+            PKR{" "}
+            {formatMoney(
               availableForNewWithdrawal
             )}
           </span>
 
           {pendingAmount > 0 && (
             <small style={styles.pendingBalanceText}>
-              PKR {formatMoney(
+              PKR{" "}
+              {formatMoney(
                 pendingAmount
-              )} is currently reserved in pending withdrawals.
+              )}{" "}
+              is currently reserved in pending withdrawals.
             </small>
           )}
 
           {pendingAmount === 0 && (
             <small style={styles.cardDescription}>
-              You can cash out your earned daily returns.
+              You can cash out your earned weekly returns.
             </small>
           )}
         </div>
@@ -541,7 +590,8 @@ export default function Withdraw() {
               </span>
 
               <strong style={styles.limitValue}>
-                PKR {formatMoney(
+                PKR{" "}
+                {formatMoney(
                   MIN_CASHOUT
                 )}
               </strong>
@@ -553,7 +603,8 @@ export default function Withdraw() {
               </span>
 
               <strong style={styles.limitValue}>
-                PKR {formatMoney(
+                PKR{" "}
+                {formatMoney(
                   MAX_CASHOUT
                 )}
               </strong>
@@ -827,7 +878,8 @@ export default function Withdraw() {
                 availableForNewWithdrawal
               )}
               placeholder={
-                `Min PKR ${MIN_CASHOUT}`
+                "Min PKR " +
+                MIN_CASHOUT
               }
               value={amount}
               onChange={(e) =>

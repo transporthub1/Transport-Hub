@@ -2,18 +2,18 @@
 
 export default function TransportPlans() {
   const plans = [
-    { name: "Starter Transport Plan", price: 100, daily: 15, duration: 120 },
-    { name: "Basic Transport Plan", price: 500, daily: 75, duration: 120 },
-    { name: "Standard Transport Plan", price: 1500, daily: 225, duration: 120 },
-    { name: "Premium Transport Plan", price: 3500, daily: 525, duration: 120 },
-    { name: "Advanced Transport Plan", price: 7500, daily: 1125, duration: 120 },
-    { name: "Professional Transport Plan", price: 13000, daily: 1950, duration: 120 },
-    { name: "Elite Transport Plan", price: 25000, daily: 3750, duration: 120 },
-    { name: "Executive Transport Plan", price: 50000, daily: 7500, duration: 120 },
-    { name: "Platinum Transport Plan", price: 125000, daily: 18750, duration: 120 },
-    { name: "Diamond Transport Plan", price: 175000, daily: 26250, duration: 120 },
-    { name: "Royal Transport Plan", price: 225000, daily: 33750, duration: 120 },
-    { name: "Grand Royal Transport Plan", price: 300000, daily: 45000, duration: 120 }
+    { name: "Starter Transport Plan", price: 100, weekly: 15 },
+    { name: "Basic Transport Plan", price: 500, weekly: 75 },
+    { name: "Standard Transport Plan", price: 1500, weekly: 225 },
+    { name: "Premium Transport Plan", price: 3500, weekly: 525 },
+    { name: "Advanced Transport Plan", price: 7500, weekly: 1125 },
+    { name: "Professional Transport Plan", price: 13000, weekly: 1950 },
+    { name: "Elite Transport Plan", price: 25000, weekly: 3750 },
+    { name: "Executive Transport Plan", price: 50000, weekly: 7500 },
+    { name: "Platinum Transport Plan", price: 125000, weekly: 18750 },
+    { name: "Diamond Transport Plan", price: 175000, weekly: 26250 },
+    { name: "Royal Transport Plan", price: 225000, weekly: 33750 },
+    { name: "Grand Royal Transport Plan", price: 300000, weekly: 45000 }
   ];
 
   const badges = [
@@ -31,18 +31,30 @@ export default function TransportPlans() {
     "ULTIMATE"
   ];
 
+  const durationYears = 5;
+  const totalWeeks = 260;
+
   function selectPlan(plan) {
     const name = encodeURIComponent(plan.name);
 
+    /*
+      Old parameters are kept for compatibility so the
+      current Plan Confirmation page does not break.
+      New weekly parameters are also sent for the next step.
+    */
     window.location.href =
       "/plan-confirmation?name=" +
       name +
       "&price=" +
       plan.price +
       "&daily=" +
-      plan.daily +
+      plan.weekly +
       "&duration=" +
-      plan.duration;
+      totalWeeks +
+      "&weekly=" +
+      plan.weekly +
+      "&durationYears=" +
+      durationYears;
   }
 
   return (
@@ -169,7 +181,7 @@ export default function TransportPlans() {
         {/* Plans */}
         <div className="plans-grid">
           {plans.map(function (plan, index) {
-            const totalReturn = plan.daily * plan.duration;
+            const totalReturn = plan.weekly * totalWeeks;
 
             return (
               <div
@@ -277,6 +289,7 @@ export default function TransportPlans() {
                     paddingTop: "7px"
                   }}
                 >
+                  {/* Weekly Return */}
                   <div
                     style={{
                       display: "flex",
@@ -290,7 +303,7 @@ export default function TransportPlans() {
                         color: "#C9D8E6"
                       }}
                     >
-                      Daily Return
+                      Weekly Return
                     </span>
 
                     <strong
@@ -299,10 +312,11 @@ export default function TransportPlans() {
                         color: "#ffffff"
                       }}
                     >
-                      PKR {plan.daily.toLocaleString()}
+                      PKR {plan.weekly.toLocaleString()}
                     </strong>
                   </div>
 
+                  {/* Duration */}
                   <div
                     style={{
                       display: "flex",
@@ -325,10 +339,11 @@ export default function TransportPlans() {
                         color: "#ffffff"
                       }}
                     >
-                      {plan.duration} Days
+                      5 Years
                     </strong>
                   </div>
 
+                  {/* Total Return */}
                   <div
                     style={{
                       display: "flex",

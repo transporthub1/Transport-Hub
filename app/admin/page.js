@@ -12,6 +12,9 @@ const RED = "#FF9F96";
 const GOLD = "#F4D77A";
 const PAGE_BG = "#eef3f7";
 
+const DURATION_YEARS = 5;
+const DURATION_WEEKS = 260;
+
 export default function Admin() {
   const [depositRequests, setDepositRequests] = useState([]);
   const [withdrawRequests, setWithdrawRequests] = useState([]);
@@ -357,9 +360,17 @@ export default function Admin() {
       return;
     }
 
+    const phone =
+      request.phone ||
+      request.mobile ||
+      request.mobileNumber ||
+      request.user?.phone ||
+      request.user?.mobile ||
+      "";
+
     if (
       newStatus === "Approved" &&
-      !request.phone
+      !phone
     ) {
       setMessage(
         "User mobile number is missing from this request."
@@ -367,12 +378,113 @@ export default function Admin() {
       return;
     }
 
+    /* =========================
+       PLAN DATA
+    ========================= */
+
+    const requestPlan =
+      request.plan || {};
+
+    const planName =
+      requestPlan.name ||
+      request.planName ||
+      "Transport Plan";
+
+    const planAmount =
+      Number(
+        requestPlan.amount ||
+        request.amount ||
+        request.depositAmount ||
+        0
+      );
+
+    const weeklyReturn =
+      Number(
+        requestPlan.weekly ||
+        request.weeklyReturn ||
+        request.dailyReturn ||
+        requestPlan.daily ||
+        request.daily ||
+        0
+      );
+
+    const totalReturn =
+      weeklyReturn *
+      DURATION_WEEKS;
+
     const updatedRequest = {
       ...request,
-      status: newStatus,
+
+      status:
+        newStatus,
+
       updatedAt:
         new Date().toISOString(),
+
+      plan: {
+        ...requestPlan,
+
+        id:
+          requestPlan.id ||
+          request.planId ||
+          "",
+
+        name:
+          planName,
+
+        amount:
+          planAmount,
+
+        weekly:
+          weeklyReturn,
+
+        /* Compatibility */
+        daily:
+          weeklyReturn,
+
+        durationYears:
+          DURATION_YEARS,
+
+        durationWeeks:
+          DURATION_WEEKS,
+
+        /* Compatibility */
+        duration:
+          DURATION_WEEKS,
+
+        totalReturn:
+          totalReturn,
+      },
+
+      /* Top-level compatibility */
+      planName:
+        planName,
+
+      amount:
+        planAmount,
+
+      weeklyReturn:
+        weeklyReturn,
+
+      dailyReturn:
+        weeklyReturn,
+
+      durationYears:
+        DURATION_YEARS,
+
+      durationWeeks:
+        DURATION_WEEKS,
+
+      duration:
+        DURATION_WEEKS,
+
+      totalReturn:
+        totalReturn,
     };
+
+    /* =========================
+       SAVE REQUEST
+    ========================= */
 
     const updatedRequests =
       depositRequests.map(
@@ -386,124 +498,253 @@ export default function Admin() {
       updatedRequests
     );
 
-    if (newStatus === "Approved") {
-      const phone = request.phone;
+    /* =========================
+       REJECT
+    ========================= */
 
-      const activatedAt =
-        new Date().toISOString();
-
-      const activePlan = {
-        id:
-          "active-plan-" +
-          request.id,
-
-        depositRequestId:
-          request.id,
-
-        userPhone:
-          phone,
-
-        name:
-          request.planName,
-
-        price:
-          Number(
-            request.amount || 0
-          ),
-
-        daily:
-          Number(
-            request.dailyReturn || 0
-          ),
-
-        duration:
-          Number(
-            request.duration || 0
-          ),
-
-        totalReturn:
-          Number(
-            request.totalReturn || 0
-          ),
-
-        activatedAt:
-          activatedAt,
-
-        lastReturnAt:
-          activatedAt,
-
-        returnsPaid: 0,
-
-        earnedReturns: 0,
-      };
-
-      updateActivePlans(
-        activePlan,
-        phone
-      );
-
-      saveTransaction(
-        {
-          id:
-            "deposit-" +
-            request.id,
-
-          type:
-            "Deposit",
-
-          amount:
-            Number(
-              request.amount || 0
-            ),
-
-          planName:
-            request.planName,
-
-          status:
-            "Approved",
-
-          phone:
-            phone,
-
-          transactionId:
-            request.transactionId ||
-            request.txId ||
-            request.transectionId ||
-            "",
-
-          number:
-            request.number ||
-            request.depositNumber ||
-            request.mobileNumber ||
-            "",
-
-          screenshot:
-            request.screenshot ||
-            request.paymentScreenshot ||
-            request.receipt ||
-            "",
-
-          date:
-            request.submittedAt
-              ? new Date(
-                  request.submittedAt
-                ).toLocaleString()
-              : new Date().toLocaleString(),
-        },
-        phone
-      );
-
+    if (
+      newStatus === "Rejected"
+    ) {
       setMessage(
-        `${request.planName || "Plan"} for ${
-          request.fullName || "user"
-        } approved and activated. The first daily return will be available after 24 hours.`
+        `${planName} deposit request rejected.`
       );
 
       return;
     }
 
+    /* =========================
+       APPROVAL
+    ========================= */
+
+    const approvedAt =
+      new Date().toISOString();
+
+    /* =========================
+       FIRST WEEKLY RETURN
+       IMMEDIATELY CREDIT
+    ========================= */
+
+    const returnsKey =
+      "transportWithdrawableReturns_" +
+      phone;
+
+    const savedReturns =
+      localStorage.getItem(
+        returnsKey
+      );
+
+    const currentWithdrawableReturns =
+      savedReturns !== null
+        ? Number(savedReturns) || 0
+        : 0;
+
+    const newWithdrawableReturns =
+      currentWithdrawableReturns +
+      weeklyReturn;
+
+    localStorage.setItem(
+      returnsKey,
+      String(
+        newWithdrawableReturns
+      )
+    );
+
+    /* =========================
+       NEXT RETURN
+       7 DAYS AFTER APPROVAL
+    ========================= */
+
+    const nextReturnDate =
+      new Date(
+        Date.now() +
+          7 *
+            24 *
+            60 *
+            60 *
+            1000
+      ).toISOString();
+
+    /* =========================
+       ACTIVE PLAN
+    ========================= */
+
+    const activePlan = {
+      id:
+        "active-plan-" +
+        request.id,
+
+      depositRequestId:
+        request.id,
+
+      userPhone:
+        phone,
+
+      name:
+        planName,
+
+      price:
+        planAmount,
+
+      weekly:
+        weeklyReturn,
+
+      /* Compatibility */
+      daily:
+        weeklyReturn,
+
+      durationYears:
+        DURATION_YEARS,
+
+      durationWeeks:
+        DURATION_WEEKS,
+
+      /* Compatibility */
+      duration:
+        DURATION_WEEKS,
+
+      totalReturn:
+        totalReturn,
+
+      activatedAt:
+        approvedAt,
+
+      approvedAt:
+        approvedAt,
+
+      /* First return already paid */
+      lastReturnAt:
+        approvedAt,
+
+      nextReturnAt:
+        nextReturnDate,
+
+      returnsPaid:
+        1,
+
+      earnedReturns:
+        weeklyReturn,
+
+      totalEarned:
+        weeklyReturn,
+
+      remainingWeeks:
+        DURATION_WEEKS - 1,
+
+      status:
+        "Active",
+    };
+
+    updateActivePlans(
+      activePlan,
+      phone
+    );
+
+    /* =========================
+       DEPOSIT TRANSACTION
+    ========================= */
+
+    saveTransaction(
+      {
+        id:
+          "deposit-" +
+          request.id,
+
+        type:
+          "Deposit",
+
+        amount:
+          planAmount,
+
+        planName:
+          planName,
+
+        status:
+          "Approved",
+
+        phone:
+          phone,
+
+        transactionId:
+          request.transactionId ||
+          request.txId ||
+          request.transectionId ||
+          request.transactionID ||
+          "",
+
+        number:
+          request.number ||
+          request.depositNumber ||
+          request.mobileNumber ||
+          request.depositPhone ||
+          phone ||
+          "",
+
+        screenshot:
+          request.screenshot ||
+          request.paymentScreenshot ||
+          request.receipt ||
+          "",
+
+        date:
+          request.submittedAt
+            ? new Date(
+                request.submittedAt
+              ).toLocaleString()
+            : new Date().toLocaleString(),
+      },
+      phone
+    );
+
+    /* =========================
+       FIRST WEEKLY RETURN TRANSACTION
+    ========================= */
+
+    if (weeklyReturn > 0) {
+      saveTransaction(
+        {
+          id:
+            "weekly-return-" +
+            request.id,
+
+          type:
+            "Weekly Return",
+
+          amount:
+            weeklyReturn,
+
+          planName:
+            planName,
+
+          status:
+            "Completed",
+
+          phone:
+            phone,
+
+          transactionId:
+            "",
+
+          number:
+            phone,
+
+          date:
+            new Date().toLocaleString(),
+        },
+        phone
+      );
+    }
+
+    /* =========================
+       SUCCESS MESSAGE
+    ========================= */
+
     setMessage(
-      `${request.planName || "Plan"} deposit request rejected.`
+      `${planName} for ${
+        request.fullName ||
+        request.user?.fullName ||
+        request.user?.name ||
+        "user"
+      } approved successfully. First weekly return of PKR ${weeklyReturn.toLocaleString()} has been credited immediately. Next return will be available in 7 days.`
     );
   };
 
@@ -547,7 +788,11 @@ export default function Admin() {
       return;
     }
 
-    const phone = request.phone;
+    const phone =
+      request.phone ||
+      request.mobile ||
+      request.mobileNumber ||
+      "";
 
     if (!phone) {
       setMessage(
@@ -615,12 +860,14 @@ export default function Admin() {
             request.transactionId ||
             request.txId ||
             request.transectionId ||
+            request.transactionID ||
             "",
 
           number:
             request.number ||
             request.withdrawNumber ||
             request.mobileNumber ||
+            request.withdrawPhone ||
             "",
 
           screenshot:
@@ -684,7 +931,12 @@ export default function Admin() {
       depositRequests.reduce(
         (sum, item) =>
           sum +
-          Number(item.amount || 0),
+          Number(
+            item.amount ||
+            item.depositAmount ||
+            item.plan?.amount ||
+            0
+          ),
         0
       );
 
@@ -697,7 +949,12 @@ export default function Admin() {
         .reduce(
           (sum, item) =>
             sum +
-            Number(item.amount || 0),
+            Number(
+              item.amount ||
+              item.depositAmount ||
+              item.plan?.amount ||
+              0
+            ),
           0
         );
 
@@ -757,6 +1014,7 @@ export default function Admin() {
           request.phone ||
           request.mobile ||
           request.mobileNumber ||
+          request.user?.phone ||
           `deposit-unknown-${index}`;
 
         if (!groups[phone]) {
@@ -765,11 +1023,14 @@ export default function Admin() {
             fullName:
               request.fullName ||
               request.name ||
+              request.user?.fullName ||
+              request.user?.name ||
               "User",
             phone:
               request.phone ||
               request.mobile ||
               request.mobileNumber ||
+              request.user?.phone ||
               "N/A",
             bankName:
               request.bankName ||
@@ -789,12 +1050,18 @@ export default function Admin() {
         if (
           groups[phone].fullName ===
             "User" &&
-          (request.fullName ||
-            request.name)
+          (
+            request.fullName ||
+            request.name ||
+            request.user?.fullName ||
+            request.user?.name
+          )
         ) {
           groups[phone].fullName =
             request.fullName ||
-            request.name;
+            request.name ||
+            request.user?.fullName ||
+            request.user?.name;
         }
 
         if (
@@ -856,8 +1123,10 @@ export default function Admin() {
         if (
           groups[phone].fullName ===
             "User" &&
-          (request.fullName ||
-            request.name)
+          (
+            request.fullName ||
+            request.name
+          )
         ) {
           groups[phone].fullName =
             request.fullName ||
@@ -1568,261 +1837,301 @@ export default function Admin() {
                             {user.deposits.map(
                               (
                                 request
-                              ) => (
-                                <div
-                                  key={
-                                    request.id
-                                  }
-                                  style={{
-                                    background:
-                                      NAVY_2,
-                                    border:
-                                      `1px solid ${BORDER}`,
-                                    borderRadius:
-                                      "14px",
-                                    padding:
-                                      "15px",
-                                  }}
-                                >
+                              ) => {
+                                const requestPlan =
+                                  request.plan ||
+                                  {};
+
+                                const displayPlanName =
+                                  requestPlan.name ||
+                                  request.planName ||
+                                  "Deposit";
+
+                                const displayAmount =
+                                  Number(
+                                    requestPlan.amount ||
+                                    request.amount ||
+                                    request.depositAmount ||
+                                    0
+                                  );
+
+                                const displayWeekly =
+                                  Number(
+                                    requestPlan.weekly ||
+                                    request.weeklyReturn ||
+                                    request.dailyReturn ||
+                                    requestPlan.daily ||
+                                    0
+                                  );
+
+                                return (
                                   <div
+                                    key={
+                                      request.id
+                                    }
                                     style={{
-                                      display:
-                                        "flex",
-                                      justifyContent:
-                                        "space-between",
-                                      alignItems:
-                                        "center",
-                                      gap:
-                                        "10px",
-                                      marginBottom:
-                                        "12px",
-                                      flexWrap:
-                                        "wrap",
+                                      background:
+                                        NAVY_2,
+                                      border:
+                                        `1px solid ${BORDER}`,
+                                      borderRadius:
+                                        "14px",
+                                      padding:
+                                        "15px",
                                     }}
                                   >
-                                    <div>
-                                      <strong
-                                        style={{
-                                          color:
-                                            "#ffffff",
-                                          fontSize:
-                                            "14px",
-                                        }}
-                                      >
-                                        {request.planName ||
-                                          "Deposit"}
-                                      </strong>
-
-                                      <p
-                                        style={{
-                                          margin:
-                                            "4px 0 0",
-                                          color:
-                                            MUTED,
-                                          fontSize:
-                                            "10px",
-                                        }}
-                                      >
-                                        ID:{" "}
-                                        {request.id ||
-                                          "N/A"}
-                                      </p>
-                                    </div>
-
-                                    <StatusBadge
-                                      status={
-                                        request.status ||
-                                        "Pending"
-                                      }
-                                    />
-                                  </div>
-
-                                  <DetailsGrid>
-                                    <Detail
-                                      label="Amount"
-                                      value={`PKR ${Number(
-                                        request.amount ||
-                                          0
-                                      ).toLocaleString()}`}
-                                      highlight
-                                    />
-
-                                    <Detail
-                                      label="Transaction ID"
-                                      value={
-                                        request.transactionId ||
-                                        request.txId ||
-                                        request.transectionId ||
-                                        request.transactionID ||
-                                        "N/A"
-                                      }
-                                    />
-
-                                    <Detail
-                                      label="Deposit Number"
-                                      value={
-                                        request.number ||
-                                        request.depositNumber ||
-                                        request.mobileNumber ||
-                                        request.depositPhone ||
-                                        "N/A"
-                                      }
-                                    />
-
-                                    <Detail
-                                      label="Submitted"
-                                      value={
-                                        request.submittedAt
-                                          ? new Date(
-                                              request.submittedAt
-                                            ).toLocaleString()
-                                          : "N/A"
-                                      }
-                                    />
-                                  </DetailsGrid>
-
-                                  {/* DEPOSIT SCREENSHOT */}
-
-                                  {(request.screenshot ||
-                                    request.paymentScreenshot ||
-                                    request.receipt) && (
-                                    <div
-                                      style={{
-                                        marginTop:
-                                          "12px",
-                                        background:
-                                          "#102A43",
-                                        border:
-                                          `1px solid ${BORDER}`,
-                                        borderRadius:
-                                          "12px",
-                                        padding:
-                                          "12px",
-                                      }}
-                                    >
-                                      <div
-                                        style={{
-                                          color:
-                                            MUTED,
-                                          fontSize:
-                                            "10px",
-                                          textTransform:
-                                            "uppercase",
-                                          marginBottom:
-                                            "8px",
-                                          fontWeight:
-                                            "700",
-                                        }}
-                                      >
-                                        📷 Deposit Screenshot
-                                      </div>
-
-                                      <img
-                                        src={
-                                          request.screenshot ||
-                                          request.paymentScreenshot ||
-                                          request.receipt
-                                        }
-                                        alt="Deposit Screenshot"
-                                        style={{
-                                          width:
-                                            "100%",
-                                          maxWidth:
-                                            "420px",
-                                          maxHeight:
-                                            "500px",
-                                          objectFit:
-                                            "contain",
-                                          display:
-                                            "block",
-                                          borderRadius:
-                                            "9px",
-                                          background:
-                                            "#ffffff",
-                                        }}
-                                      />
-                                    </div>
-                                  )}
-
-                                  {/* DEPOSIT ACTION */}
-
-                                  {request.status ===
-                                    "Pending" && (
                                     <div
                                       style={{
                                         display:
                                           "flex",
+                                        justifyContent:
+                                          "space-between",
+                                        alignItems:
+                                          "center",
                                         gap:
                                           "10px",
-                                        marginTop:
-                                          "14px",
+                                        marginBottom:
+                                          "12px",
                                         flexWrap:
                                           "wrap",
                                       }}
                                     >
-                                      <ActionButton
-                                        type="approve"
-                                        onClick={() =>
-                                          updateDepositStatus(
-                                            request.id,
-                                            "Approved"
-                                          )
+                                      <div>
+                                        <strong
+                                          style={{
+                                            color:
+                                              "#ffffff",
+                                            fontSize:
+                                              "14px",
+                                          }}
+                                        >
+                                          {
+                                            displayPlanName
+                                          }
+                                        </strong>
+
+                                        <p
+                                          style={{
+                                            margin:
+                                              "4px 0 0",
+                                            color:
+                                              MUTED,
+                                            fontSize:
+                                              "10px",
+                                          }}
+                                        >
+                                          ID:{" "}
+                                          {request.id ||
+                                            "N/A"}
+                                        </p>
+                                      </div>
+
+                                      <StatusBadge
+                                        status={
+                                          request.status ||
+                                          "Pending"
                                         }
-                                      >
-                                        ✅ Approve Deposit
-                                      </ActionButton>
+                                      />
+                                    </div>
 
-                                      <ActionButton
-                                        type="reject"
-                                        onClick={() =>
-                                          updateDepositStatus(
-                                            request.id,
-                                            "Rejected"
-                                          )
+                                    <DetailsGrid>
+                                      <Detail
+                                        label="Amount"
+                                        value={`PKR ${displayAmount.toLocaleString()}`}
+                                        highlight
+                                      />
+
+                                      <Detail
+                                        label="Weekly Return"
+                                        value={`PKR ${displayWeekly.toLocaleString()}`}
+                                      />
+
+                                      <Detail
+                                        label="Duration"
+                                        value="5 Years"
+                                      />
+
+                                      <Detail
+                                        label="Transaction ID"
+                                        value={
+                                          request.transactionId ||
+                                          request.txId ||
+                                          request.transectionId ||
+                                          request.transactionID ||
+                                          "N/A"
                                         }
+                                      />
+
+                                      <Detail
+                                        label="Deposit Number"
+                                        value={
+                                          request.number ||
+                                          request.depositNumber ||
+                                          request.mobileNumber ||
+                                          request.depositPhone ||
+                                          "N/A"
+                                        }
+                                      />
+
+                                      <Detail
+                                        label="Submitted"
+                                        value={
+                                          request.submittedAt
+                                            ? new Date(
+                                                request.submittedAt
+                                              ).toLocaleString()
+                                            : request.createdAt
+                                            ? new Date(
+                                                request.createdAt
+                                              ).toLocaleString()
+                                            : "N/A"
+                                        }
+                                      />
+                                    </DetailsGrid>
+
+                                    {/* DEPOSIT SCREENSHOT */}
+
+                                    {(request.screenshot ||
+                                      request.paymentScreenshot ||
+                                      request.receipt) && (
+                                      <div
+                                        style={{
+                                          marginTop:
+                                            "12px",
+                                          background:
+                                            "#102A43",
+                                          border:
+                                            `1px solid ${BORDER}`,
+                                          borderRadius:
+                                            "12px",
+                                          padding:
+                                            "12px",
+                                        }}
                                       >
-                                        ❌ Reject Deposit
-                                      </ActionButton>
-                                    </div>
-                                  )}
+                                        <div
+                                          style={{
+                                            color:
+                                              MUTED,
+                                            fontSize:
+                                              "10px",
+                                            textTransform:
+                                              "uppercase",
+                                            marginBottom:
+                                              "8px",
+                                            fontWeight:
+                                              "700",
+                                          }}
+                                        >
+                                          📷 Deposit Screenshot
+                                        </div>
 
-                                  {request.status ===
-                                    "Approved" && (
-                                    <div
-                                      style={{
-                                        marginTop:
-                                          "12px",
-                                        color:
-                                          GREEN,
-                                        fontSize:
-                                          "12px",
-                                        fontWeight:
-                                          "700",
-                                      }}
-                                    >
-                                      ✅ Plan Activated
-                                    </div>
-                                  )}
+                                        <img
+                                          src={
+                                            request.screenshot ||
+                                            request.paymentScreenshot ||
+                                            request.receipt
+                                          }
+                                          alt="Deposit Screenshot"
+                                          style={{
+                                            width:
+                                              "100%",
+                                            maxWidth:
+                                              "420px",
+                                            maxHeight:
+                                              "500px",
+                                            objectFit:
+                                              "contain",
+                                            display:
+                                              "block",
+                                            borderRadius:
+                                              "9px",
+                                            background:
+                                              "#ffffff",
+                                          }}
+                                        />
+                                      </div>
+                                    )}
 
-                                  {request.status ===
-                                    "Rejected" && (
-                                    <div
-                                      style={{
-                                        marginTop:
-                                          "12px",
-                                        color:
-                                          RED,
-                                        fontSize:
-                                          "12px",
-                                        fontWeight:
-                                          "700",
-                                      }}
-                                    >
-                                      ❌ Deposit Rejected
-                                    </div>
-                                  )}
-                                </div>
-                              )
+                                    {/* DEPOSIT ACTION */}
+
+                                    {request.status ===
+                                      "Pending" && (
+                                      <div
+                                        style={{
+                                          display:
+                                            "flex",
+                                          gap:
+                                            "10px",
+                                          marginTop:
+                                            "14px",
+                                          flexWrap:
+                                            "wrap",
+                                        }}
+                                      >
+                                        <ActionButton
+                                          type="approve"
+                                          onClick={() =>
+                                            updateDepositStatus(
+                                              request.id,
+                                              "Approved"
+                                            )
+                                          }
+                                        >
+                                          ✅ Approve Deposit
+                                        </ActionButton>
+
+                                        <ActionButton
+                                          type="reject"
+                                          onClick={() =>
+                                            updateDepositStatus(
+                                              request.id,
+                                              "Rejected"
+                                            )
+                                          }
+                                        >
+                                          ❌ Reject Deposit
+                                        </ActionButton>
+                                      </div>
+                                    )}
+
+                                    {request.status ===
+                                      "Approved" && (
+                                      <div
+                                        style={{
+                                          marginTop:
+                                            "12px",
+                                          color:
+                                            GREEN,
+                                          fontSize:
+                                            "12px",
+                                          fontWeight:
+                                            "700",
+                                        }}
+                                      >
+                                        ✅ Plan Activated • First Weekly Return Credited
+                                      </div>
+                                    )}
+
+                                    {request.status ===
+                                      "Rejected" && (
+                                      <div
+                                        style={{
+                                          marginTop:
+                                            "12px",
+                                          color:
+                                            RED,
+                                          fontSize:
+                                            "12px",
+                                          fontWeight:
+                                            "700",
+                                        }}
+                                      >
+                                        ❌ Deposit Rejected
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
                             )}
                           </div>
                         </div>
@@ -2204,7 +2513,8 @@ export default function Admin() {
                 style={{
                   display:
                     "grid",
-                  gap: "14px",
+                  gap:
+                    "14px",
                 }}
               >
                 {users.map(
@@ -2234,7 +2544,8 @@ export default function Admin() {
                             "flex",
                           alignItems:
                             "center",
-                          gap: "14px",
+                          gap:
+                            "14px",
                           marginBottom:
                             "15px",
                         }}

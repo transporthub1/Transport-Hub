@@ -14,19 +14,126 @@ export default function DepositHistory() {
       return;
     }
 
-    const savedDeposit = localStorage.getItem(
-      "transportDepositRequest"
-    );
+    const savedUser = localStorage.getItem("transportUser");
 
-    if (savedDeposit) {
-      try {
-        const deposit = JSON.parse(savedDeposit);
-        setDeposits([deposit]);
-      } catch (error) {
-        console.log("Could not load deposit history");
+    if (!savedUser) {
+      setLoading(false);
+      return;
+    }
+
+    let user = null;
+
+    try {
+      user = JSON.parse(savedUser);
+    } catch (error) {
+      console.log("Could not load user");
+      setLoading(false);
+      return;
+    }
+
+    const phone =
+      user?.phone ||
+      user?.mobile ||
+      user?.phoneNumber ||
+      user?.username ||
+      "";
+
+    let userDeposits = [];
+
+    /* CURRENT USER DEPOSIT HISTORY */
+
+    if (phone) {
+      const savedUserDeposits = localStorage.getItem(
+        "transportDepositRequests_" + phone
+      );
+
+      if (savedUserDeposits) {
+        try {
+          const parsedDeposits = JSON.parse(savedUserDeposits);
+
+          if (Array.isArray(parsedDeposits)) {
+            userDeposits = parsedDeposits;
+          }
+        } catch (error) {
+          console.log("Could not load user deposit history");
+        }
       }
     }
 
+    /* COMPATIBILITY WITH OLD SINGLE DEPOSIT DATA */
+
+    if (userDeposits.length === 0 && phone) {
+      const oldUserDeposit = localStorage.getItem(
+        "transportDepositRequest_" + phone
+      );
+
+      if (oldUserDeposit) {
+        try {
+          const deposit = JSON.parse(oldUserDeposit);
+
+          if (deposit) {
+            userDeposits = [deposit];
+          }
+        } catch (error) {
+          console.log("Could not load old deposit history");
+        }
+      }
+    }
+
+    /* GLOBAL DEPOSIT HISTORY FALLBACK */
+
+    if (userDeposits.length === 0) {
+      const globalDeposits = localStorage.getItem(
+        "transportDepositRequests"
+      );
+
+      if (globalDeposits) {
+        try {
+          const parsedDeposits = JSON.parse(globalDeposits);
+
+          if (Array.isArray(parsedDeposits)) {
+            userDeposits = parsedDeposits.filter((deposit) => {
+              const depositPhone =
+                deposit?.userPhone ||
+                deposit?.phone ||
+                deposit?.mobile ||
+                deposit?.user?.phone ||
+                "";
+
+              if (!depositPhone || !phone) {
+                return false;
+              }
+
+              return String(depositPhone) === String(phone);
+            });
+          }
+        } catch (error) {
+          console.log("Could not load global deposit history");
+        }
+      }
+    }
+
+    /* SORT NEWEST FIRST */
+
+    userDeposits.sort((a, b) => {
+      const dateA = new Date(
+        a?.submittedAt ||
+          a?.createdAt ||
+          a?.date ||
+          0
+      ).getTime();
+
+      const dateB = new Date(
+        b?.submittedAt ||
+          b?.createdAt ||
+          b?.date ||
+          0
+      ).getTime();
+
+      return dateB - dateA;
+    });
+
+    setDeposits(userDeposits);
     setLoading(false);
   }, []);
 
@@ -132,7 +239,7 @@ export default function DepositHistory() {
           <div>
             {deposits.map((deposit, index) => (
               <div
-                key={index}
+                key={deposit?.id || index}
                 style={{
                   background: "#102A43",
                   border: "1px solid #1E3A56",
@@ -274,7 +381,9 @@ export default function DepositHistory() {
                         lineHeight: "1.4",
                       }}
                     >
-                      {deposit.planName || "N/A"}
+                      {deposit.planName ||
+                        deposit.plan?.name ||
+                        "N/A"}
                     </strong>
                   </div>
 
@@ -310,7 +419,9 @@ export default function DepositHistory() {
                     >
                       PKR{" "}
                       {Number(
-                        deposit.amount || 0
+                        deposit.amount ||
+                          deposit.plan?.amount ||
+                          0
                       ).toLocaleString()}
                     </strong>
                   </div>
@@ -345,7 +456,9 @@ export default function DepositHistory() {
                         color: "#ffffff",
                       }}
                     >
-                      {deposit.bankName || "N/A"}
+                      {deposit.bankName ||
+                        deposit.paymentMethod ||
+                        "N/A"}
                     </strong>
                   </div>
 
@@ -380,9 +493,11 @@ export default function DepositHistory() {
                         lineHeight: "1.4",
                       }}
                     >
-                      {deposit.submittedAt
+                      {deposit.submittedAt ||
+                      deposit.createdAt
                         ? new Date(
-                            deposit.submittedAt
+                            deposit.submittedAt ||
+                              deposit.createdAt
                           ).toLocaleString()
                         : "N/A"}
                     </strong>

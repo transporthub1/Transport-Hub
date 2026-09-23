@@ -5,9 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 const DEFAULT_PLAN = {
   name: "Starter",
   price: 100,
+  weekly: 15,
+  durationWeeks: 260,
+  durationYears: 5,
+  totalReturn: 3900,
+
+  // Compatibility with old data
   daily: 15,
-  duration: 120,
-  totalReturn: 1800,
+  duration: 260,
 };
 
 function formatMoney(value) {
@@ -121,16 +126,23 @@ export default function DailyReturns() {
   const totalInvestment = useMemo(() => {
     return activePlans.reduce(
       (total, plan) =>
-        total + Number(plan.price || plan.amount || 0),
+        total +
+        Number(
+          plan.price ||
+          plan.amount ||
+          0
+        ),
       0
     );
   }, [activePlans]);
 
-  const totalDailyReturn = useMemo(() => {
+  const totalWeeklyReturn = useMemo(() => {
     return activePlans.reduce(
       (total, plan) =>
         total +
         Number(
+          plan.weekly ||
+          plan.weeklyReturn ||
           plan.daily ||
           plan.dailyReturn ||
           0
@@ -142,32 +154,79 @@ export default function DailyReturns() {
   const totalEarned = useMemo(() => {
     return activePlans.reduce(
       (total, plan) =>
-        total + Number(plan.earnedReturns || 0),
+        total +
+        Number(plan.earnedReturns || 0),
       0
     );
   }, [activePlans]);
 
   const totalExpectedReturn = useMemo(() => {
     return activePlans.reduce(
-      (total, plan) =>
-        total +
-        Number(
-          plan.totalReturn ||
-          plan.total ||
-          (
-            Number(
-              plan.daily ||
-              plan.dailyReturn ||
-              0
-            ) *
-            Number(plan.duration || 120)
-          )
-        ),
+      (total, plan) => {
+        const weekly = Number(
+          plan.weekly ||
+          plan.weeklyReturn ||
+          plan.daily ||
+          plan.dailyReturn ||
+          0
+        );
+
+        const durationWeeks = Number(
+          plan.durationWeeks || 260
+        );
+
+        const totalReturn =
+          Number(plan.totalReturn || 0) ||
+          weekly * durationWeeks;
+
+        return total + totalReturn;
+      },
       0
     );
   }, [activePlans]);
 
+  const getWeeklyAmount = (plan) => {
+    return Number(
+      plan.weekly ||
+      plan.weeklyReturn ||
+      plan.daily ||
+      plan.dailyReturn ||
+      0
+    );
+  };
+
+  const getDurationWeeks = (plan) => {
+    return Number(
+      plan.durationWeeks || 260
+    );
+  };
+
+  const getDurationYears = (plan) => {
+    return Number(
+      plan.durationYears || 5
+    );
+  };
+
   const getNextReturnTime = (plan) => {
+    /*
+      Admin approval creates:
+      lastReturnAt = approval time
+      nextReturnAt = approval time + 7 days
+
+      Use nextReturnAt first so the first immediate
+      return is NOT claimed again.
+    */
+
+    if (plan.nextReturnAt) {
+      const nextTime = new Date(
+        plan.nextReturnAt
+      ).getTime();
+
+      if (!Number.isNaN(nextTime)) {
+        return nextTime;
+      }
+    }
+
     const lastReturnAt =
       plan.lastReturnAt ||
       plan.activatedAt ||
@@ -177,17 +236,22 @@ export default function DailyReturns() {
       return null;
     }
 
-    const lastTime = new Date(lastReturnAt).getTime();
+    const lastTime =
+      new Date(lastReturnAt).getTime();
 
     if (Number.isNaN(lastTime)) {
       return null;
     }
 
-    return lastTime + 24 * 60 * 60 * 1000;
+    return (
+      lastTime +
+      7 * 24 * 60 * 60 * 1000
+    );
   };
 
   const canClaim = (plan) => {
-    const nextTime = getNextReturnTime(plan);
+    const nextTime =
+      getNextReturnTime(plan);
 
     if (!nextTime) {
       return false;
@@ -197,13 +261,15 @@ export default function DailyReturns() {
   };
 
   const getTimeRemaining = (plan) => {
-    const nextTime = getNextReturnTime(plan);
+    const nextTime =
+      getNextReturnTime(plan);
 
     if (!nextTime) {
       return "Waiting";
     }
 
-    const difference = nextTime - Date.now();
+    const difference =
+      nextTime - Date.now();
 
     if (difference <= 0) {
       return "Return Available";
@@ -213,12 +279,24 @@ export default function DailyReturns() {
       difference / (1000 * 60)
     );
 
+    const days = Math.floor(
+      totalMinutes / (60 * 24)
+    );
+
+    const remainingAfterDays =
+      totalMinutes -
+      days * 24 * 60;
+
     const hours = Math.floor(
-      totalMinutes / 60
+      remainingAfterDays / 60
     );
 
     const minutes =
-      totalMinutes % 60;
+      remainingAfterDays % 60;
+
+    if (days > 0) {
+      return `${days}d ${hours}h ${minutes}m remaining`;
+    }
 
     if (hours > 0) {
       return `${hours}h ${minutes}m remaining`;
@@ -277,41 +355,40 @@ export default function DailyReturns() {
       return;
     }
 
-    const plan = plans[actualIndex];
+    const plan =
+      plans[actualIndex];
 
     if (!canClaim(plan)) {
       setMessage(
-        "Today's return is not available yet. Please wait until 24 hours are completed."
+        "Weekly return is not available yet. Please wait until 7 days are completed."
       );
       setMessageType("error");
       return;
     }
 
-    const dailyAmount = Number(
-      plan.daily ||
-      plan.dailyReturn ||
-      0
-    );
+    const weeklyAmount =
+      getWeeklyAmount(plan);
 
-    const duration = Number(
-      plan.duration || 120
-    );
+    const durationWeeks =
+      getDurationWeeks(plan);
 
     const returnsPaid = Number(
       plan.returnsPaid || 0
     );
 
-    if (returnsPaid >= duration) {
+    if (
+      returnsPaid >= durationWeeks
+    ) {
       setMessage(
-        "This transport plan has completed all daily returns."
+        "This transport plan has completed all weekly returns."
       );
       setMessageType("error");
       return;
     }
 
-    if (dailyAmount <= 0) {
+    if (weeklyAmount <= 0) {
       setMessage(
-        "Daily return amount is not available for this plan."
+        "Weekly return amount is not available for this plan."
       );
       setMessageType("error");
       return;
@@ -323,22 +400,55 @@ export default function DailyReturns() {
 
     const newEarnedReturns =
       Number(plan.earnedReturns || 0) +
-      dailyAmount;
+      weeklyAmount;
 
     const newReturnsPaid =
       returnsPaid + 1;
 
-    const now = new Date().toISOString();
+    const now =
+      new Date().toISOString();
+
+    const nextReturnAt =
+      new Date(
+        Date.now() +
+        7 * 24 * 60 * 60 * 1000
+      ).toISOString();
 
     const updatedPlan = {
       ...plan,
-      returnsPaid: newReturnsPaid,
-      earnedReturns: newEarnedReturns,
+
+      weekly: weeklyAmount,
+      weeklyReturn: weeklyAmount,
+
+      // Compatibility with old data
+      daily: weeklyAmount,
+      dailyReturn: weeklyAmount,
+
+      durationWeeks,
+      durationYears:
+        Number(plan.durationYears || 5),
+
+      // Compatibility
+      duration: durationWeeks,
+
+      returnsPaid:
+        newReturnsPaid,
+
+      earnedReturns:
+        newEarnedReturns,
+
+      totalEarned:
+        newEarnedReturns,
+
       lastReturnAt: now,
+
+      nextReturnAt,
+
       updatedAt: now,
     };
 
-    const updatedPlans = [...plans];
+    const updatedPlans =
+      [...plans];
 
     updatedPlans[actualIndex] =
       updatedPlan;
@@ -348,21 +458,25 @@ export default function DailyReturns() {
       updatedPlans
     );
 
-    if (updatedPlans.length === 1) {
+    if (
+      updatedPlans.length === 1
+    ) {
       saveJSON(
         "transportActivePlan",
         updatedPlan
       );
     }
 
-    const oldWithdrawable = Number(
-      localStorage.getItem(
-        `transportWithdrawableReturns_${phone}`
-      ) || 0
-    );
+    const oldWithdrawable =
+      Number(
+        localStorage.getItem(
+          `transportWithdrawableReturns_${phone}`
+        ) || 0
+      );
 
     const newWithdrawable =
-      oldWithdrawable + dailyAmount;
+      oldWithdrawable +
+      weeklyAmount;
 
     localStorage.setItem(
       `transportWithdrawableReturns_${phone}`,
@@ -380,14 +494,17 @@ export default function DailyReturns() {
 
     const newTransaction = {
       id:
-        "daily-return-" +
+        "weekly-return-" +
         Date.now() +
         "-" +
         actualIndex,
 
-      type: "Daily Return",
+      type: "Return",
 
-      amount: dailyAmount,
+      returnType: "Weekly",
+
+      amount:
+        weeklyAmount,
 
       status: "Completed",
 
@@ -397,7 +514,7 @@ export default function DailyReturns() {
         "Transport Plan",
 
       description:
-        `Daily return from ${
+        `Weekly return from ${
           updatedPlan.name ||
           updatedPlan.planName ||
           "Transport Plan"
@@ -432,11 +549,13 @@ export default function DailyReturns() {
 
     setMessage(
       `PKR ${formatMoney(
-        dailyAmount
-      )} daily return has been added to your withdrawable balance.`
+        weeklyAmount
+      )} weekly return has been added to your withdrawable balance.`
     );
 
-    setMessageType("success");
+    setMessageType(
+      "success"
+    );
 
     setTimeout(() => {
       setClaimingId(null);
@@ -459,7 +578,7 @@ export default function DailyReturns() {
           </div>
 
           <h2 style={styles.loadingTitle}>
-            Loading Daily Returns
+            Loading Weekly Returns
           </h2>
 
           <p style={styles.loadingText}>
@@ -484,7 +603,7 @@ export default function DailyReturns() {
 
             <div>
               <h1 style={styles.title}>
-                Daily Returns
+                Weekly Returns
               </h1>
 
               <p style={styles.subtitle}>
@@ -495,9 +614,12 @@ export default function DailyReturns() {
 
           <button
             onClick={() => {
-              window.location.href = "/";
+              window.location.href =
+                "/";
             }}
-            style={styles.dashboardButton}
+            style={
+              styles.dashboardButton
+            }
           >
             ← Dashboard
           </button>
@@ -516,16 +638,23 @@ export default function DailyReturns() {
               }
             >
               <span>
-                {messageType === "error"
+                {messageType ===
+                "error"
                   ? "⚠️"
                   : "✅"}
               </span>
 
-              <span>{message}</span>
+              <span>
+                {message}
+              </span>
 
               <button
-                onClick={() => setMessage("")}
-                style={styles.closeMessage}
+                onClick={() =>
+                  setMessage("")
+                }
+                style={
+                  styles.closeMessage
+                }
               >
                 ×
               </button>
@@ -536,23 +665,39 @@ export default function DailyReturns() {
 
           <div style={styles.walletCard}>
             <div>
-              <p style={styles.walletLabel}>
+              <p
+                style={
+                  styles.walletLabel
+                }
+              >
                 Withdrawable Returns
               </p>
 
-              <h2 style={styles.walletAmount}>
+              <h2
+                style={
+                  styles.walletAmount
+                }
+              >
                 PKR{" "}
                 {formatMoney(
                   withdrawableReturns
                 )}
               </h2>
 
-              <p style={styles.walletText}>
-                Available balance from completed daily returns
+              <p
+                style={
+                  styles.walletText
+                }
+              >
+                Available balance from completed weekly returns
               </p>
             </div>
 
-            <div style={styles.walletIcon}>
+            <div
+              style={
+                styles.walletIcon
+              }
+            >
               💰
             </div>
           </div>
@@ -562,32 +707,64 @@ export default function DailyReturns() {
           <div className="statsGrid">
 
             <div style={styles.statCard}>
-              <div style={styles.statIcon}>
+              <div
+                style={
+                  styles.statIcon
+                }
+              >
                 🚛
               </div>
 
-              <div style={styles.statContent}>
-                <p style={styles.statLabel}>
+              <div
+                style={
+                  styles.statContent
+                }
+              >
+                <p
+                  style={
+                    styles.statLabel
+                  }
+                >
                   Active Plans
                 </p>
 
-                <h3 style={styles.statValue}>
+                <h3
+                  style={
+                    styles.statValue
+                  }
+                >
                   {activePlans.length}
                 </h3>
               </div>
             </div>
 
             <div style={styles.statCard}>
-              <div style={styles.statIcon}>
+              <div
+                style={
+                  styles.statIcon
+                }
+              >
                 💵
               </div>
 
-              <div style={styles.statContent}>
-                <p style={styles.statLabel}>
+              <div
+                style={
+                  styles.statContent
+                }
+              >
+                <p
+                  style={
+                    styles.statLabel
+                  }
+                >
                   Total Investment
                 </p>
 
-                <h3 style={styles.statValue}>
+                <h3
+                  style={
+                    styles.statValue
+                  }
+                >
                   PKR{" "}
                   {formatMoney(
                     totalInvestment
@@ -597,35 +774,67 @@ export default function DailyReturns() {
             </div>
 
             <div style={styles.statCard}>
-              <div style={styles.statIcon}>
+              <div
+                style={
+                  styles.statIcon
+                }
+              >
                 📅
               </div>
 
-              <div style={styles.statContent}>
-                <p style={styles.statLabel}>
-                  Daily Return
+              <div
+                style={
+                  styles.statContent
+                }
+              >
+                <p
+                  style={
+                    styles.statLabel
+                  }
+                >
+                  Weekly Return
                 </p>
 
-                <h3 style={styles.greenValue}>
+                <h3
+                  style={
+                    styles.greenValue
+                  }
+                >
                   PKR{" "}
                   {formatMoney(
-                    totalDailyReturn
+                    totalWeeklyReturn
                   )}
                 </h3>
               </div>
             </div>
 
             <div style={styles.statCard}>
-              <div style={styles.statIcon}>
+              <div
+                style={
+                  styles.statIcon
+                }
+              >
                 💎
               </div>
 
-              <div style={styles.statContent}>
-                <p style={styles.statLabel}>
+              <div
+                style={
+                  styles.statContent
+                }
+              >
+                <p
+                  style={
+                    styles.statLabel
+                  }
+                >
                   Total Earned
                 </p>
 
-                <h3 style={styles.greenValue}>
+                <h3
+                  style={
+                    styles.greenValue
+                  }
+                >
                   PKR{" "}
                   {formatMoney(
                     totalEarned
@@ -639,19 +848,36 @@ export default function DailyReturns() {
           {/* NO ACTIVE PLAN */}
 
           {activePlans.length === 0 && (
-            <div style={styles.emptyCard}>
-              <div style={styles.emptyIcon}>
+            <div
+              style={
+                styles.emptyCard
+              }
+            >
+              <div
+                style={
+                  styles.emptyIcon
+                }
+              >
                 🚛
               </div>
 
-              <h2 style={styles.emptyTitle}>
+              <h2
+                style={
+                  styles.emptyTitle
+                }
+              >
                 No Active Transport Plan
               </h2>
 
-              <p style={styles.emptyText}>
-                You do not have an approved transport
-                plan yet. Select a plan and submit your
-                deposit to get started.
+              <p
+                style={
+                  styles.emptyText
+                }
+              >
+                You do not have an approved
+                transport plan yet. Select a
+                plan and submit your deposit
+                to get started.
               </p>
 
               <button
@@ -659,7 +885,9 @@ export default function DailyReturns() {
                   window.location.href =
                     "/transport-plans";
                 }}
-                style={styles.primaryButton}
+                style={
+                  styles.primaryButton
+                }
               >
                 View Transport Plans
               </button>
@@ -670,19 +898,38 @@ export default function DailyReturns() {
 
           {activePlans.length > 0 && (
             <div>
-              <div style={styles.sectionHeader}>
+
+              <div
+                style={
+                  styles.sectionHeader
+                }
+              >
                 <div>
-                  <h2 style={styles.sectionTitle}>
+                  <h2
+                    style={
+                      styles.sectionTitle
+                    }
+                  >
                     Active Transport Plans
                   </h2>
 
-                  <p style={styles.sectionText}>
-                    Claim your daily return after each
-                    completed 24-hour cycle.
+                  <p
+                    style={
+                      styles.sectionText
+                    }
+                  >
+                    Your first weekly return is
+                    credited upon plan approval.
+                    The next return becomes available
+                    after each completed 7-day cycle.
                   </p>
                 </div>
 
-                <div style={styles.expectedBadge}>
+                <div
+                  style={
+                    styles.expectedBadge
+                  }
+                >
                   Expected: PKR{" "}
                   {formatMoney(
                     totalExpectedReturn
@@ -690,21 +937,28 @@ export default function DailyReturns() {
                 </div>
               </div>
 
-              <div style={styles.plansGrid}>
+              <div
+                style={
+                  styles.plansGrid
+                }
+              >
 
                 {activePlans.map(
                   (plan, index) => {
-                    const dailyAmount =
-                      Number(
-                        plan.daily ||
-                        plan.dailyReturn ||
-                        0
+
+                    const weeklyAmount =
+                      getWeeklyAmount(
+                        plan
                       );
 
-                    const duration =
-                      Number(
-                        plan.duration ||
-                        120
+                    const durationWeeks =
+                      getDurationWeeks(
+                        plan
+                      );
+
+                    const durationYears =
+                      getDurationYears(
+                        plan
                       );
 
                     const returnsPaid =
@@ -716,12 +970,13 @@ export default function DailyReturns() {
                     const earned =
                       Number(
                         plan.earnedReturns ||
+                        plan.totalEarned ||
                         0
                       );
 
                     const completed =
                       returnsPaid >=
-                      duration;
+                      durationWeeks;
 
                     const available =
                       canClaim(plan);
@@ -738,27 +993,53 @@ export default function DailyReturns() {
                         }
                       >
 
-                        <div style={styles.planTop}>
+                        <div
+                          style={
+                            styles.planTop
+                          }
+                        >
                           <div>
-                            <span style={styles.planTag}>
+
+                            <span
+                              style={
+                                styles.planTag
+                              }
+                            >
                               ACTIVE PLAN
                             </span>
 
-                            <h3 style={styles.planName}>
+                            <h3
+                              style={
+                                styles.planName
+                              }
+                            >
                               {plan.name ||
                                 plan.planName ||
                                 "Transport Plan"}
                             </h3>
+
                           </div>
 
-                          <div style={styles.planEmoji}>
+                          <div
+                            style={
+                              styles.planEmoji
+                            }
+                          >
                             🚛
                           </div>
                         </div>
 
-                        <div style={styles.planGrid}>
+                        <div
+                          style={
+                            styles.planGrid
+                          }
+                        >
 
-                          <div style={styles.planInfo}>
+                          <div
+                            style={
+                              styles.planInfo
+                            }
+                          >
                             <span>
                               Investment
                             </span>
@@ -773,44 +1054,68 @@ export default function DailyReturns() {
                             </strong>
                           </div>
 
-                          <div style={styles.planInfo}>
+                          <div
+                            style={
+                              styles.planInfo
+                            }
+                          >
                             <span>
-                              Daily Return
+                              Weekly Return
                             </span>
 
-                            <strong style={styles.greenText}>
+                            <strong
+                              style={
+                                styles.greenText
+                              }
+                            >
                               PKR{" "}
                               {formatMoney(
-                                dailyAmount
+                                weeklyAmount
                               )}
                             </strong>
                           </div>
 
-                          <div style={styles.planInfo}>
+                          <div
+                            style={
+                              styles.planInfo
+                            }
+                          >
                             <span>
                               Duration
                             </span>
 
                             <strong>
-                              {duration} Days
+                              {durationYears} Years
                             </strong>
                           </div>
 
-                          <div style={styles.planInfo}>
+                          <div
+                            style={
+                              styles.planInfo
+                            }
+                          >
                             <span>
                               Returns Paid
                             </span>
 
                             <strong>
                               {returnsPaid} /{" "}
-                              {duration}
+                              {durationWeeks}
                             </strong>
                           </div>
 
                         </div>
 
-                        <div style={styles.progressArea}>
-                          <div style={styles.progressHeader}>
+                        <div
+                          style={
+                            styles.progressArea
+                          }
+                        >
+                          <div
+                            style={
+                              styles.progressHeader
+                            }
+                          >
                             <span>
                               Plan Progress
                             </span>
@@ -820,21 +1125,25 @@ export default function DailyReturns() {
                                 100,
                                 Math.round(
                                   (returnsPaid /
-                                    duration) *
+                                    durationWeeks) *
                                     100
                                 )
                               )}%
                             </strong>
                           </div>
 
-                          <div style={styles.progressTrack}>
+                          <div
+                            style={
+                              styles.progressTrack
+                            }
+                          >
                             <div
                               style={{
                                 ...styles.progressBar,
                                 width: `${Math.min(
                                   100,
                                   (returnsPaid /
-                                    duration) *
+                                    durationWeeks) *
                                     100
                                 )}%`,
                               }}
@@ -842,13 +1151,25 @@ export default function DailyReturns() {
                           </div>
                         </div>
 
-                        <div style={styles.earnedBox}>
+                        <div
+                          style={
+                            styles.earnedBox
+                          }
+                        >
                           <div>
-                            <span style={styles.earnedLabel}>
+                            <span
+                              style={
+                                styles.earnedLabel
+                              }
+                            >
                               Earned From This Plan
                             </span>
 
-                            <strong style={styles.earnedAmount}>
+                            <strong
+                              style={
+                                styles.earnedAmount
+                              }
+                            >
                               PKR{" "}
                               {formatMoney(
                                 earned
@@ -856,7 +1177,11 @@ export default function DailyReturns() {
                             </strong>
                           </div>
 
-                          <div style={styles.clock}>
+                          <div
+                            style={
+                              styles.clock
+                            }
+                          >
                             {completed
                               ? "✅ Completed"
                               : available
@@ -891,8 +1216,8 @@ export default function DailyReturns() {
                               ? "Processing..."
                               : available
                               ? `💰 Claim PKR ${formatMoney(
-                                  dailyAmount
-                                )} Return`
+                                  weeklyAmount
+                                )} Weekly Return`
                               : `⏳ ${getTimeRemaining(
                                   plan
                                 )}`}
@@ -900,9 +1225,14 @@ export default function DailyReturns() {
                         )}
 
                         {completed && (
-                          <div style={styles.completedBox}>
+                          <div
+                            style={
+                              styles.completedBox
+                            }
+                          >
                             🎉 This plan has completed
-                            all {duration} daily returns.
+                            all {durationWeeks} weekly
+                            returns.
                           </div>
                         )}
 
@@ -917,68 +1247,159 @@ export default function DailyReturns() {
 
           {/* SIMPLE INFORMATION LINES */}
 
-          <div style={styles.simpleInfoSection}>
+          <div
+            style={
+              styles.simpleInfoSection
+            }
+          >
 
-            <div style={styles.simpleInfoLine}>
-              <span style={styles.infoNumber}>
+            <div
+              style={
+                styles.simpleInfoLine
+              }
+            >
+              <span
+                style={
+                  styles.infoNumber
+                }
+              >
                 1
               </span>
 
-              <div style={styles.simpleInfoContent}>
-                <strong style={styles.simpleInfoTitle}>
+              <div
+                style={
+                  styles.simpleInfoContent
+                }
+              >
+                <strong
+                  style={
+                    styles.simpleInfoTitle
+                  }
+                >
                   Plan Approval
                 </strong>
 
-                <p style={styles.simpleInfoText}>
-                  Your deposit must be approved by the admin before returns begin.
+                <p
+                  style={
+                    styles.simpleInfoText
+                  }
+                >
+                  Your deposit must be approved
+                  by the admin. The first weekly
+                  return is credited immediately
+                  after approval.
                 </p>
               </div>
             </div>
 
-            <div style={styles.simpleInfoLine}>
-              <span style={styles.infoNumber}>
+            <div
+              style={
+                styles.simpleInfoLine
+              }
+            >
+              <span
+                style={
+                  styles.infoNumber
+                }
+              >
                 2
               </span>
 
-              <div style={styles.simpleInfoContent}>
-                <strong style={styles.simpleInfoTitle}>
-                  24-Hour Cycle
+              <div
+                style={
+                  styles.simpleInfoContent
+                }
+              >
+                <strong
+                  style={
+                    styles.simpleInfoTitle
+                  }
+                >
+                  7-Day Cycle
                 </strong>
 
-                <p style={styles.simpleInfoText}>
-                  A daily return becomes available after each completed 24-hour cycle.
+                <p
+                  style={
+                    styles.simpleInfoText
+                  }
+                >
+                  After the first return, a new
+                  weekly return becomes available
+                  after each completed 7-day cycle.
                 </p>
               </div>
             </div>
 
-            <div style={styles.simpleInfoLine}>
-              <span style={styles.infoNumber}>
+            <div
+              style={
+                styles.simpleInfoLine
+              }
+            >
+              <span
+                style={
+                  styles.infoNumber
+                }
+              >
                 3
               </span>
 
-              <div style={styles.simpleInfoContent}>
-                <strong style={styles.simpleInfoTitle}>
-                  Claim Return
+              <div
+                style={
+                  styles.simpleInfoContent
+                }
+              >
+                <strong
+                  style={
+                    styles.simpleInfoTitle
+                  }
+                >
+                  Claim Weekly Return
                 </strong>
 
-                <p style={styles.simpleInfoText}>
-                  Click the claim button when your daily return becomes available.
+                <p
+                  style={
+                    styles.simpleInfoText
+                  }
+                >
+                  Click the claim button when your
+                  weekly return becomes available.
                 </p>
               </div>
             </div>
 
-            <div style={styles.simpleInfoLine}>
-              <span style={styles.infoNumber}>
+            <div
+              style={
+                styles.simpleInfoLine
+              }
+            >
+              <span
+                style={
+                  styles.infoNumber
+                }
+              >
                 4
               </span>
 
-              <div style={styles.simpleInfoContent}>
-                <strong style={styles.simpleInfoTitle}>
+              <div
+                style={
+                  styles.simpleInfoContent
+                }
+              >
+                <strong
+                  style={
+                    styles.simpleInfoTitle
+                  }
+                >
                   Withdrawable Balance
                 </strong>
 
-                <p style={styles.simpleInfoText}>
-                  Claimed returns are added to your withdrawable returns balance.
+                <p
+                  style={
+                    styles.simpleInfoText
+                  }
+                >
+                  Claimed returns are added to your
+                  withdrawable returns balance.
                 </p>
               </div>
             </div>
@@ -987,14 +1408,20 @@ export default function DailyReturns() {
 
           {/* BUTTONS */}
 
-          <div style={styles.buttons}>
+          <div
+            style={
+              styles.buttons
+            }
+          >
 
             <button
               onClick={() => {
                 window.location.href =
                   "/withdraw";
               }}
-              style={styles.primaryButton}
+              style={
+                styles.primaryButton
+              }
             >
               💸 Withdraw Returns
             </button>
@@ -1004,7 +1431,9 @@ export default function DailyReturns() {
                 window.location.href =
                   "/transport-plans";
               }}
-              style={styles.secondaryButton}
+              style={
+                styles.secondaryButton
+              }
             >
               🚛 View Transport Plans
             </button>
@@ -1014,7 +1443,9 @@ export default function DailyReturns() {
                 window.location.href =
                   "/";
               }}
-              style={styles.secondaryButton}
+              style={
+                styles.secondaryButton
+              }
             >
               ← Back to Dashboard
             </button>
@@ -1025,6 +1456,7 @@ export default function DailyReturns() {
       </div>
 
       {/* MOBILE RESPONSIVE FIX */}
+
       <style jsx>{`
         .statsGrid {
           display: grid;
@@ -1092,8 +1524,10 @@ const styles = {
     borderRadius: "18px",
     padding: "35px",
     textAlign: "center",
-    boxShadow: "0 10px 30px rgba(16,42,67,0.18)",
-    border: "1px solid #1E3A56",
+    boxShadow:
+      "0 10px 30px rgba(16,42,67,0.18)",
+    border:
+      "1px solid #1E3A56",
   },
 
   loadingIcon: {
@@ -1120,7 +1554,8 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: "20px",
-    borderBottom: "1px solid #1E3A56",
+    borderBottom:
+      "1px solid #1E3A56",
     boxShadow:
       "0 8px 24px rgba(16,42,67,0.18)",
   },
@@ -1155,7 +1590,8 @@ const styles = {
   },
 
   dashboardButton: {
-    border: "1px solid #45627C",
+    border:
+      "1px solid #45627C",
     background: "#173B5A",
     color: "#ffffff",
     padding: "11px 17px",
@@ -1170,7 +1606,8 @@ const styles = {
 
   successMessage: {
     background: "#173B5A",
-    border: "1px solid #3E8E5B",
+    border:
+      "1px solid #3E8E5B",
     color: "#ffffff",
     borderRadius: "12px",
     padding: "14px 16px",
@@ -1183,7 +1620,8 @@ const styles = {
 
   errorMessage: {
     background: "#573533",
-    border: "1px solid #A65B52",
+    border:
+      "1px solid #A65B52",
     color: "#ffffff",
     borderRadius: "12px",
     padding: "14px 16px",
@@ -1212,7 +1650,8 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: "20px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     boxShadow:
       "0 8px 24px rgba(16,42,67,0.16)",
     marginBottom: "20px",
@@ -1262,7 +1701,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "13px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     boxShadow:
       "0 5px 16px rgba(16,42,67,0.13)",
     boxSizing: "border-box",
@@ -1280,6 +1720,11 @@ const styles = {
     justifyContent: "center",
     fontSize: "21px",
     flexShrink: 0,
+  },
+
+  statContent: {
+    minWidth: 0,
+    flex: 1,
   },
 
   statLabel: {
@@ -1307,7 +1752,8 @@ const styles = {
     borderRadius: "20px",
     padding: "45px 25px",
     textAlign: "center",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     boxShadow:
       "0 7px 22px rgba(16,42,67,0.14)",
     marginBottom: "25px",
@@ -1357,7 +1803,8 @@ const styles = {
     color: "#8FD694",
     padding: "10px 14px",
     borderRadius: "9px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     fontSize: "13px",
     fontWeight: "700",
     whiteSpace: "nowrap",
@@ -1375,7 +1822,8 @@ const styles = {
     background: "#102A43",
     borderRadius: "19px",
     padding: "23px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     boxShadow:
       "0 7px 22px rgba(16,42,67,0.15)",
   },
@@ -1433,11 +1881,6 @@ const styles = {
     gap: "5px",
   },
 
-  planInfoSpan: {
-    color: "#9FB3C8",
-    fontSize: "11px",
-  },
-
   greenText: {
     color: "#8FD694",
   },
@@ -1466,7 +1909,8 @@ const styles = {
     background:
       "linear-gradient(90deg, #3E8E5B, #8FD694)",
     borderRadius: "20px",
-    transition: "width 0.3s ease",
+    transition:
+      "width 0.3s ease",
   },
 
   earnedBox: {
@@ -1514,7 +1958,8 @@ const styles = {
 
   disabledButton: {
     width: "100%",
-    border: "1px solid #45627C",
+    border:
+      "1px solid #45627C",
     background: "#173B5A",
     color: "#9FB3C8",
     padding: "13px 16px",
@@ -1526,7 +1971,8 @@ const styles = {
 
   completedBox: {
     background: "#173B5A",
-    border: "1px solid #3E8E5B",
+    border:
+      "1px solid #3E8E5B",
     color: "#8FD694",
     padding: "13px",
     borderRadius: "9px",
@@ -1545,7 +1991,8 @@ const styles = {
     alignItems: "flex-start",
     gap: "12px",
     padding: "12px 0",
-    borderBottom: "1px solid #d8e1e8",
+    borderBottom:
+      "1px solid #d8e1e8",
   },
 
   simpleInfoContent: {
@@ -1601,7 +2048,8 @@ const styles = {
   },
 
   secondaryButton: {
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     background: "#102A43",
     color: "#ffffff",
     padding: "13px 19px",

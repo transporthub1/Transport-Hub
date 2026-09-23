@@ -2,21 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const PLAN_DURATION = 120;
+const PLAN_DURATION_WEEKS = 260;
+const PLAN_DURATION_YEARS = 5;
 
 const plans = [
-  { name: "Starter", price: 100, daily: 15, duration: 120 },
-  { name: "Basic", price: 500, daily: 75, duration: 120 },
-  { name: "Standard", price: 1500, daily: 225, duration: 120 },
-  { name: "Premium", price: 3500, daily: 525, duration: 120 },
-  { name: "Advanced", price: 7500, daily: 1125, duration: 120 },
-  { name: "Professional", price: 13000, daily: 1950, duration: 120 },
-  { name: "Elite", price: 25000, daily: 3750, duration: 120 },
-  { name: "Executive", price: 50000, daily: 7500, duration: 120 },
-  { name: "Platinum", price: 125000, daily: 18750, duration: 120 },
-  { name: "Diamond", price: 175000, daily: 26250, duration: 120 },
-  { name: "Royal", price: 225000, daily: 33750, duration: 120 },
-  { name: "Grand Royal", price: 300000, daily: 45000, duration: 120 },
+  { name: "Starter", price: 100, weekly: 15, durationWeeks: 260, durationYears: 5 },
+  { name: "Basic", price: 500, weekly: 75, durationWeeks: 260, durationYears: 5 },
+  { name: "Standard", price: 1500, weekly: 225, durationWeeks: 260, durationYears: 5 },
+  { name: "Premium", price: 3500, weekly: 525, durationWeeks: 260, durationYears: 5 },
+  { name: "Advanced", price: 7500, weekly: 1125, durationWeeks: 260, durationYears: 5 },
+  { name: "Professional", price: 13000, weekly: 1950, durationWeeks: 260, durationYears: 5 },
+  { name: "Elite", price: 25000, weekly: 3750, durationWeeks: 260, durationYears: 5 },
+  { name: "Executive", price: 50000, weekly: 7500, durationWeeks: 260, durationYears: 5 },
+  { name: "Platinum", price: 125000, weekly: 18750, durationWeeks: 260, durationYears: 5 },
+  { name: "Diamond", price: 175000, weekly: 26250, durationWeeks: 260, durationYears: 5 },
+  { name: "Royal", price: 225000, weekly: 33750, durationWeeks: 260, durationYears: 5 },
+  { name: "Grand Royal", price: 300000, weekly: 45000, durationWeeks: 260, durationYears: 5 },
 ];
 
 function formatMoney(value) {
@@ -63,6 +64,26 @@ function getUserName(user) {
   const combinedName = (firstName + " " + lastName).trim();
 
   return combinedName || "User";
+}
+
+function getWeeklyReturn(plan) {
+  return Number(
+    plan?.weekly ??
+      plan?.weeklyReturn ??
+      plan?.daily ??
+      plan?.dailyReturn ??
+      0
+  );
+}
+
+function getDurationWeeks(plan) {
+  const savedDurationWeeks = Number(plan?.durationWeeks || 0);
+
+  if (savedDurationWeeks >= 260) {
+    return savedDurationWeeks;
+  }
+
+  return PLAN_DURATION_WEEKS;
 }
 
 export default function Dashboard() {
@@ -126,12 +147,51 @@ export default function Dashboard() {
     );
 
     if (storedActivePlans.length > 0) {
-      setActivePlans(storedActivePlans);
+      const normalizedPlans = storedActivePlans.map((plan) => ({
+        ...plan,
+
+        weekly:
+          Number(
+            plan.weekly ??
+              plan.weeklyReturn ??
+              plan.daily ??
+              plan.dailyReturn ??
+              0
+          ),
+
+        durationWeeks: PLAN_DURATION_WEEKS,
+        durationYears: PLAN_DURATION_YEARS,
+        duration: PLAN_DURATION_WEEKS,
+      }));
+
+      setActivePlans(normalizedPlans);
+
+      saveStorage(
+        "transportActivePlans_" + phone,
+        normalizedPlans
+      );
     } else {
       const oldPlan = getStorageObject("transportActivePlan");
 
       if (oldPlan) {
-        setActivePlans([oldPlan]);
+        const normalizedOldPlan = {
+          ...oldPlan,
+
+          weekly:
+            Number(
+              oldPlan.weekly ??
+                oldPlan.weeklyReturn ??
+                oldPlan.daily ??
+                oldPlan.dailyReturn ??
+                0
+            ),
+
+          durationWeeks: PLAN_DURATION_WEEKS,
+          durationYears: PLAN_DURATION_YEARS,
+          duration: PLAN_DURATION_WEEKS,
+        };
+
+        setActivePlans([normalizedOldPlan]);
       }
     }
 
@@ -144,11 +204,15 @@ export default function Dashboard() {
     setWithdrawableReturns(storedWithdrawable);
 
     setTransactions(
-      getStorageArray("transportTransactions_" + phone)
+      getStorageArray(
+        "transportTransactions_" + phone
+      )
     );
 
     setTeamMembers(
-      getStorageArray("transportTeam_" + phone)
+      getStorageArray(
+        "transportTeam_" + phone
+      )
     );
 
     setLoading(false);
@@ -158,39 +222,44 @@ export default function Dashboard() {
 
   const totalInvestment = useMemo(() => {
     return activePlans.reduce(
-      (total, plan) => total + Number(plan.price || 0),
+      (total, plan) =>
+        total + Number(plan.price || 0),
       0
     );
   }, [activePlans]);
 
-  const dailyReturn = useMemo(() => {
+  const weeklyReturn = useMemo(() => {
     return activePlans.reduce(
-      (total, plan) => total + Number(plan.daily || 0),
+      (total, plan) =>
+        total + getWeeklyReturn(plan),
       0
     );
   }, [activePlans]);
 
+  /*
+    Total Earned:
+    Admin approval gives the first weekly return immediately.
+    Weekly Returns page updates earnedReturns after each
+    successful weekly return claim.
+
+    Therefore Dashboard uses the stored earnedReturns /
+    totalEarned value instead of calculating from elapsed
+    time. This prevents the first immediate return from
+    being missed.
+  */
   const earnedReturns = useMemo(() => {
     return activePlans.reduce((total, plan) => {
-      const start = Number(plan.startTime || Date.now());
-      const now = Date.now();
-
-      const daysPassed = Math.max(
-        0,
-        Math.floor(
-          (now - start) / (1000 * 60 * 60 * 24)
-        )
+      const storedEarned = Number(
+        plan.earnedReturns ??
+          plan.totalEarned ??
+          0
       );
 
-      const eligibleDays = Math.min(
-        daysPassed,
-        Number(plan.duration || PLAN_DURATION)
-      );
+      if (storedEarned > 0) {
+        return total + storedEarned;
+      }
 
-      return (
-        total +
-        eligibleDays * Number(plan.daily || 0)
-      );
+      return total;
     }, 0);
   }, [activePlans]);
 
@@ -198,8 +267,8 @@ export default function Dashboard() {
     return activePlans.reduce(
       (total, plan) =>
         total +
-        Number(plan.daily || 0) *
-          Number(plan.duration || PLAN_DURATION),
+        getWeeklyReturn(plan) *
+          PLAN_DURATION_WEEKS,
       0
     );
   }, [activePlans]);
@@ -302,16 +371,15 @@ export default function Dashboard() {
     }, 0);
   }, [teamMembers]);
 
-  const todayProfit = dailyReturn;
-  const yesterdayProfit = dailyReturn;
-  const weekProfit = dailyReturn * 7;
-  const monthProfit = dailyReturn * 30;
+  const todayProfit = weeklyReturn;
+  const yesterdayProfit = weeklyReturn;
+  const weekProfit = weeklyReturn;
+  const monthProfit = weeklyReturn * 4;
 
   const walletBalance =
     Number(user?.balance || 0) +
     Number(withdrawableReturns || 0);
 
-  /* REFERRAL CODE - AUTO GENERATED AND SAVED */
   const referralCode = useMemo(() => {
     if (!user) return "";
 
@@ -379,9 +447,11 @@ export default function Dashboard() {
       <div style={styles.loadingScreen}>
         <div style={styles.loadingCard}>
           <div style={styles.loadingIcon}>🚛</div>
+
           <div style={styles.loadingTitle}>
             Transport Hub
           </div>
+
           <div style={styles.loadingText}>
             Loading your dashboard...
           </div>
@@ -558,11 +628,11 @@ export default function Dashboard() {
             <button
               style={styles.navItem}
               onClick={() =>
-                goTo("/daily-returns")
+                goTo("/weekly-returns")
               }
             >
               <span>🎁</span>
-              <span>Daily Returns</span>
+              <span>Weekly Returns</span>
             </button>
 
             <button
@@ -719,7 +789,7 @@ export default function Dashboard() {
             </div>
 
             <div style={styles.welcomeText}>
-              Track your investments, daily returns
+              Track your investments, weekly returns
               and team activity from one place.
             </div>
           </div>
@@ -766,11 +836,11 @@ export default function Dashboard() {
             </div>
 
             <div style={styles.summaryLabel}>
-              Daily Return
+              Weekly Return
             </div>
 
             <div style={styles.summaryValue}>
-              {formatMoney(dailyReturn)}
+              {formatMoney(weeklyReturn)}
             </div>
           </div>
 
@@ -859,7 +929,7 @@ export default function Dashboard() {
 
               <div style={styles.emptyText}>
                 Select a transport plan to start
-                earning daily returns.
+                earning weekly returns.
               </div>
 
               <button
@@ -881,18 +951,21 @@ export default function Dashboard() {
               }}
             >
               {activePlans.map((plan, index) => {
+                const weekly = getWeeklyReturn(plan);
+
+                const durationWeeks =
+                  PLAN_DURATION_WEEKS;
+
                 const totalPlanReturn =
-                  Number(plan.daily || 0) *
-                  Number(
-                    plan.duration || PLAN_DURATION
-                  );
+                  weekly * durationWeeks;
 
                 return (
                   <div
                     className="transport-animated-card"
                     style={{
                       ...styles.planCard,
-                      animationDelay: `${index * 0.35}s`,
+                      animationDelay:
+                        index * 0.35 + "s",
                     }}
                     key={index}
                   >
@@ -919,11 +992,11 @@ export default function Dashboard() {
                     <div style={styles.planStats}>
                       <div>
                         <span style={styles.statLabel}>
-                          Daily
+                          Weekly
                         </span>
 
                         <strong style={styles.statValue}>
-                          {formatMoney(plan.daily)}
+                          {formatMoney(weekly)}
                         </strong>
                       </div>
 
@@ -933,7 +1006,7 @@ export default function Dashboard() {
                         </span>
 
                         <strong style={styles.statValue}>
-                          {plan.duration} Days
+                          {durationWeeks} Weeks
                         </strong>
                       </div>
 
@@ -978,6 +1051,7 @@ export default function Dashboard() {
             <div style={styles.walletRows}>
               <div style={styles.walletRow}>
                 <span>Available Balance</span>
+
                 <strong>
                   {formatMoney(walletBalance)}
                 </strong>
@@ -985,6 +1059,7 @@ export default function Dashboard() {
 
               <div style={styles.walletRow}>
                 <span>Total Deposits</span>
+
                 <strong>
                   {formatMoney(depositTotal)}
                 </strong>
@@ -992,6 +1067,7 @@ export default function Dashboard() {
 
               <div style={styles.walletRow}>
                 <span>Total Withdrawals</span>
+
                 <strong>
                   {formatMoney(withdrawalTotal)}
                 </strong>
@@ -999,6 +1075,7 @@ export default function Dashboard() {
 
               <div style={styles.walletRow}>
                 <span>Pending Deposits</span>
+
                 <strong>
                   {formatMoney(pendingDeposits)}
                 </strong>
@@ -1006,6 +1083,7 @@ export default function Dashboard() {
 
               <div style={styles.walletRow}>
                 <span>Pending Withdrawals</span>
+
                 <strong>
                   {formatMoney(pendingWithdrawals)}
                 </strong>
@@ -1026,28 +1104,32 @@ export default function Dashboard() {
 
             <div style={styles.walletRows}>
               <div style={styles.walletRow}>
-                <span>Today</span>
+                <span>Current Weekly Return</span>
+
                 <strong>
                   {formatMoney(todayProfit)}
                 </strong>
               </div>
 
               <div style={styles.walletRow}>
-                <span>Yesterday</span>
+                <span>Previous Weekly Return</span>
+
                 <strong>
                   {formatMoney(yesterdayProfit)}
                 </strong>
               </div>
 
               <div style={styles.walletRow}>
-                <span>Last 7 Days</span>
+                <span>Weekly Total</span>
+
                 <strong>
                   {formatMoney(weekProfit)}
                 </strong>
               </div>
 
               <div style={styles.walletRow}>
-                <span>Last 30 Days</span>
+                <span>Approx. 4 Weeks</span>
+
                 <strong>
                   {formatMoney(monthProfit)}
                 </strong>
@@ -1055,6 +1137,7 @@ export default function Dashboard() {
 
               <div style={styles.walletRow}>
                 <span>Total Earned</span>
+
                 <strong>
                   {formatMoney(earnedReturns)}
                 </strong>
@@ -1093,6 +1176,7 @@ export default function Dashboard() {
             <div style={styles.teamStats}>
               <div style={styles.teamStat}>
                 <span>Team Investment</span>
+
                 <strong>
                   {formatMoney(teamInvestment)}
                 </strong>
@@ -1100,6 +1184,7 @@ export default function Dashboard() {
 
               <div style={styles.teamStat}>
                 <span>Paid Commission</span>
+
                 <strong>
                   {formatMoney(paidTeam)}
                 </strong>
@@ -1107,6 +1192,7 @@ export default function Dashboard() {
 
               <div style={styles.teamStat}>
                 <span>Today Commission</span>
+
                 <strong>
                   {formatMoney(todayTeam)}
                 </strong>
@@ -1216,6 +1302,12 @@ export default function Dashboard() {
                     item.status || "pending"
                   ).toLowerCase();
 
+                  const isReturn =
+                    type === "return" ||
+                    String(
+                      item.returnType || ""
+                    ).toLowerCase() === "weekly";
+
                   return (
                     <div
                       style={{
@@ -1231,6 +1323,8 @@ export default function Dashboard() {
                       >
                         {type === "withdraw"
                           ? "💸"
+                          : isReturn
+                          ? "🎁"
                           : "💰"}
                       </div>
 
@@ -1246,6 +1340,8 @@ export default function Dashboard() {
                         >
                           {type === "withdraw"
                             ? "Withdrawal"
+                            : isReturn
+                            ? "Weekly Return"
                             : "Deposit"}
                         </div>
 
@@ -1272,7 +1368,8 @@ export default function Dashboard() {
                       <div
                         style={{
                           ...styles.statusBadge,
-                          ...(status === "approved"
+                          ...(status === "approved" ||
+                          status === "completed"
                             ? styles.approvedStatus
                             : status === "rejected"
                             ? styles.rejectedStatus

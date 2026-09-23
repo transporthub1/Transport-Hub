@@ -17,16 +17,41 @@ export default function PlanConfirmation() {
 
     const name = params.get("name");
     const price = params.get("price");
-    const daily = params.get("daily");
-    const duration = params.get("duration");
 
-    if (name && price && daily && duration) {
+    // Weekly parameters
+    const weeklyParam = params.get("weekly");
+
+    // Old parameters kept for compatibility
+    const dailyParam = params.get("daily");
+
+    const weekly = weeklyParam
+      ? Number(weeklyParam)
+      : dailyParam
+      ? Number(dailyParam)
+      : null;
+
+    // Fixed plan duration
+    const durationYears = 5;
+    const totalWeeks = 260;
+
+    if (name && price && weekly !== null && weekly > 0) {
       const selectedPlan = {
         name: name,
         price: Number(price),
-        daily: Number(daily),
-        duration: Number(duration),
-        total: Number(daily) * Number(duration),
+
+        weekly: weekly,
+        weeklyReturn: weekly,
+
+        durationYears: durationYears,
+        durationWeeks: totalWeeks,
+
+        // Compatibility with old data
+        daily: weekly,
+        dailyReturn: weekly,
+        duration: totalWeeks,
+
+        total: weekly * totalWeeks,
+        totalReturn: weekly * totalWeeks,
       };
 
       setPlan(selectedPlan);
@@ -42,7 +67,45 @@ export default function PlanConfirmation() {
 
       if (savedPlan) {
         try {
-          setPlan(JSON.parse(savedPlan));
+          const saved = JSON.parse(savedPlan);
+
+          const savedWeekly = Number(
+            saved.weekly ||
+              saved.weeklyReturn ||
+              saved.daily ||
+              saved.dailyReturn ||
+              0
+          );
+
+          if (savedWeekly > 0) {
+            const convertedPlan = {
+              ...saved,
+
+              weekly: savedWeekly,
+              weeklyReturn: savedWeekly,
+
+              // Compatibility
+              daily: savedWeekly,
+              dailyReturn: savedWeekly,
+
+              // Always use new duration
+              durationYears: 5,
+              durationWeeks: 260,
+              duration: 260,
+
+              total: savedWeekly * 260,
+              totalReturn: savedWeekly * 260,
+            };
+
+            setPlan(convertedPlan);
+
+            localStorage.setItem(
+              "transportSelectedPlan",
+              JSON.stringify(convertedPlan)
+            );
+          } else {
+            setPlan(saved);
+          }
         } catch (error) {
           console.log("Plan data error");
         }
@@ -53,15 +116,40 @@ export default function PlanConfirmation() {
   const currentPlan = plan || {
     name: "Starter Transport Plan",
     price: 100,
+
+    weekly: 15,
+    weeklyReturn: 15,
+
+    durationYears: 5,
+    durationWeeks: 260,
+
+    // Compatibility
     daily: 15,
-    duration: 120,
-    total: 1800,
+    dailyReturn: 15,
+    duration: 260,
+
+    total: 3900,
+    totalReturn: 3900,
   };
 
   const confirmPlan = () => {
+    const finalPlan = {
+      ...currentPlan,
+
+      durationYears: 5,
+      durationWeeks: 260,
+      duration: 260,
+
+      total:
+        Number(currentPlan.weekly || 0) * 260,
+
+      totalReturn:
+        Number(currentPlan.weekly || 0) * 260,
+    };
+
     localStorage.setItem(
       "transportSelectedPlan",
-      JSON.stringify(currentPlan)
+      JSON.stringify(finalPlan)
     );
 
     window.location.href = "/deposit";
@@ -111,7 +199,10 @@ export default function PlanConfirmation() {
 
             <div style={styles.divider}></div>
 
-            <div className="details-grid" style={styles.details}>
+            <div
+              className="details-grid"
+              style={styles.details}
+            >
 
               {/* Investment */}
               <div
@@ -136,7 +227,7 @@ export default function PlanConfirmation() {
                 </div>
               </div>
 
-              {/* Daily Return */}
+              {/* Weekly Return */}
               <div
                 className="detail-card"
                 style={styles.detailCard}
@@ -147,13 +238,13 @@ export default function PlanConfirmation() {
 
                 <div style={styles.detailContent}>
                   <p style={styles.label}>
-                    Daily Return
+                    Weekly Return
                   </p>
 
                   <strong style={styles.value}>
                     PKR{" "}
                     {Number(
-                      currentPlan.daily
+                      currentPlan.weekly
                     ).toLocaleString()}
                   </strong>
                 </div>
@@ -174,7 +265,7 @@ export default function PlanConfirmation() {
                   </p>
 
                   <strong style={styles.value}>
-                    {currentPlan.duration} Days
+                    5 Years
                   </strong>
                 </div>
               </div>
@@ -195,10 +286,10 @@ export default function PlanConfirmation() {
 
                   <strong style={styles.total}>
                     PKR{" "}
-                    {Number(
-                      currentPlan.total ||
-                        currentPlan.daily *
-                          currentPlan.duration
+                    {(
+                      Number(
+                        currentPlan.weekly || 0
+                      ) * 260
                     ).toLocaleString()}
                   </strong>
                 </div>
