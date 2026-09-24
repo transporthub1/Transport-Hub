@@ -2,116 +2,88 @@
 
 import { useEffect, useState } from "react";
 
+/* =========================
+   PLANS
+========================= */
+
 const plans = [
   {
     id: 1,
     name: "Starter",
     amount: 100,
     weekly: 15,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 3900,
   },
   {
     id: 2,
     name: "Basic",
     amount: 500,
     weekly: 75,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 19500,
   },
   {
     id: 3,
     name: "Standard",
     amount: 1500,
     weekly: 225,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 58500,
   },
   {
     id: 4,
     name: "Premium",
     amount: 3500,
     weekly: 525,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 136500,
   },
   {
     id: 5,
     name: "Advanced",
     amount: 7500,
     weekly: 1125,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 292500,
   },
   {
     id: 6,
     name: "Professional",
     amount: 13000,
     weekly: 1950,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 507000,
   },
   {
     id: 7,
     name: "Elite",
     amount: 25000,
     weekly: 3750,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 975000,
   },
   {
     id: 8,
     name: "Executive",
     amount: 50000,
     weekly: 7500,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 1950000,
   },
   {
     id: 9,
     name: "Platinum",
     amount: 125000,
     weekly: 18750,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 4875000,
   },
   {
     id: 10,
     name: "Diamond",
     amount: 175000,
     weekly: 26250,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 6825000,
   },
   {
     id: 11,
     name: "Royal",
     amount: 225000,
     weekly: 33750,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 8775000,
   },
   {
     id: 12,
     name: "Grand Royal",
     amount: 300000,
     weekly: 45000,
-    durationYears: 5,
-    durationWeeks: 260,
-    totalReturn: 11700000,
   },
 ];
+
+/* =========================
+   PAYMENT METHODS
+========================= */
 
 const paymentMethods = [
   {
@@ -119,21 +91,18 @@ const paymentMethods = [
     title: "JazzCash",
     accountName: "Fakhar Abbas",
     accountNumber: "0308-0127173",
-    logoType: "jazzcash",
   },
   {
     id: "easypaisa",
     title: "Easypaisa",
     accountName: "Fakhar Abbas",
     accountNumber: "0345-5096922",
-    logoType: "easypaisa",
   },
   {
     id: "sadapay",
     title: "SadaPay",
     accountName: "Transport Hub",
     accountNumber: "0300-0000000",
-    logoType: "sadapay",
   },
   {
     id: "bank",
@@ -141,65 +110,14 @@ const paymentMethods = [
     accountName: "Transport Hub",
     accountNumber: "000000000000",
     bankName: "Your Bank Name",
-    logoType: "bank",
   },
 ];
-
-/* =========================
-   PAYMENT LOGO STYLE
-========================= */
-
-function PaymentLogo({ type }) {
-  if (type === "jazzcash") {
-    return (
-      <div className="brandLogo jazzcashLogo">
-        <div className="jazzSymbol">
-          <span></span>
-          <span></span>
-        </div>
-
-        <div className="brandLogoText">JazzCash</div>
-      </div>
-    );
-  }
-
-  if (type === "easypaisa") {
-    return (
-      <div className="brandLogo easypaisaLogo">
-        <div className="easySymbol">
-          <span></span>
-        </div>
-
-        <div className="brandLogoText">easypaisa</div>
-      </div>
-    );
-  }
-
-  if (type === "sadapay") {
-    return (
-      <div className="brandLogo sadapayLogo">
-        <div className="sadaSymbol">
-          <span></span>
-          <span></span>
-        </div>
-
-        <div className="brandLogoText">SadaPay</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="brandLogo bankLogoStyle">
-      <div className="bankSymbol">🏦</div>
-      <div className="brandLogoText">Bank</div>
-    </div>
-  );
-}
 
 export default function Deposit() {
   const [user, setUser] = useState(null);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [selectedPayment, setSelectedPayment] = useState(null);
+  const [paymentOpen, setPaymentOpen] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [mobile, setMobile] = useState("");
@@ -212,7 +130,95 @@ export default function Deposit() {
   const [submitting, setSubmitting] = useState(false);
 
   /* =========================
-     LOAD USER
+     NORMALIZE PLAN
+  ========================= */
+
+  const normalizePlan = (savedPlan) => {
+    if (!savedPlan) return null;
+
+    const savedId = Number(savedPlan.id || 0);
+
+    const savedName = String(savedPlan.name || "")
+      .trim()
+      .toLowerCase();
+
+    const savedAmount = Number(
+      savedPlan.amount || savedPlan.price || 0
+    );
+
+    let matchingPlan = null;
+
+    /* Match by ID */
+    if (savedId > 0) {
+      matchingPlan = plans.find(
+        (plan) => Number(plan.id) === savedId
+      );
+    }
+
+    /* Match by name + amount */
+    if (!matchingPlan && savedName && savedAmount > 0) {
+      matchingPlan = plans.find(
+        (plan) =>
+          plan.name.toLowerCase() === savedName &&
+          Number(plan.amount) === savedAmount
+      );
+    }
+
+    /* Match by name */
+    if (!matchingPlan && savedName) {
+      matchingPlan = plans.find(
+        (plan) => plan.name.toLowerCase() === savedName
+      );
+    }
+
+    if (matchingPlan) {
+      const weekly = Number(matchingPlan.weekly);
+
+      return {
+        ...matchingPlan,
+        id: Number(matchingPlan.id),
+        amount: Number(matchingPlan.amount),
+        weekly,
+        weeklyReturn: weekly,
+        daily: weekly,
+        dailyReturn: weekly,
+        duration: 260,
+        durationWeeks: 260,
+        durationYears: 5,
+        totalReturn: weekly * 260,
+      };
+    }
+
+    /* Old saved plan compatibility */
+    const weekly = Number(
+      savedPlan.weekly ||
+        savedPlan.weeklyReturn ||
+        savedPlan.daily ||
+        savedPlan.dailyReturn ||
+        0
+    );
+
+    if (savedAmount > 0 && weekly > 0) {
+      return {
+        id: savedPlan.id || null,
+        name: savedPlan.name || "Transport Plan",
+        amount: savedAmount,
+        weekly,
+        weeklyReturn: weekly,
+        daily: weekly,
+        dailyReturn: weekly,
+        duration: 260,
+        durationWeeks: 260,
+        durationYears: 5,
+        totalReturn: weekly * 260,
+      };
+    }
+
+    return null;
+  };
+
+  /* =========================
+     LOAD USER + SELECTED PLAN
   ========================= */
 
   useEffect(() => {
@@ -237,117 +243,64 @@ export default function Deposit() {
         parsedUser?.phoneNumber ||
         "";
 
-      setFullName(
+      const name =
         parsedUser?.name ||
-          parsedUser?.fullName ||
-          parsedUser?.username ||
-          ""
-      );
+        parsedUser?.fullName ||
+        parsedUser?.username ||
+        "";
 
+      setFullName(name);
       setMobile(phone);
 
-      const savedPlan =
-        localStorage.getItem(
-          "transportSelectedPlan_" + phone
-        ) ||
+      const userPlanKey =
+        "transportSelectedPlan_" + phone;
+
+      const userSavedPlan =
+        localStorage.getItem(userPlanKey);
+
+      const commonSavedPlan =
         localStorage.getItem("transportSelectedPlan");
 
-      if (savedPlan) {
-        try {
-          const parsedPlan = JSON.parse(savedPlan);
+      const savedPlan =
+        userSavedPlan || commonSavedPlan;
 
-          const matchingPlan = plans.find(
-            (plan) =>
-              plan.id === parsedPlan.id
-          );
+      if (!savedPlan) return;
 
-          if (matchingPlan) {
-            setSelectedPlan(matchingPlan);
-            setDepositAmount(
-              String(matchingPlan.amount)
-            );
+      try {
+        const parsedPlan = JSON.parse(savedPlan);
 
-            localStorage.setItem(
-              "transportSelectedPlan_" + phone,
-              JSON.stringify(matchingPlan)
-            );
+        const normalizedPlan =
+          normalizePlan(parsedPlan);
 
-            localStorage.setItem(
-              "transportSelectedPlan",
-              JSON.stringify(matchingPlan)
-            );
-          } else {
-            const weekly = Number(
-              parsedPlan.weekly ||
-                parsedPlan.weeklyReturn ||
-                parsedPlan.daily ||
-                parsedPlan.dailyReturn ||
-                0
-            );
+        if (!normalizedPlan) return;
 
-            const amount = Number(
-              parsedPlan.amount ||
-                parsedPlan.price ||
-                0
-            );
+        setSelectedPlan(normalizedPlan);
 
-            if (amount > 0 && weekly > 0) {
-              const convertedPlan = {
-                id:
-                  parsedPlan.id ||
-                  Date.now(),
+        setDepositAmount(
+          String(normalizedPlan.amount)
+        );
 
-                name:
-                  parsedPlan.name ||
-                  "Transport Plan",
+        localStorage.setItem(
+          "transportSelectedPlan",
+          JSON.stringify(normalizedPlan)
+        );
 
-                amount: amount,
-
-                weekly: weekly,
-
-                weeklyReturn: weekly,
-
-                durationYears: 5,
-
-                durationWeeks: 260,
-
-                // Compatibility
-                daily: weekly,
-                dailyReturn: weekly,
-                duration: 260,
-
-                totalReturn:
-                  weekly * 260,
-              };
-
-              setSelectedPlan(
-                convertedPlan
-              );
-
-              setDepositAmount(
-                String(convertedPlan.amount)
-              );
-
-              localStorage.setItem(
-                "transportSelectedPlan_" + phone,
-                JSON.stringify(convertedPlan)
-              );
-
-              localStorage.setItem(
-                "transportSelectedPlan",
-                JSON.stringify(convertedPlan)
-              );
-            }
-          }
-        } catch {
-          console.log(
-            "Saved plan could not be loaded."
+        if (phone) {
+          localStorage.setItem(
+            userPlanKey,
+            JSON.stringify(normalizedPlan)
           );
         }
+      } catch (error) {
+        console.error(
+          "Saved plan could not be loaded:",
+          error
+        );
       }
-    } catch {
-      console.log(
-        "User data could not be loaded."
+    } catch (error) {
+      console.error(
+        "User data could not be loaded:",
+        error
       );
 
       window.location.href = "/";
@@ -355,63 +308,12 @@ export default function Deposit() {
   }, []);
 
   /* =========================
-     PLAN SELECT
-  ========================= */
-
-  const handlePlanSelect = (plan) => {
-    const normalizedPlan = {
-      ...plan,
-
-      durationYears: 5,
-      durationWeeks: 260,
-
-      // Compatibility
-      daily: plan.weekly,
-      dailyReturn: plan.weekly,
-      duration: 260,
-
-      weeklyReturn: plan.weekly,
-
-      totalReturn:
-        Number(plan.weekly) * 260,
-    };
-
-    setSelectedPlan(normalizedPlan);
-    setDepositAmount(
-      String(normalizedPlan.amount)
-    );
-
-    setMessage("");
-    setMessageType("");
-
-    if (
-      typeof window !== "undefined" &&
-      user
-    ) {
-      const phone =
-        user?.phone ||
-        user?.mobile ||
-        user?.phoneNumber ||
-        "";
-
-      localStorage.setItem(
-        "transportSelectedPlan_" + phone,
-        JSON.stringify(normalizedPlan)
-      );
-
-      localStorage.setItem(
-        "transportSelectedPlan",
-        JSON.stringify(normalizedPlan)
-      );
-    }
-  };
-
-  /* =========================
-     PAYMENT SELECT
+     PAYMENT METHOD
   ========================= */
 
   const handlePaymentSelect = (method) => {
     setSelectedPayment(method);
+    setPaymentOpen(false);
     setMessage("");
     setMessageType("");
   };
@@ -434,8 +336,11 @@ export default function Deposit() {
       );
 
       setMessageType("error");
+
       event.target.value = "";
+
       setScreenshot(null);
+
       return;
     }
 
@@ -445,8 +350,11 @@ export default function Deposit() {
       );
 
       setMessageType("error");
+
       event.target.value = "";
+
       setScreenshot(null);
+
       return;
     }
 
@@ -476,10 +384,11 @@ export default function Deposit() {
 
     if (!selectedPlan) {
       setMessage(
-        "Please select a transport plan first."
+        "No transport plan has been selected. Please go back and select a plan first."
       );
 
       setMessageType("error");
+
       return;
     }
 
@@ -489,6 +398,7 @@ export default function Deposit() {
       );
 
       setMessageType("error");
+
       return;
     }
 
@@ -498,6 +408,7 @@ export default function Deposit() {
       );
 
       setMessageType("error");
+
       return;
     }
 
@@ -507,18 +418,17 @@ export default function Deposit() {
       );
 
       setMessageType("error");
+
       return;
     }
 
-    if (
-      !depositAmount ||
-      Number(depositAmount) <= 0
-    ) {
+    if (!depositAmount || Number(depositAmount) <= 0) {
       setMessage(
         "Please enter a valid deposit amount."
       );
 
       setMessageType("error");
+
       return;
     }
 
@@ -528,6 +438,7 @@ export default function Deposit() {
       );
 
       setMessageType("error");
+
       return;
     }
 
@@ -537,6 +448,7 @@ export default function Deposit() {
       );
 
       setMessageType("error");
+
       return;
     }
 
@@ -551,14 +463,13 @@ export default function Deposit() {
         savedUser?.phoneNumber ||
         mobile;
 
-      const weeklyReturn =
-        Number(
-          selectedPlan.weekly ||
-            selectedPlan.weeklyReturn ||
-            selectedPlan.daily ||
-            selectedPlan.dailyReturn ||
-            0
-        );
+      const weeklyReturn = Number(
+        selectedPlan.weekly ||
+          selectedPlan.weeklyReturn ||
+          selectedPlan.daily ||
+          selectedPlan.dailyReturn ||
+          0
+      );
 
       const request = {
         id: "DEP-" + Date.now(),
@@ -570,11 +481,8 @@ export default function Deposit() {
           phone: mobile.trim(),
         },
 
-        paymentMethod:
-          selectedPayment.title,
-
-        paymentMethodId:
-          selectedPayment.id,
+        paymentMethod: selectedPayment.title,
+        paymentMethodId: selectedPayment.id,
 
         accountName:
           selectedPayment.accountName,
@@ -592,32 +500,33 @@ export default function Deposit() {
           Number(depositAmount),
 
         plan: {
-          id: selectedPlan.id,
+          id: Number(selectedPlan.id),
 
           name: selectedPlan.name,
 
           amount:
             Number(selectedPlan.amount),
 
-          // Weekly system
           weekly: weeklyReturn,
 
           weeklyReturn: weeklyReturn,
 
-          durationYears: 5,
+          daily: weeklyReturn,
+
+          dailyReturn: weeklyReturn,
+
+          duration: 260,
 
           durationWeeks: 260,
 
-          // Compatibility
-          daily: weeklyReturn,
-          dailyReturn: weeklyReturn,
-          duration: 260,
+          durationYears: 5,
 
           totalReturn:
             weeklyReturn * 260,
         },
 
-        screenshot: screenshot.data,
+        screenshot:
+          screenshot.data,
 
         screenshotName:
           screenshot.name,
@@ -628,26 +537,25 @@ export default function Deposit() {
           new Date().toISOString(),
       };
 
+      /* User-specific requests */
+
       const userKey =
         "transportDepositRequests_" +
         phone;
 
       const existingUserRequests =
         JSON.parse(
-          localStorage.getItem(userKey) ||
-            "[]"
+          localStorage.getItem(userKey) || "[]"
         );
 
-      existingUserRequests.push(
-        request
-      );
+      existingUserRequests.push(request);
 
       localStorage.setItem(
         userKey,
-        JSON.stringify(
-          existingUserRequests
-        )
+        JSON.stringify(existingUserRequests)
       );
+
+      /* All requests */
 
       const allRequests =
         JSON.parse(
@@ -663,11 +571,14 @@ export default function Deposit() {
         JSON.stringify(allRequests)
       );
 
+      /* Latest user request */
+
       localStorage.setItem(
-        "transportDepositRequest_" +
-          phone,
+        "transportDepositRequest_" + phone,
         JSON.stringify(request)
       );
+
+      /* Latest common request */
 
       localStorage.setItem(
         "transportDepositRequest",
@@ -681,6 +592,7 @@ export default function Deposit() {
       setMessageType("success");
 
       setTransactionId("");
+
       setScreenshot(null);
 
       const fileInput =
@@ -714,96 +626,21 @@ export default function Deposit() {
 
         <div className="pageHeader">
           <div>
-            <h1>Make a Deposit</h1>
+            <h1>
+              Make a Deposit
+            </h1>
 
             <p>
-              Select your plan and complete your payment.
+              Complete your payment to activate your selected transport plan.
             </p>
           </div>
         </div>
 
         {/* =========================
-            PLANS
-        ========================= */}
-
-        <section className="sectionCard">
-          <div className="sectionHeading">
-            <div>
-              <h2>Choose Transport Plan</h2>
-
-              <p>
-                Select the plan you want to activate.
-              </p>
-            </div>
-          </div>
-
-          <div className="plansGrid">
-            {plans.map((plan) => {
-              const isActive =
-                selectedPlan?.id ===
-                plan.id;
-
-              return (
-                <button
-                  type="button"
-                  key={plan.id}
-                  className={`planCard ${
-                    isActive ? "active" : ""
-                  }`}
-                  onClick={() =>
-                    handlePlanSelect(plan)
-                  }
-                >
-                  <div className="planTop">
-                    <span className="planName">
-                      {plan.name}
-                    </span>
-
-                    {isActive && (
-                      <span className="selectedBadge">
-                        Selected
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="planAmount">
-                    PKR{" "}
-                    {plan.amount.toLocaleString()}
-                  </div>
-
-                  <div className="planDetails">
-                    <div>
-                      <span>
-                        Weekly Return
-                      </span>
-
-                      <strong>
-                        PKR{" "}
-                        {plan.weekly.toLocaleString()}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span>
-                        Duration
-                      </span>
-
-                      <strong>
-                        5 Years
-                      </strong>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* =========================
             SELECTED PLAN
         ========================= */}
 
-        {selectedPlan && (
+        {selectedPlan ? (
           <section className="selectedPlanBox">
 
             <div>
@@ -853,59 +690,104 @@ export default function Deposit() {
             </div>
 
           </section>
+        ) : (
+          <section className="noPlanBox">
+
+            <strong>
+              No Plan Selected
+            </strong>
+
+            <span>
+              Please go back to Transport Plans and select a plan first.
+            </span>
+
+          </section>
         )}
 
         {/* =========================
-            PAYMENT METHODS
+            PAYMENT METHOD
         ========================= */}
 
-        <section className="sectionCard">
+        <section className="sectionCard paymentSection">
+
           <div className="sectionHeading">
+
             <div>
-              <h2>Payment Method</h2>
+              <h2>
+                Payment Method
+              </h2>
 
               <p>
-                Select where you want to make your payment.
+                Select your preferred payment method.
               </p>
             </div>
+
           </div>
 
-          <div className="paymentGrid">
-            {paymentMethods.map((method) => {
-              const isActive =
-                selectedPayment?.id ===
-                method.id;
+          <div className="paymentSelector">
 
-              return (
-                <button
-                  type="button"
-                  key={method.id}
-                  className={`paymentMethod payment-${method.id} ${
-                    isActive ? "active" : ""
-                  }`}
-                  onClick={() =>
-                    handlePaymentSelect(method)
-                  }
-                >
-                  {isActive && (
-                    <div className="paymentCheck">
-                      ✓
-                    </div>
-                  )}
+            <button
+              type="button"
+              className={`paymentSelectButton ${
+                selectedPayment
+                  ? "hasSelection"
+                  : ""
+              }`}
+              onClick={() =>
+                setPaymentOpen(
+                  !paymentOpen
+                )
+              }
+            >
 
-                  <div className="paymentLogoCircle">
-                    <PaymentLogo
-                      type={method.logoType}
-                    />
-                  </div>
+              <span>
+                {selectedPayment
+                  ? selectedPayment.title
+                  : "Select Payment Method"}
+              </span>
 
-                  <div className="paymentTitle">
-                    {method.title}
-                  </div>
-                </button>
-              );
-            })}
+              <span
+                className={`selectArrow ${
+                  paymentOpen
+                    ? "rotate"
+                    : ""
+                }`}
+              >
+                ▼
+              </span>
+
+            </button>
+
+            {paymentOpen && (
+              <div className="paymentDropdown">
+
+                {paymentMethods.map(
+                  (method) => (
+                    <button
+                      type="button"
+                      key={method.id}
+                      className={`paymentOption ${
+                        selectedPayment?.id ===
+                        method.id
+                          ? "selected"
+                          : ""
+                      }`}
+                      onClick={() =>
+                        handlePaymentSelect(
+                          method
+                        )
+                      }
+                    >
+                      {method.title}
+                    </button>
+                  )
+                )}
+
+              </div>
+            )}
+
           </div>
+
         </section>
 
         {/* =========================
@@ -916,9 +798,10 @@ export default function Deposit() {
           <section className="paymentInfoCard">
 
             <div className="paymentInfoHeader">
+
               <div>
                 <span className="smallLabel">
-                  Pay Through
+                  Payment Method
                 </span>
 
                 <h2>
@@ -926,19 +809,13 @@ export default function Deposit() {
                 </h2>
               </div>
 
-              <div className="paymentInfoLogo">
-                <PaymentLogo
-                  type={
-                    selectedPayment.logoType
-                  }
-                />
-              </div>
             </div>
 
             <div className="accountInfo">
 
               {selectedPayment.bankName && (
                 <div className="infoRow">
+
                   <span>
                     Bank Name
                   </span>
@@ -946,10 +823,12 @@ export default function Deposit() {
                   <strong>
                     {selectedPayment.bankName}
                   </strong>
+
                 </div>
               )}
 
               <div className="infoRow">
+
                 <span>
                   Account Name
                 </span>
@@ -957,9 +836,11 @@ export default function Deposit() {
                 <strong>
                   {selectedPayment.accountName}
                 </strong>
+
               </div>
 
               <div className="infoRow">
+
                 <span>
                   {selectedPayment.id ===
                   "bank"
@@ -970,24 +851,26 @@ export default function Deposit() {
                 <strong>
                   {selectedPayment.accountNumber}
                 </strong>
+
               </div>
 
               <div className="paymentWarning">
-                ⚠️ Please make the payment only to the
-                account shown above.
+                Please make the payment only to the account shown above.
               </div>
 
             </div>
+
           </section>
         )}
 
         {/* =========================
-            PAYMENT FORM
+            PAYMENT DETAILS
         ========================= */}
 
         <section className="sectionCard formCard">
 
           <div className="sectionHeading">
+
             <div>
               <h2>
                 Payment Details
@@ -997,13 +880,17 @@ export default function Deposit() {
                 Enter your payment information below.
               </p>
             </div>
+
           </div>
 
           <form onSubmit={handleSubmit}>
 
             <div className="formGrid">
 
+              {/* FULL NAME */}
+
               <div className="inputGroup">
+
                 <label htmlFor="fullName">
                   Full Name
                 </label>
@@ -1019,9 +906,13 @@ export default function Deposit() {
                   }
                   placeholder="Enter your full name"
                 />
+
               </div>
 
+              {/* MOBILE NUMBER */}
+
               <div className="inputGroup">
+
                 <label htmlFor="mobile">
                   Mobile Number
                 </label>
@@ -1037,9 +928,13 @@ export default function Deposit() {
                   }
                   placeholder="03XXXXXXXXX"
                 />
+
               </div>
 
+              {/* DEPOSIT AMOUNT */}
+
               <div className="inputGroup">
+
                 <label htmlFor="depositAmount">
                   Deposit Amount
                 </label>
@@ -1056,9 +951,13 @@ export default function Deposit() {
                   }
                   placeholder="Enter deposit amount"
                 />
+
               </div>
 
+              {/* TRANSACTION ID */}
+
               <div className="inputGroup">
+
                 <label htmlFor="transactionId">
                   Transaction ID
                 </label>
@@ -1074,14 +973,19 @@ export default function Deposit() {
                   }
                   placeholder="Enter transaction ID"
                 />
+
               </div>
 
+              {/* PAYMENT SCREENSHOT */}
+
               <div className="inputGroup fullWidth">
+
                 <label htmlFor="depositScreenshot">
                   Payment Screenshot
                 </label>
 
                 <div className="uploadBox">
+
                   <input
                     id="depositScreenshot"
                     type="file"
@@ -1092,11 +996,9 @@ export default function Deposit() {
                   />
 
                   <div className="uploadText">
-                    <span className="uploadIcon">
-                      📷
-                    </span>
 
                     <div>
+
                       <strong>
                         {screenshot
                           ? screenshot.name
@@ -1106,12 +1008,18 @@ export default function Deposit() {
                       <small>
                         JPG, JPEG or PNG — Maximum 3MB
                       </small>
+
                     </div>
+
                   </div>
+
                 </div>
+
               </div>
 
             </div>
+
+            {/* MESSAGE */}
 
             {message && (
               <div
@@ -1121,10 +1029,15 @@ export default function Deposit() {
               </div>
             )}
 
+            {/* SUBMIT */}
+
             <button
               type="submit"
               className="submitButton"
-              disabled={submitting}
+              disabled={
+                submitting ||
+                !selectedPlan
+              }
             >
               {submitting
                 ? "Submitting..."
@@ -1132,11 +1045,13 @@ export default function Deposit() {
             </button>
 
           </form>
+
         </section>
+
       </div>
 
       {/* =========================
-          CSS
+          STYLES
       ========================= */}
 
       <style jsx>{`
@@ -1147,16 +1062,31 @@ export default function Deposit() {
 
         .depositPage {
           min-height: 100vh;
-          background: #eef3f7;
+
+          background:
+            linear-gradient(
+              135deg,
+              #eef3f7 0%,
+              #f7fafc 50%,
+              #edf3f8 100%
+            );
+
           color: #173b5a;
+
           padding: 30px;
         }
 
         .depositContainer {
           width: 100%;
+
           max-width: 1450px;
+
           margin: 0 auto;
         }
+
+        /* =========================
+           HEADER
+        ========================= */
 
         .pageHeader {
           margin-bottom: 24px;
@@ -1164,500 +1094,433 @@ export default function Deposit() {
 
         .pageHeader h1 {
           margin: 0;
+
           font-size: 32px;
+
           font-weight: 800;
+
           color: #102a43;
         }
 
         .pageHeader p {
           margin: 7px 0 0;
+
           color: #6b7c8f;
+
           font-size: 15px;
         }
 
+        /* =========================
+           GENERAL CARD
+        ========================= */
+
         .sectionCard {
-          background: #ffffff;
+          background:
+            rgba(
+              255,
+              255,
+              255,
+              0.96
+            );
+
           border-radius: 18px;
+
           padding: 24px;
+
           margin-bottom: 22px;
-          border: 1px solid #dce5ec;
+
+          border:
+            1px solid
+            #dce5ec;
+
           box-shadow:
-            0 8px 25px rgba(16, 42, 67, 0.06);
+            0 10px 30px
+            rgba(
+              16,
+              42,
+              67,
+              0.07
+            );
         }
 
         .sectionHeading {
           display: flex;
+
           align-items: center;
-          justify-content: space-between;
+
+          justify-content:
+            space-between;
+
           margin-bottom: 20px;
         }
 
         .sectionHeading h2 {
           margin: 0;
+
           color: #102a43;
+
           font-size: 21px;
+
           font-weight: 800;
         }
 
         .sectionHeading p {
           margin: 5px 0 0;
+
           color: #78899a;
+
           font-size: 14px;
         }
 
-        .plansGrid {
-          display: grid;
-          grid-template-columns:
-            repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .planCard {
-          border: 2px solid #102a43;
-          background: #102a43;
-          border-radius: 15px;
-          padding: 17px;
-          text-align: left;
-          cursor: pointer;
-          transition: 0.2s ease;
-          color: #ffffff;
-        }
-
-        .planCard:hover {
-          transform: translateY(-2px);
-          background: #173b5a;
-          border-color: #173b5a;
-          box-shadow:
-            0 8px 20px
-            rgba(16, 42, 67, 0.18);
-        }
-
-        .planCard.active {
-          background: #173b5a;
-          border-color: #4caf50;
-          box-shadow:
-            0 7px 20px
-            rgba(76, 175, 80, 0.22);
-        }
-
-        .planTop {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 8px;
-        }
-
-        .planName {
-          font-weight: 800;
-          font-size: 15px;
-          color: #ffffff;
-        }
-
-        .selectedBadge {
-          background: #4caf50;
-          color: #ffffff;
-          font-size: 10px;
-          font-weight: 800;
-          padding: 4px 7px;
-          border-radius: 20px;
-        }
-
-        .planAmount {
-          margin-top: 14px;
-          font-size: 20px;
-          font-weight: 900;
-          color: #ffffff;
-        }
-
-        .planDetails {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 10px;
-          margin-top: 15px;
-          padding-top: 12px;
-          border-top:
-            1px solid rgba(255,255,255,0.16);
-        }
-
-        .planDetails div {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .planDetails span {
-          font-size: 11px;
-          color: #b9c8d5;
-        }
-
-        .planDetails strong {
-          font-size: 12px;
-          color: #ffffff;
-        }
+        /* =========================
+           SELECTED PLAN
+        ========================= */
 
         .selectedPlanBox {
           display: grid;
+
           grid-template-columns:
             repeat(4, 1fr);
+
           gap: 12px;
-          background: #102a43;
+
+          background:
+            linear-gradient(
+              135deg,
+              #102a43,
+              #173b5a
+            );
+
           color: #ffffff;
+
           border-radius: 18px;
-          padding: 20px 24px;
+
+          padding:
+            20px 24px;
+
           margin-bottom: 22px;
+
           box-shadow:
-            0 8px 22px
-            rgba(16, 42, 67, 0.13);
+            0 10px 25px
+            rgba(
+              16,
+              42,
+              67,
+              0.14
+            );
         }
 
         .selectedPlanBox div {
           display: flex;
+
           flex-direction: column;
+
           gap: 5px;
         }
 
         .selectedPlanBox span {
           color: #a9bac9;
+
           font-size: 11px;
         }
 
         .selectedPlanBox strong {
           color: #ffffff;
+
           font-size: 16px;
         }
 
-        .paymentGrid {
-          display: grid;
-          grid-template-columns:
-            repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
+        /* =========================
+           NO PLAN
+        ========================= */
 
-        .paymentMethod {
-          position: relative;
-          min-height: 150px;
-          border: 2px solid #dce5ec;
-          background: #ffffff;
-          border-radius: 22px;
-          padding: 16px 12px;
-          cursor: pointer;
-          transition: 0.2s ease;
-
+        .noPlanBox {
           display: flex;
+
           flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
+
+          gap: 6px;
+
+          background:
+            #fff7e8;
+
+          border:
+            1px solid
+            #f0d49b;
+
+          border-radius: 18px;
+
+          padding: 20px 24px;
+
+          margin-bottom: 22px;
+
+          color: #7a5717;
         }
 
-        .paymentMethod:hover {
-          transform: translateY(-2px);
-          box-shadow:
-            0 8px 22px
-            rgba(16, 42, 67, 0.10);
+        .noPlanBox strong {
+          font-size: 16px;
         }
 
-        .paymentMethod.active {
-          border-color: #4caf50;
-          box-shadow:
-            0 7px 20px
-            rgba(76, 175, 80, 0.18);
+        .noPlanBox span {
+          font-size: 13px;
+
+          color: #9a7737;
         }
 
-        .payment-jazzcash {
-          background: #fffdf4;
+        /* =========================
+           PAYMENT METHOD
+        ========================= */
+
+        .paymentSection {
+          position: relative;
+
+          z-index: 10;
         }
 
-        .payment-easypaisa {
-          background: #f3fff7;
+        .paymentSelector {
+          position: relative;
+
+          width: 100%;
+
+          max-width: 650px;
         }
 
-        .payment-sadapay {
-          background: #f1fffc;
-        }
+        .paymentSelectButton {
+          width: 100%;
 
-        .payment-bank {
-          background: #f3f7ff;
-        }
-
-        .paymentLogoCircle {
-          width: 76px;
-          height: 76px;
-          border-radius: 50%;
+          height: 54px;
 
           display: flex;
+
           align-items: center;
-          justify-content: center;
+
+          justify-content:
+            space-between;
+
+          padding:
+            0 17px;
+
+          border:
+            1px solid
+            #d5e0e8;
+
+          border-radius: 12px;
+
+          background:
+            #ffffff;
+
+          color: #78899a;
+
+          font-size: 14px;
+
+          font-weight: 700;
+
+          cursor: pointer;
+
+          transition:
+            all 0.2s ease;
 
           box-shadow:
-            0 5px 14px
-            rgba(0, 0, 0, 0.10);
+            0 4px 14px
+            rgba(
+              16,
+              42,
+              67,
+              0.05
+            );
+        }
+
+        .paymentSelectButton:hover {
+          border-color:
+            #4caf50;
+        }
+
+        .paymentSelectButton:focus {
+          outline: none;
+
+          border-color:
+            #4caf50;
+
+          box-shadow:
+            0 0 0 3px
+            rgba(
+              76,
+              175,
+              80,
+              0.10
+            );
+        }
+
+        .paymentSelectButton.hasSelection {
+          color: #173b5a;
+        }
+
+        .selectArrow {
+          color: #708397;
+
+          font-size: 11px;
+
+          transition:
+            transform 0.2s ease;
+        }
+
+        .selectArrow.rotate {
+          transform:
+            rotate(180deg);
+        }
+
+        .paymentDropdown {
+          position: absolute;
+
+          top:
+            calc(
+              100% + 7px
+            );
+
+          left: 0;
+
+          width: 100%;
+
+          background:
+            #ffffff;
+
+          border:
+            1px solid
+            #d7e1e8;
+
+          border-radius: 12px;
+
+          padding: 6px;
+
+          box-shadow:
+            0 14px 35px
+            rgba(
+              16,
+              42,
+              67,
+              0.14
+            );
 
           overflow: hidden;
+
+          z-index: 100;
         }
 
-        .payment-jazzcash .paymentLogoCircle {
-          background:
-            linear-gradient(
-              145deg,
-              #ffcf22,
-              #fff1a6
-            );
-          border: 2px solid #f3bd00;
-        }
-
-        .payment-easypaisa .paymentLogoCircle {
-          background:
-            linear-gradient(
-              145deg,
-              #19b56b,
-              #d9f9e9
-            );
-          border: 2px solid #16a863;
-        }
-
-        .payment-sadapay .paymentLogoCircle {
-          background:
-            linear-gradient(
-              145deg,
-              #e8fff7,
-              #9ce8d1
-            );
-          border: 2px solid #57c9a9;
-        }
-
-        .payment-bank .paymentLogoCircle {
-          background:
-            linear-gradient(
-              145deg,
-              #173b5a,
-              #6e9abb
-            );
-          border: 2px solid #173b5a;
-        }
-
-        .brandLogo {
+        .paymentOption {
           width: 100%;
-          height: 100%;
+
+          min-height: 46px;
 
           display: flex;
-          flex-direction: column;
+
           align-items: center;
-          justify-content: center;
 
-          gap: 2px;
-        }
+          padding:
+            0 13px;
 
-        .brandLogoText {
-          font-size: 10px;
-          font-weight: 900;
-          line-height: 1;
-          letter-spacing: -0.3px;
-        }
+          border: 0;
 
-        .jazzcashLogo {
-          width: 62px;
-          height: 62px;
-          border-radius: 50%;
-          background: #ffffff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-          border: 2px solid #ffd000;
-          box-shadow:
-            0 4px 12px
-            rgba(0, 0, 0, 0.14);
-        }
+          border-radius: 8px;
 
-        .jazzcashLogo::before {
-          content: "";
-          width: 18px;
-          height: 34px;
-          background: #ffd000;
-          border-radius: 50%;
-          position: absolute;
-          left: 17px;
-          transform: rotate(12deg);
-        }
+          background:
+            transparent;
 
-        .jazzcashLogo::after {
-          content: "";
-          width: 18px;
-          height: 34px;
-          background: #ed1c24;
-          border-radius: 50%;
-          position: absolute;
-          right: 17px;
-          transform: rotate(-12deg);
-        }
-
-        .jazzSymbol {
-          position: relative;
-          width: 34px;
-          height: 28px;
-        }
-
-        .jazzSymbol span:first-child {
-          position: absolute;
-          left: 3px;
-          top: 3px;
-          width: 15px;
-          height: 22px;
-          border-radius:
-            14px 2px 14px 14px;
-          background: #f7c900;
-          transform: rotate(-28deg);
-        }
-
-        .jazzSymbol span:last-child {
-          position: absolute;
-          right: 2px;
-          top: 3px;
-          width: 15px;
-          height: 22px;
-          border-radius:
-            2px 14px 14px 14px;
-          background: #ed1c24;
-          transform: rotate(28deg);
-        }
-
-        .easypaisaLogo {
-          color: #111111;
-        }
-
-        .easySymbol {
-          width: 36px;
-          height: 27px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .easySymbol span {
-          width: 30px;
-          height: 17px;
-          border-radius: 50%;
-          border: 7px solid #111111;
-          border-right-color: #16aa62;
-          transform: rotate(-12deg);
-        }
-
-        .sadapayLogo {
-          color: #123b37;
-        }
-
-        .sadaSymbol {
-          width: 36px;
-          height: 28px;
-          position: relative;
-        }
-
-        .sadaSymbol span:first-child {
-          position: absolute;
-          width: 28px;
-          height: 13px;
-          left: 4px;
-          top: 3px;
-          border: 5px solid #38c7a5;
-          border-radius: 12px;
-          transform: rotate(25deg);
-        }
-
-        .sadaSymbol span:last-child {
-          position: absolute;
-          width: 21px;
-          height: 10px;
-          left: 8px;
-          bottom: 3px;
-          border: 4px solid #ff7c65;
-          border-radius: 10px;
-          transform: rotate(-25deg);
-        }
-
-        .bankLogoStyle {
-          color: #ffffff;
-        }
-
-        .bankSymbol {
-          font-size: 29px;
-          line-height: 1;
-        }
-
-        .paymentTitle {
-          font-size: 14px;
-          font-weight: 900;
-          color: #102a43;
-        }
-
-        .paymentCheck {
-          position: absolute;
-          top: 9px;
-          right: 9px;
-
-          width: 27px;
-          height: 27px;
-
-          border-radius: 50%;
-          background: #4caf50;
-          color: #ffffff;
+          color: #173b5a;
 
           font-size: 14px;
-          font-weight: 900;
 
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          font-weight: 700;
 
-          box-shadow:
-            0 3px 8px
-            rgba(76, 175, 80, 0.28);
+          text-align: left;
+
+          cursor: pointer;
+
+          transition:
+            all 0.15s ease;
         }
+
+        .paymentOption:hover {
+          background:
+            #f1f6f9;
+
+          color:
+            #102a43;
+        }
+
+        .paymentOption.selected {
+          background:
+            #eef8f0;
+
+          color:
+            #2d8a38;
+        }
+
+        /* =========================
+           PAYMENT INFO
+        ========================= */
 
         .paymentInfoCard {
-          background: #102a43;
+          background:
+            linear-gradient(
+              135deg,
+              #102a43,
+              #173b5a
+            );
+
           color: #ffffff;
+
           border-radius: 18px;
+
           padding: 24px;
+
           margin-bottom: 22px;
+
           box-shadow:
-            0 8px 25px
-            rgba(16, 42, 67, 0.12);
+            0 10px 28px
+            rgba(
+              16,
+              42,
+              67,
+              0.14
+            );
         }
 
         .paymentInfoHeader {
           display: flex;
+
           align-items: center;
-          justify-content: space-between;
-          gap: 20px;
+
+          justify-content:
+            space-between;
+
           padding-bottom: 18px;
+
           border-bottom:
             1px solid
-            rgba(255, 255, 255, 0.12);
+            rgba(
+              255,
+              255,
+              255,
+              0.12
+            );
         }
 
         .smallLabel {
           color: #a9bac9;
+
           font-size: 11px;
+
           display: block;
+
           margin-bottom: 4px;
         }
 
         .paymentInfoHeader h2 {
           margin: 0;
-          font-size: 22px;
-          color: #ffffff;
-        }
 
-        .paymentInfoLogo {
-          width: 100px;
-          height: 100px;
-          background: #ffffff;
-          border-radius: 50%;
-          overflow: hidden;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          font-size: 22px;
+
+          color: #ffffff;
         }
 
         .accountInfo {
@@ -1666,195 +1529,396 @@ export default function Deposit() {
 
         .infoRow {
           display: flex;
-          justify-content: space-between;
+
+          justify-content:
+            space-between;
+
           align-items: center;
+
           gap: 20px;
-          padding: 12px 0;
+
+          padding:
+            13px 0;
+
           border-bottom:
             1px solid
-            rgba(255, 255, 255, 0.08);
+            rgba(
+              255,
+              255,
+              255,
+              0.08
+            );
         }
 
         .infoRow span {
           color: #a9bac9;
+
           font-size: 13px;
         }
 
         .infoRow strong {
           color: #ffffff;
+
           font-size: 14px;
+
           text-align: right;
         }
 
         .paymentWarning {
           margin-top: 17px;
-          padding: 13px 15px;
+
+          padding:
+            13px 15px;
+
           border-radius: 10px;
+
           background:
-            rgba(255, 193, 7, 0.09);
-          color: #ffd875;
+            rgba(
+              255,
+              255,
+              255,
+              0.07
+            );
+
+          color: #d8e3ec;
+
           font-size: 13px;
+
           line-height: 1.5;
         }
 
+        /* =========================
+           PAYMENT DETAILS CARD
+           NAVY BLUE
+        ========================= */
+
         .formCard {
           margin-bottom: 30px;
+
+          background:
+            linear-gradient(
+              135deg,
+              #102a43,
+              #173b5a
+            );
+
+          border:
+            1px solid
+            rgba(
+              255,
+              255,
+              255,
+              0.08
+            );
+
+          color: #ffffff;
+
+          box-shadow:
+            0 10px 28px
+            rgba(
+              16,
+              42,
+              67,
+              0.18
+            );
         }
+
+        .formCard .sectionHeading h2 {
+          color: #ffffff;
+        }
+
+        .formCard .sectionHeading p {
+          color: #a9bac9;
+        }
+
+        /* =========================
+           FORM
+        ========================= */
 
         .formGrid {
           display: grid;
+
           grid-template-columns:
-            repeat(2, minmax(0, 1fr));
+            repeat(
+              2,
+              minmax(
+                0,
+                1fr
+              )
+            );
+
           gap: 18px;
         }
 
         .inputGroup {
           display: flex;
+
           flex-direction: column;
+
           gap: 8px;
         }
 
         .inputGroup.fullWidth {
-          grid-column: 1 / -1;
+          grid-column:
+            1 / -1;
         }
 
         .inputGroup label {
           font-size: 13px;
+
           font-weight: 800;
-          color: #173b5a;
+
+          color: #ffffff;
         }
 
         .inputGroup input {
           width: 100%;
+
           height: 48px;
-          border: 1px solid #d7e1e8;
+
+          border:
+            1px solid
+            #d7e1e8;
+
           border-radius: 10px;
-          padding: 0 14px;
+
+          padding:
+            0 14px;
+
           outline: none;
-          background: #ffffff;
+
+          background:
+            #ffffff;
+
           color: #173b5a;
+
           font-size: 14px;
-          transition: 0.2s ease;
+
+          transition:
+            0.2s ease;
+        }
+
+        .inputGroup input::placeholder {
+          color: #8a99a8;
         }
 
         .inputGroup input:focus {
-          border-color: #4caf50;
+          border-color:
+            #4caf50;
+
           box-shadow:
             0 0 0 3px
-            rgba(76, 175, 80, 0.09);
+            rgba(
+              76,
+              175,
+              80,
+              0.12
+            );
         }
+
+        /* =========================
+           UPLOAD
+        ========================= */
 
         .uploadBox {
           position: relative;
+
           min-height: 90px;
-          border: 2px dashed #cdd9e2;
+
+          border:
+            2px dashed
+            rgba(
+              255,
+              255,
+              255,
+              0.28
+            );
+
           border-radius: 12px;
-          background: #f8fafb;
+
+          background:
+            rgba(
+              255,
+              255,
+              255,
+              0.06
+            );
+
           overflow: hidden;
-          transition: 0.2s ease;
+
+          transition:
+            0.2s ease;
         }
 
         .uploadBox:hover {
-          border-color: #4caf50;
+          border-color:
+            #4caf50;
+
+          background:
+            rgba(
+              255,
+              255,
+              255,
+              0.09
+            );
         }
 
         .uploadBox input {
           position: absolute;
+
           inset: 0;
+
           width: 100%;
+
           height: 100%;
+
           opacity: 0;
+
           cursor: pointer;
+
           z-index: 2;
         }
 
         .uploadText {
           min-height: 90px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 12px;
-          color: #173b5a;
-          padding: 12px;
-        }
 
-        .uploadIcon {
-          font-size: 26px;
+          display: flex;
+
+          align-items: center;
+
+          justify-content:
+            center;
+
+          padding: 12px;
+
+          text-align: center;
+
+          color: #ffffff;
         }
 
         .uploadText div {
           display: flex;
+
           flex-direction: column;
+
           gap: 4px;
         }
 
         .uploadText strong {
           font-size: 13px;
+
+          color: #ffffff;
         }
 
         .uploadText small {
-          color: #8393a2;
+          color: #a9bac9;
+
           font-size: 11px;
         }
 
+        /* =========================
+           MESSAGE
+        ========================= */
+
         .message {
           margin-top: 20px;
-          padding: 13px 15px;
+
+          padding:
+            13px 15px;
+
           border-radius: 10px;
+
           font-size: 13px;
+
           font-weight: 700;
+
           line-height: 1.5;
         }
 
         .message.success {
-          background: #eaf8ec;
-          color: #267b30;
-          border: 1px solid #bde5c2;
+          background:
+            #eaf8ec;
+
+          color:
+            #267b30;
+
+          border:
+            1px solid
+            #bde5c2;
         }
 
         .message.error {
-          background: #fff0f0;
-          color: #a62828;
-          border: 1px solid #efc0c0;
+          background:
+            #fff0f0;
+
+          color:
+            #a62828;
+
+          border:
+            1px solid
+            #efc0c0;
         }
+
+        /* =========================
+           SUBMIT
+        ========================= */
 
         .submitButton {
           width: 100%;
+
           height: 52px;
+
           margin-top: 20px;
+
           border: 0;
+
           border-radius: 11px;
-          background: #4caf50;
+
+          background:
+            linear-gradient(
+              135deg,
+              #4caf50,
+              #429747
+            );
+
           color: #ffffff;
+
           font-size: 15px;
+
           font-weight: 900;
+
           cursor: pointer;
-          transition: 0.2s ease;
+
+          transition:
+            0.2s ease;
         }
 
         .submitButton:hover {
-          background: #429747;
-          transform: translateY(-1px);
+          transform:
+            translateY(-1px);
+
+          box-shadow:
+            0 8px 18px
+            rgba(
+              76,
+              175,
+              80,
+              0.22
+            );
         }
 
         .submitButton:disabled {
           opacity: 0.65;
-          cursor: not-allowed;
+
+          cursor:
+            not-allowed;
+
           transform: none;
         }
 
-        @media (max-width: 1100px) {
-
-          .plansGrid {
-            grid-template-columns:
-              repeat(3, 1fr);
-          }
-
-          .paymentGrid {
-            grid-template-columns:
-              repeat(2, 1fr);
-          }
-        }
+        /* =========================
+           RESPONSIVE
+        ========================= */
 
         @media (max-width: 800px) {
 
@@ -1862,22 +1926,26 @@ export default function Deposit() {
             padding: 18px;
           }
 
-          .plansGrid {
-            grid-template-columns:
-              repeat(2, 1fr);
-          }
-
           .selectedPlanBox {
             grid-template-columns:
-              repeat(2, 1fr);
+              repeat(
+                2,
+                1fr
+              );
           }
 
           .formGrid {
-            grid-template-columns: 1fr;
+            grid-template-columns:
+              1fr;
           }
 
           .inputGroup.fullWidth {
-            grid-column: auto;
+            grid-column:
+              auto;
+          }
+
+          .paymentSelector {
+            max-width: 100%;
           }
         }
 
@@ -1895,47 +1963,30 @@ export default function Deposit() {
             padding: 17px;
           }
 
-          .plansGrid {
-            grid-template-columns: 1fr;
-          }
-
-          .paymentGrid {
-            grid-template-columns:
-              1fr 1fr;
-          }
-
-          .paymentMethod {
-            min-height: 135px;
-          }
-
-          .paymentLogoCircle {
-            width: 68px;
-            height: 68px;
-          }
-
           .selectedPlanBox {
             grid-template-columns:
               1fr 1fr;
+
             padding: 17px;
           }
 
-          .paymentInfoHeader {
-            align-items: flex-start;
-          }
-
-          .paymentInfoLogo {
-            width: 78px;
-            height: 78px;
-          }
-
           .infoRow {
-            align-items: flex-start;
-            flex-direction: column;
+            align-items:
+              flex-start;
+
+            flex-direction:
+              column;
+
             gap: 5px;
           }
 
           .infoRow strong {
-            text-align: left;
+            text-align:
+              left;
+          }
+
+          .paymentInfoHeader h2 {
+            font-size: 20px;
           }
         }
 

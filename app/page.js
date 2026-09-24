@@ -76,23 +76,18 @@ function getWeeklyReturn(plan) {
   );
 }
 
-function getDurationWeeks(plan) {
-  const savedDurationWeeks = Number(plan?.durationWeeks || 0);
-
-  if (savedDurationWeeks >= 260) {
-    return savedDurationWeeks;
-  }
-
-  return PLAN_DURATION_WEEKS;
-}
-
 export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [activePlans, setActivePlans] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [withdrawableReturns, setWithdrawableReturns] = useState(0);
+
   const [showFeatures, setShowFeatures] = useState(false);
+
+  /* ===== PRIZE POPUP ===== */
+  const [showPrizePopup, setShowPrizePopup] = useState(true);
+
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -104,6 +99,7 @@ export default function Dashboard() {
     };
 
     checkMobile();
+
     window.addEventListener("resize", checkMobile);
 
     return () => {
@@ -150,14 +146,13 @@ export default function Dashboard() {
       const normalizedPlans = storedActivePlans.map((plan) => ({
         ...plan,
 
-        weekly:
-          Number(
-            plan.weekly ??
-              plan.weeklyReturn ??
-              plan.daily ??
-              plan.dailyReturn ??
-              0
-          ),
+        weekly: Number(
+          plan.weekly ??
+            plan.weeklyReturn ??
+            plan.daily ??
+            plan.dailyReturn ??
+            0
+        ),
 
         durationWeeks: PLAN_DURATION_WEEKS,
         durationYears: PLAN_DURATION_YEARS,
@@ -177,14 +172,13 @@ export default function Dashboard() {
         const normalizedOldPlan = {
           ...oldPlan,
 
-          weekly:
-            Number(
-              oldPlan.weekly ??
-                oldPlan.weeklyReturn ??
-                oldPlan.daily ??
-                oldPlan.dailyReturn ??
-                0
-            ),
+          weekly: Number(
+            oldPlan.weekly ??
+              oldPlan.weeklyReturn ??
+              oldPlan.daily ??
+              oldPlan.dailyReturn ??
+              0
+          ),
 
           durationWeeks: PLAN_DURATION_WEEKS,
           durationYears: PLAN_DURATION_YEARS,
@@ -236,17 +230,6 @@ export default function Dashboard() {
     );
   }, [activePlans]);
 
-  /*
-    Total Earned:
-    Admin approval gives the first weekly return immediately.
-    Weekly Returns page updates earnedReturns after each
-    successful weekly return claim.
-
-    Therefore Dashboard uses the stored earnedReturns /
-    totalEarned value instead of calculating from elapsed
-    time. This prevents the first immediate return from
-    being missed.
-  */
   const earnedReturns = useMemo(() => {
     return activePlans.reduce((total, plan) => {
       const storedEarned = Number(
@@ -439,6 +422,7 @@ export default function Dashboard() {
     localStorage.removeItem("transportLoggedIn");
     localStorage.removeItem("transportUser");
     localStorage.removeItem("transportCurrentUser");
+
     window.location.href = "/login";
   }
 
@@ -446,7 +430,9 @@ export default function Dashboard() {
     return (
       <div style={styles.loadingScreen}>
         <div style={styles.loadingCard}>
-          <div style={styles.loadingIcon}>🚛</div>
+          <div style={styles.loadingIcon}>
+            🚛
+          </div>
 
           <div style={styles.loadingTitle}>
             Transport Hub
@@ -479,6 +465,44 @@ export default function Dashboard() {
           }
         }
 
+        @keyframes prizePopupIn {
+          0% {
+            opacity: 0;
+            transform: scale(0.92) translateY(20px);
+          }
+
+          100% {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+
+        @keyframes prizeGlow {
+          0%,
+          100% {
+            box-shadow:
+              0 0 15px rgba(247, 201, 72, 0.12),
+              0 0 35px rgba(44, 130, 201, 0.08);
+          }
+
+          50% {
+            box-shadow:
+              0 0 28px rgba(247, 201, 72, 0.25),
+              0 0 55px rgba(44, 130, 201, 0.14);
+          }
+        }
+
+        @keyframes prizeIconFloat {
+          0%,
+          100% {
+            transform: translateY(0px);
+          }
+
+          50% {
+            transform: translateY(-5px);
+          }
+        }
+
         .transport-animated-card {
           animation: transportCardFloat 5s ease-in-out infinite;
         }
@@ -486,7 +510,8 @@ export default function Dashboard() {
         .transport-animated-card:hover {
           animation-play-state: paused;
           transform: translateY(-8px);
-          box-shadow: 0 12px 28px rgba(16, 42, 67, 0.2);
+          box-shadow:
+            0 12px 28px rgba(16, 42, 67, 0.2);
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -500,7 +525,9 @@ export default function Dashboard() {
         <div style={styles.mobileHeader}>
           <button
             style={styles.menuButton}
-            onClick={() => setMenuOpen(!menuOpen)}
+            onClick={() =>
+              setMenuOpen(!menuOpen)
+            }
           >
             ☰
           </button>
@@ -541,7 +568,9 @@ export default function Dashboard() {
           </div>
 
           <div style={styles.userMiniCard}>
-            <div style={styles.avatar}>👤</div>
+            <div style={styles.avatar}>
+              👤
+            </div>
 
             <div
               style={{
@@ -599,7 +628,9 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() => goTo("/transactions")}
+              onClick={() =>
+                goTo("/transactions")
+              }
             >
               <span>📊</span>
               <span>Transactions</span>
@@ -637,7 +668,9 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() => goTo("/my-team")}
+              onClick={() =>
+                goTo("/my-team")
+              }
             >
               <span>👥</span>
               <span>My Team</span>
@@ -645,7 +678,9 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() => goTo("/referral")}
+              onClick={() =>
+                goTo("/referral")
+              }
             >
               <span>🔗</span>
               <span>Referral</span>
@@ -653,7 +688,9 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() => goTo("/profile")}
+              onClick={() =>
+                goTo("/profile")
+              }
             >
               <span>👤</span>
               <span>Profile</span>
@@ -671,7 +708,9 @@ export default function Dashboard() {
 
             <button
               style={styles.navItem}
-              onClick={() => goTo("/support")}
+              onClick={() =>
+                goTo("/support")
+              }
             >
               <span>🎧</span>
               <span>Support</span>
@@ -691,7 +730,9 @@ export default function Dashboard() {
       {isMobile && menuOpen && (
         <div
           style={styles.mobileOverlay}
-          onClick={() => setMenuOpen(false)}
+          onClick={() =>
+            setMenuOpen(false)
+          }
         />
       )}
 
@@ -950,81 +991,96 @@ export default function Dashboard() {
                   : {}),
               }}
             >
-              {activePlans.map((plan, index) => {
-                const weekly = getWeeklyReturn(plan);
+              {activePlans.map(
+                (plan, index) => {
+                  const weekly =
+                    getWeeklyReturn(plan);
 
-                const durationWeeks =
-                  PLAN_DURATION_WEEKS;
+                  const durationWeeks =
+                    PLAN_DURATION_WEEKS;
 
-                const totalPlanReturn =
-                  weekly * durationWeeks;
+                  const totalPlanReturn =
+                    weekly * durationWeeks;
 
-                return (
-                  <div
-                    className="transport-animated-card"
-                    style={{
-                      ...styles.planCard,
-                      animationDelay:
-                        index * 0.35 + "s",
-                    }}
-                    key={index}
-                  >
-                    <div style={styles.planTop}>
-                      <div
-                        style={{
-                          minWidth: 0,
-                        }}
-                      >
-                        <div style={styles.planName}>
-                          {plan.name}
+                  return (
+                    <div
+                      className="transport-animated-card"
+                      style={{
+                        ...styles.planCard,
+                        animationDelay:
+                          index * 0.35 + "s",
+                      }}
+                      key={index}
+                    >
+                      <div style={styles.planTop}>
+                        <div
+                          style={{
+                            minWidth: 0,
+                          }}
+                        >
+                          <div style={styles.planName}>
+                            {plan.name}
+                          </div>
+
+                          <div style={styles.planPrice}>
+                            {formatMoney(plan.price)}
+                          </div>
                         </div>
 
-                        <div style={styles.planPrice}>
-                          {formatMoney(plan.price)}
+                        <div style={styles.activeBadge}>
+                          ACTIVE
                         </div>
                       </div>
 
-                      <div style={styles.activeBadge}>
-                        ACTIVE
+                      <div style={styles.planStats}>
+                        <div>
+                          <span
+                            style={styles.statLabel}
+                          >
+                            Weekly
+                          </span>
+
+                          <strong
+                            style={styles.statValue}
+                          >
+                            {formatMoney(weekly)}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span
+                            style={styles.statLabel}
+                          >
+                            Duration
+                          </span>
+
+                          <strong
+                            style={styles.statValue}
+                          >
+                            {durationWeeks} Weeks
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span
+                            style={styles.statLabel}
+                          >
+                            Total Return
+                          </span>
+
+                          <strong
+                            style={styles.statValue}
+                          >
+                            {formatMoney(
+                              totalPlanReturn
+                            )}
+                          </strong>
+                        </div>
                       </div>
                     </div>
-
-                    <div style={styles.planStats}>
-                      <div>
-                        <span style={styles.statLabel}>
-                          Weekly
-                        </span>
-
-                        <strong style={styles.statValue}>
-                          {formatMoney(weekly)}
-                        </strong>
-                      </div>
-
-                      <div>
-                        <span style={styles.statLabel}>
-                          Duration
-                        </span>
-
-                        <strong style={styles.statValue}>
-                          {durationWeeks} Weeks
-                        </strong>
-                      </div>
-
-                      <div>
-                        <span style={styles.statLabel}>
-                          Total Return
-                        </span>
-
-                        <strong style={styles.statValue}>
-                          {formatMoney(
-                            totalPlanReturn
-                          )}
-                        </strong>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                }
+              )}
             </div>
           )}
         </section>
@@ -1104,7 +1160,9 @@ export default function Dashboard() {
 
             <div style={styles.walletRows}>
               <div style={styles.walletRow}>
-                <span>Current Weekly Return</span>
+                <span>
+                  Current Weekly Return
+                </span>
 
                 <strong>
                   {formatMoney(todayProfit)}
@@ -1112,7 +1170,9 @@ export default function Dashboard() {
               </div>
 
               <div style={styles.walletRow}>
-                <span>Previous Weekly Return</span>
+                <span>
+                  Previous Weekly Return
+                </span>
 
                 <strong>
                   {formatMoney(yesterdayProfit)}
@@ -1201,7 +1261,9 @@ export default function Dashboard() {
 
             <button
               style={styles.outlineButton}
-              onClick={() => goTo("/my-team")}
+              onClick={() =>
+                goTo("/my-team")
+              }
             >
               View My Team
             </button>
@@ -1248,7 +1310,9 @@ export default function Dashboard() {
 
             <button
               style={styles.greenButton}
-              onClick={() => goTo("/referral")}
+              onClick={() =>
+                goTo("/referral")
+              }
             >
               Open Referral
             </button>
@@ -1279,7 +1343,9 @@ export default function Dashboard() {
 
             <button
               style={styles.textButton}
-              onClick={() => goTo("/transactions")}
+              onClick={() =>
+                goTo("/transactions")
+              }
             >
               View All →
             </button>
@@ -1319,7 +1385,9 @@ export default function Dashboard() {
                       key={index}
                     >
                       <div
-                        style={styles.transactionIcon}
+                        style={
+                          styles.transactionIcon
+                        }
                       >
                         {type === "withdraw"
                           ? "💸"
@@ -1368,7 +1436,8 @@ export default function Dashboard() {
                       <div
                         style={{
                           ...styles.statusBadge,
-                          ...(status === "approved" ||
+                          ...(status ===
+                            "approved" ||
                           status === "completed"
                             ? styles.approvedStatus
                             : status === "rejected"
@@ -1420,7 +1489,9 @@ export default function Dashboard() {
           >
             <button
               style={styles.liveChatButton}
-              onClick={() => goTo("/support")}
+              onClick={() =>
+                goTo("/support")
+              }
             >
               💬 Live Chat
             </button>
@@ -1436,6 +1507,126 @@ export default function Dashboard() {
           </div>
         </section>
       </main>
+
+      {/* =====================================================
+          PREMIUM 5 LAKH PRIZE POPUP
+      ===================================================== */}
+
+      {showPrizePopup && (
+        <div style={styles.prizePopupOverlay}>
+          <div
+            style={{
+              ...styles.prizePopupCard,
+              animation:
+                "prizePopupIn .35s ease-out forwards",
+            }}
+          >
+            {/* TOP */}
+            <div style={styles.prizePopupTop}>
+              <div style={styles.prizeBrandPill}>
+                🚛 TRANSPORT HUB
+              </div>
+
+              <button
+                style={styles.prizeCloseTop}
+                onClick={() =>
+                  setShowPrizePopup(false)
+                }
+                aria-label="Close popup"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* HERO */}
+            <div style={styles.prizeHero}>
+              <div
+                style={{
+                  ...styles.prizeGlowIcon,
+                  animation:
+                    "prizeIconFloat 2.8s ease-in-out infinite",
+                }}
+              >
+                🏆
+              </div>
+
+              <div style={styles.prizeSmallTitle}>
+                SPECIAL TEAM REWARD
+              </div>
+
+              <div style={styles.prizeMainTitle}>
+                WIN 5 LAKH PRIZE
+              </div>
+
+              <div style={styles.prizeSubtitle}>
+                Build Your Team • Unlock Your Reward
+              </div>
+
+              <div style={styles.prizeDivider} />
+
+              <div style={styles.prizeMessage}>
+                When your team crosses
+              </div>
+
+              <div style={styles.prizeTarget}>
+                50 LAKH
+              </div>
+
+              <div style={styles.prizeMessage}>
+                you will WIN
+              </div>
+
+              <div style={styles.prizeAmount}>
+                5 LAKH
+              </div>
+
+              <div style={styles.prizeBottomGlow}>
+                🏆
+              </div>
+            </div>
+
+            {/* CHANNEL */}
+            <div style={styles.channelPrizeCard}>
+              <div style={styles.channelIcon}>
+                📢
+              </div>
+
+              <div style={styles.channelInfo}>
+                <div style={styles.channelTitle}>
+                  JOIN OUR OFFICIAL CHANNEL
+                </div>
+
+                <div style={styles.channelSubtitle}>
+                  News • Updates & Announcements
+                </div>
+              </div>
+
+              <a
+                href="https://whatsapp.com/channel/0029VbDUOmH6xCSQ4ejQlS0R"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={styles.channelButton}
+              >
+                JOIN CHANNEL →
+              </a>
+            </div>
+
+            {/* CLOSE */}
+            <div style={styles.prizeBottomButtons}>
+              <button
+                style={styles.prizeCloseButton}
+                onClick={() =>
+                  setShowPrizePopup(false)
+                }
+              >
+                CLOSE ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECURITY MODAL */}
 
       {showFeatures && (
         <div style={styles.modalOverlay}>
@@ -1934,7 +2125,8 @@ const styles = {
   },
 
   mobilePlanGrid: {
-    gridTemplateColumns: "minmax(0, 1fr)",
+    gridTemplateColumns:
+      "minmax(0, 1fr)",
   },
 
   planCard: {
@@ -2376,6 +2568,280 @@ const styles = {
     marginTop: "6px",
   },
 
+  /* =====================================================
+     PREMIUM PRIZE POPUP STYLES
+  ===================================================== */
+
+  prizePopupOverlay: {
+    position: "fixed",
+    inset: 0,
+    background:
+      "rgba(3, 12, 24, 0.82)",
+    backdropFilter: "blur(7px)",
+    WebkitBackdropFilter: "blur(7px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 5000,
+    padding: "18px",
+    boxSizing: "border-box",
+  },
+
+  prizePopupCard: {
+    width: "100%",
+    maxWidth: "445px",
+    maxHeight: "92vh",
+    overflowY: "auto",
+    background:
+      "linear-gradient(145deg, #071d32 0%, #102A43 55%, #081a2d 100%)",
+    borderRadius: "24px",
+    border:
+      "1px solid rgba(66, 150, 211, 0.55)",
+    padding: "16px",
+    boxSizing: "border-box",
+    position: "relative",
+    boxShadow:
+      "0 25px 70px rgba(0,0,0,.55), 0 0 45px rgba(30,120,190,.12)",
+  },
+
+  prizePopupTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    marginBottom: "12px",
+  },
+
+  prizeBrandPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "7px 12px",
+    borderRadius: "999px",
+    background:
+      "linear-gradient(135deg, #173B5A, #1E4C70)",
+    border:
+      "1px solid rgba(103, 180, 235, .35)",
+    color: "#ffffff",
+    fontSize: "9px",
+    fontWeight: 900,
+    letterSpacing: ".5px",
+    boxShadow:
+      "0 4px 15px rgba(0,0,0,.18)",
+  },
+
+  prizeCloseTop: {
+    width: "34px",
+    height: "34px",
+    borderRadius: "50%",
+    border:
+      "1px solid rgba(154, 190, 214, .3)",
+    background:
+      "rgba(255,255,255,.08)",
+    color: "#ffffff",
+    fontSize: "22px",
+    lineHeight: 1,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  prizeHero: {
+    position: "relative",
+    textAlign: "center",
+    borderRadius: "20px",
+    padding: "22px 15px 20px",
+    background:
+      "linear-gradient(160deg, rgba(18,58,88,.96), rgba(7,29,49,.98))",
+    border:
+      "1px solid rgba(68, 142, 193, .42)",
+    overflow: "hidden",
+    animation:
+      "prizeGlow 3.5s ease-in-out infinite",
+  },
+
+  prizeGlowIcon: {
+    width: "66px",
+    height: "66px",
+    margin: "0 auto 10px",
+    borderRadius: "20px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "35px",
+    background:
+      "linear-gradient(145deg, #263F5A, #162D45)",
+    border:
+      "1px solid rgba(247,201,72,.42)",
+    boxShadow:
+      "0 8px 28px rgba(247,201,72,.12)",
+  },
+
+  prizeSmallTitle: {
+    color: "#8FB4CE",
+    fontSize: "9px",
+    fontWeight: 900,
+    letterSpacing: "1.5px",
+    marginBottom: "6px",
+  },
+
+  prizeMainTitle: {
+    color: "#F7C948",
+    fontSize: "28px",
+    lineHeight: 1.1,
+    fontWeight: 1000,
+    letterSpacing: ".3px",
+    textShadow:
+      "0 3px 18px rgba(247,201,72,.2)",
+  },
+
+  prizeSubtitle: {
+    color: "#D7E6F0",
+    fontSize: "10px",
+    fontWeight: 700,
+    marginTop: "8px",
+  },
+
+  prizeDivider: {
+    width: "70%",
+    height: "1px",
+    margin: "16px auto",
+    background:
+      "linear-gradient(90deg, transparent, rgba(247,201,72,.6), transparent)",
+  },
+
+  prizeMessage: {
+    color: "#AFC5D5",
+    fontSize: "10px",
+    fontWeight: 700,
+    lineHeight: 1.5,
+  },
+
+  prizeTarget: {
+    display: "inline-block",
+    margin: "7px 0",
+    padding: "7px 15px",
+    borderRadius: "10px",
+    background:
+      "linear-gradient(135deg, #193C59, #102A43)",
+    border:
+      "1px solid rgba(78,160,215,.4)",
+    color: "#ffffff",
+    fontSize: "20px",
+    fontWeight: 1000,
+    letterSpacing: ".5px",
+    boxShadow:
+      "0 6px 20px rgba(0,0,0,.18)",
+  },
+
+  prizeAmount: {
+    color: "#F7C948",
+    fontSize: "36px",
+    lineHeight: 1,
+    fontWeight: 1000,
+    marginTop: "7px",
+    letterSpacing: ".5px",
+    textShadow:
+      "0 4px 25px rgba(247,201,72,.24)",
+  },
+
+  prizeBottomGlow: {
+    color: "#F7C948",
+    fontSize: "20px",
+    marginTop: "12px",
+    opacity: 0.8,
+  },
+
+  channelPrizeCard: {
+    marginTop: "12px",
+    padding: "13px",
+    borderRadius: "16px",
+    background:
+      "linear-gradient(135deg, rgba(24,58,83,.96), rgba(11,35,55,.98))",
+    border:
+      "1px solid rgba(79,157,207,.38)",
+    display: "flex",
+    alignItems: "center",
+    gap: "11px",
+    boxShadow:
+      "0 8px 24px rgba(0,0,0,.16)",
+  },
+
+  channelIcon: {
+    width: "45px",
+    height: "45px",
+    flexShrink: 0,
+    borderRadius: "13px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "23px",
+    background:
+      "linear-gradient(145deg, #274D6C, #173B5A)",
+    border:
+      "1px solid rgba(247,201,72,.3)",
+  },
+
+  channelInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  channelTitle: {
+    color: "#ffffff",
+    fontSize: "10px",
+    fontWeight: 1000,
+    letterSpacing: ".3px",
+    overflowWrap: "anywhere",
+  },
+
+  channelSubtitle: {
+    color: "#8FAFC4",
+    fontSize: "8px",
+    marginTop: "4px",
+    lineHeight: 1.4,
+  },
+
+  channelButton: {
+    flexShrink: 0,
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "9px 11px",
+    borderRadius: "9px",
+    background:
+      "linear-gradient(135deg, #F7C948, #DDAE32)",
+    color: "#102A43",
+    fontSize: "8px",
+    fontWeight: 1000,
+    whiteSpace: "nowrap",
+    boxShadow:
+      "0 5px 16px rgba(247,201,72,.16)",
+  },
+
+  prizeBottomButtons: {
+    marginTop: "12px",
+    display: "flex",
+    gap: "8px",
+  },
+
+  prizeCloseButton: {
+    width: "100%",
+    border:
+      "1px solid rgba(111,153,181,.35)",
+    background:
+      "linear-gradient(135deg, #173B5A, #102A43)",
+    color: "#D8E7F0",
+    padding: "12px",
+    borderRadius: "12px",
+    cursor: "pointer",
+    fontSize: "10px",
+    fontWeight: 900,
+    letterSpacing: ".4px",
+  },
+
   modalOverlay: {
     position: "fixed",
     inset: 0,
@@ -2383,7 +2849,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 2000,
+    zIndex: 6000,
     padding: "20px",
     boxSizing: "border-box",
   },
