@@ -107,9 +107,9 @@ const paymentMethods = [
   {
     id: "bank",
     title: "Bank Transfer",
-    accountName: "Wajahat Abbas",
+    accountName: "WAJAHAT ABBAS",
     accountNumber: "0407326243356",
-    bankName: "ubl bank",
+    bankName: "United bank Limited",
   },
 ];
 
