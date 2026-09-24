@@ -2,21 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabase";
 
 export default function SupportPage() {
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState("chat");
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      sender: "support",
-      text: "Hello! 👋 Welcome to Transport Hub Support. How can we help you today?",
-      time: "Now",
-    },
-  ]);
-
+  const [messages, setMessages] = useState([]);
   const [userName, setUserName] = useState("User");
   const [userPhone, setUserPhone] = useState("");
 
@@ -42,65 +35,135 @@ export default function SupportPage() {
     }
   }, [router]);
 
-  const sendMessage = () => {
-    const cleanMessage = message.trim();
+  useEffect(() => {
+    if (!userPhone) return;
 
-    if (!cleanMessage) return;
+    let channel;
 
-    const newMessage = {
-      id: Date.now(),
-      sender: "user",
-      text: cleanMessage,
-      time: "Now",
+    const loadMessages = async () => {
+      const { data, error } = await supabase
+        .from("support_messages")
+        .select("*")
+        .eq("user_phone", userPhone)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.log("Load messages error:", error);
+        return;
+      }
+
+      const formatted = (data || []).map((item, index) => ({
+        id:
+          item.id ||
+          `${item.created_at}-${item.sender}-${index}`,
+        sender: item.sender === "admin" ? "support" : "user",
+        text: item.message,
+        time: formatTime(item.created_at),
+      }));
+
+      setMessages(formatted);
     };
 
-    setMessages((prev) => [...prev, newMessage]);
-    setMessage("");
+    loadMessages();
 
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
+    channel = supabase
+      .channel(`support-user-${userPhone}`)
+      .on(
+        "postgres_changes",
         {
-          id: Date.now() + 1,
-          sender: "support",
-          text: "Thanks for contacting Transport Hub Support. Our support team will assist you shortly. 💙",
-          time: "Now",
+          event: "INSERT",
+          schema: "public",
+          table: "support_messages",
+          filter: `user_phone=eq.${userPhone}`,
+        },
+        (payload) => {
+          const item = payload.new;
+
+          setMessages((prev) => {
+            const sender =
+              item.sender === "admin" ? "support" : "user";
+
+            const alreadyExists = prev.some(
+              (msg) =>
+                msg.text === item.message &&
+                msg.sender === sender &&
+                msg.time === formatTime(item.created_at)
+            );
+
+            if (alreadyExists) return prev;
+
+            return [
+              ...prev,
+              {
+                id:
+                  item.id ||
+                  `${item.created_at}-${item.sender}-${Date.now()}`,
+                sender,
+                text: item.message,
+                time: formatTime(item.created_at),
+              },
+            ];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [userPhone]);
+
+  const sendMessage = async () => {
+    const cleanMessage = message.trim();
+
+    if (!cleanMessage || !userPhone) return;
+
+    const { error } = await supabase
+      .from("support_messages")
+      .insert([
+        {
+          user_phone: userPhone,
+          user_name: userName,
+          sender: "user",
+          message: cleanMessage,
         },
       ]);
-    }, 700);
-  };
 
-  const sendQuickMessage = (text) => {
-    setMessage(text);
-
-    setTimeout(() => {
-      const newMessage = {
-        id: Date.now(),
-        sender: "user",
-        text,
-        time: "Now",
-      };
-
-      setMessages((prev) => [...prev, newMessage]);
-
-      setTimeout(() => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 1,
-            sender: "support",
-            text: "Sure! We have received your request. Our support team will assist you shortly. 💙",
-            time: "Now",
-          },
-        ]);
-      }, 700);
-    }, 50);
+    if (error) {
+      console.log("Send message error:", error);
+      alert("Message could not be sent.");
+      return;
+    }
 
     setMessage("");
+  };
+
+  const sendQuickMessage = async (text) => {
+    if (!userPhone) return;
+
+    const { error } = await supabase
+      .from("support_messages")
+      .insert([
+        {
+          user_phone: userPhone,
+          user_name: userName,
+          sender: "user",
+          message: text,
+        },
+      ]);
+
+    if (error) {
+      console.log("Quick message error:", error);
+      alert("Message could not be sent.");
+    }
   };
 
   const whatsappMessage = encodeURIComponent(
-    `Hello Transport Hub Support, I need help with my account.${userPhone ? ` My registered number is ${userPhone}.` : ""}`
+    `Hello Transport Hub Support, I need help with my account.${
+      userPhone ? ` My registered number is ${userPhone}.` : ""
+    }`
   );
 
   const whatsappLink = `https://wa.me/923263159327?text=${whatsappMessage}`;
@@ -109,12 +172,12 @@ export default function SupportPage() {
     {
       question: "How can I make a deposit?",
       answer:
-        "Go to the Deposit section, select your transport plan, enter your bank details and submit your deposit request.",
+        "Go to the Deposit section, select your transport plan and submit your deposit request.",
     },
     {
       question: "How can I withdraw my returns?",
       answer:
-        "Open the Withdraw section and submit a withdrawal request when your available return balance reaches the minimum cashout amount.",
+        "Open the Withdraw section and submit a withdrawal request when your available balance is eligible.",
     },
     {
       question: "Where can I see my transactions?",
@@ -124,7 +187,7 @@ export default function SupportPage() {
     {
       question: "How can I contact support?",
       answer:
-        "You can contact us through Live Chat or directly through WhatsApp Support.",
+        "You can contact us through Live Chat or WhatsApp Support.",
     },
   ];
 
@@ -133,6 +196,7 @@ export default function SupportPage() {
       <div style={styles.header}>
         <div>
           <div style={styles.headerTitle}>🎧 Support Center</div>
+
           <div style={styles.headerSubtitle}>
             We are here to help you
           </div>
@@ -177,7 +241,9 @@ export default function SupportPage() {
             onClick={() => setActiveTab("whatsapp")}
             style={{
               ...styles.tabButton,
-              ...(activeTab === "whatsapp" ? styles.activeTab : {}),
+              ...(activeTab === "whatsapp"
+                ? styles.activeTab
+                : {}),
             }}
           >
             📱 WhatsApp
@@ -201,6 +267,7 @@ export default function SupportPage() {
 
               <div>
                 <h2 style={styles.cardTitle}>Live Chat</h2>
+
                 <p style={styles.cardSubtitle}>
                   Chat with Transport Hub Support
                 </p>
@@ -214,50 +281,59 @@ export default function SupportPage() {
 
             <div style={styles.chatBox}>
               <div style={styles.messagesArea}>
-                {messages.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      ...styles.messageRow,
-                      justifyContent:
-                        item.sender === "user"
-                          ? "flex-end"
-                          : "flex-start",
-                    }}
-                  >
-                    <div
-                      style={{
-                        ...styles.messageBubble,
-                        ...(item.sender === "user"
-                          ? styles.userBubble
-                          : styles.supportBubble),
-                      }}
-                    >
-                      <div>{item.text}</div>
+                {messages.length === 0 ? (
+                  <div style={styles.emptyChat}>
+                    <div style={styles.emptyChatIcon}>💬</div>
 
-                      <div
-                        style={{
-                          ...styles.messageTime,
-                          textAlign:
-                            item.sender === "user"
-                              ? "right"
-                              : "left",
-                        }}
-                      >
-                        {item.sender === "user"
-                          ? "You"
-                          : "Support"}{" "}
-                        • {item.time}
-                      </div>
+                    <div style={styles.emptyChatTitle}>
+                      Start a conversation
+                    </div>
+
+                    <div style={styles.emptyChatText}>
+                      Send us a message and our support team will
+                      respond here.
                     </div>
                   </div>
-                ))}
+                ) : (
+                  messages.map((item, index) => (
+                    <div
+                      key={`${item.id}-${index}`}
+                      style={{
+                        ...styles.messageRow,
+                        justifyContent:
+                          item.sender === "user"
+                            ? "flex-end"
+                            : "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          ...styles.messageBubble,
+                          ...(item.sender === "user"
+                            ? styles.userBubble
+                            : styles.supportBubble),
+                        }}
+                      >
+                        <div>{item.text}</div>
+
+                        <div style={styles.messageTime}>
+                          {item.sender === "user"
+                            ? "You"
+                            : "Support"}{" "}
+                          • {item.time}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
               <div style={styles.quickReplies}>
                 <button
                   onClick={() =>
-                    sendQuickMessage("I need help with my deposit.")
+                    sendQuickMessage(
+                      "I need help with my deposit."
+                    )
                   }
                   style={styles.quickButton}
                 >
@@ -266,7 +342,9 @@ export default function SupportPage() {
 
                 <button
                   onClick={() =>
-                    sendQuickMessage("I need help with my withdrawal.")
+                    sendQuickMessage(
+                      "I need help with my withdrawal."
+                    )
                   }
                   style={styles.quickButton}
                 >
@@ -275,7 +353,9 @@ export default function SupportPage() {
 
                 <button
                   onClick={() =>
-                    sendQuickMessage("I have an issue with my account.")
+                    sendQuickMessage(
+                      "I have an issue with my account."
+                    )
                   }
                   style={styles.quickButton}
                 >
@@ -353,7 +433,10 @@ export default function SupportPage() {
               <div style={styles.cardHeaderIcon}>❓</div>
 
               <div>
-                <h2 style={styles.cardTitle}>Frequently Asked Questions</h2>
+                <h2 style={styles.cardTitle}>
+                  Frequently Asked Questions
+                </h2>
+
                 <p style={styles.cardSubtitle}>
                   Quick answers to common questions
                 </p>
@@ -362,7 +445,10 @@ export default function SupportPage() {
 
             <div style={styles.faqList}>
               {faqs.map((faq, index) => (
-                <details key={index} style={styles.faqItem}>
+                <details
+                  key={index}
+                  style={styles.faqItem}
+                >
                   <summary style={styles.faqQuestion}>
                     <span>{faq.question}</span>
                     <span>＋</span>
@@ -411,16 +497,31 @@ export default function SupportPage() {
   );
 }
 
+function formatTime(dateString) {
+  if (!dateString) return "Now";
+
+  const date = new Date(dateString);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Now";
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 const styles = {
   page: {
     minHeight: "100vh",
-    background: "#eef3f7",
-    color: "#ffffff",
+    background: "#EEF3F7",
+    color: "#FFFFFF",
     fontFamily: "Arial, sans-serif",
   },
 
   header: {
-    background: "linear-gradient(135deg, #102A43, #173B5A)",
+    background: "#102A43",
     padding: "22px 28px",
     display: "flex",
     alignItems: "center",
@@ -442,8 +543,8 @@ const styles = {
 
   backButton: {
     border: "1px solid #294B66",
-    background: "#1E3A56",
-    color: "#ffffff",
+    background: "#173B5A",
+    color: "#FFFFFF",
     padding: "11px 17px",
     borderRadius: "10px",
     fontWeight: "700",
@@ -472,7 +573,7 @@ const styles = {
     width: "58px",
     height: "58px",
     borderRadius: "15px",
-    background: "#1E3A56",
+    background: "#173B5A",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -515,8 +616,8 @@ const styles = {
   },
 
   activeTab: {
-    background: "#1E3A56",
-    color: "#ffffff",
+    background: "#173B5A",
+    color: "#FFFFFF",
   },
 
   card: {
@@ -539,7 +640,7 @@ const styles = {
     width: "48px",
     height: "48px",
     borderRadius: "13px",
-    background: "#1E3A56",
+    background: "#173B5A",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -582,21 +683,53 @@ const styles = {
   },
 
   chatBox: {
-    background: "#173B5A",
-    border: "1px solid #294B66",
+    width: "100%",
+    background: "#102A43",
+    border: "1px solid #1E3A56",
     borderRadius: "14px",
     overflow: "hidden",
   },
 
   messagesArea: {
+    width: "100%",
     minHeight: "320px",
     maxHeight: "420px",
     overflowY: "auto",
     padding: "18px",
+    background: "#102A43",
+  },
+
+  emptyChat: {
+    minHeight: "280px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    color: "#9FB3C8",
+  },
+
+  emptyChatIcon: {
+    fontSize: "38px",
+    marginBottom: "10px",
+  },
+
+  emptyChatTitle: {
+    color: "#FFFFFF",
+    fontSize: "16px",
+    fontWeight: "800",
+  },
+
+  emptyChatText: {
+    marginTop: "6px",
+    fontSize: "13px",
+    maxWidth: "350px",
+    lineHeight: 1.5,
   },
 
   messageRow: {
     display: "flex",
+    width: "100%",
     marginBottom: "13px",
   },
 
@@ -608,17 +741,20 @@ const styles = {
     lineHeight: 1.5,
   },
 
-  supportBubble: {
-    background: "#102A43",
+  /* USER CHAT */
+  userBubble: {
+    background: "#173B5A",
     border: "1px solid #294B66",
-    color: "#ffffff",
-    borderBottomLeftRadius: "4px",
+    color: "#FFFFFF",
+    borderBottomRightRadius: "4px",
   },
 
-  userBubble: {
-    background: "#2E6B4A",
-    color: "#ffffff",
-    borderBottomRightRadius: "4px",
+  /* ADMIN CHAT - NAVY BLUE */
+  supportBubble: {
+    background: "#102A43",
+    border: "1px solid #1E3A56",
+    color: "#FFFFFF",
+    borderBottomLeftRadius: "4px",
   },
 
   messageTime: {
@@ -632,12 +768,13 @@ const styles = {
     display: "flex",
     gap: "7px",
     flexWrap: "wrap",
-    borderTop: "1px solid #294B66",
+    borderTop: "1px solid #1E3A56",
+    background: "#102A43",
   },
 
   quickButton: {
     border: "1px solid #294B66",
-    background: "#102A43",
+    background: "#173B5A",
     color: "#C9D8E6",
     padding: "8px 11px",
     borderRadius: "8px",
@@ -649,15 +786,16 @@ const styles = {
     display: "flex",
     gap: "9px",
     padding: "13px",
-    borderTop: "1px solid #294B66",
+    borderTop: "1px solid #1E3A56",
+    background: "#102A43",
   },
 
   input: {
     flex: 1,
     minWidth: 0,
     border: "1px solid #294B66",
-    background: "#102A43",
-    color: "#ffffff",
+    background: "#173B5A",
+    color: "#FFFFFF",
     padding: "12px 13px",
     borderRadius: "9px",
     outline: "none",
@@ -667,7 +805,7 @@ const styles = {
   sendButton: {
     border: "none",
     background: "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
-    color: "#ffffff",
+    color: "#FFFFFF",
     padding: "0 18px",
     borderRadius: "9px",
     fontWeight: "800",
@@ -683,7 +821,7 @@ const styles = {
     width: "78px",
     height: "78px",
     borderRadius: "50%",
-    background: "#1E3A56",
+    background: "#173B5A",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -724,7 +862,7 @@ const styles = {
     display: "inline-block",
     textDecoration: "none",
     background: "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
-    color: "#ffffff",
+    color: "#FFFFFF",
     padding: "13px 24px",
     borderRadius: "10px",
     fontWeight: "800",
@@ -752,7 +890,7 @@ const styles = {
 
   faqQuestion: {
     padding: "16px",
-    color: "#ffffff",
+    color: "#FFFFFF",
     fontWeight: "700",
     cursor: "pointer",
     display: "flex",
@@ -785,7 +923,7 @@ const styles = {
     width: "45px",
     height: "45px",
     borderRadius: "11px",
-    background: "#1E3A56",
+    background: "#173B5A",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -806,7 +944,7 @@ const styles = {
   bottomButton: {
     textDecoration: "none",
     background: "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
-    color: "#ffffff",
+    color: "#FFFFFF",
     padding: "10px 15px",
     borderRadius: "9px",
     fontSize: "12px",
@@ -818,7 +956,7 @@ const styles = {
     marginTop: "20px",
     border: "1px solid #1E3A56",
     background: "#102A43",
-    color: "#ffffff",
+    color: "#FFFFFF",
     padding: "14px",
     borderRadius: "11px",
     fontWeight: "800",

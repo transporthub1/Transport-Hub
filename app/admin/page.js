@@ -455,7 +455,6 @@ export default function Admin() {
       return null;
     }
 
-    /* Try phone first */
     const byPhone =
       findUserByPhone(value);
 
@@ -463,7 +462,6 @@ export default function Admin() {
       return byPhone;
     }
 
-    /* Try referral code */
     const lowerValue =
       value.toLowerCase();
 
@@ -556,7 +554,6 @@ export default function Admin() {
 
   /* =========================
      UPDATE USER BALANCE
-     + WITHDRAWABLE BALANCE
   ========================= */
 
   const updateUserBalance = (
@@ -621,18 +618,13 @@ export default function Admin() {
 
         updatedUser = {
           ...user,
-
-          /* Main Balance */
           balance:
             newBalance,
-
-          /* Referral Bonus Records */
           referralBonus:
             Number(
               user.referralBonus ||
                 0
             ) + bonusAmount,
-
           totalReferralBonus:
             Number(
               user.totalReferralBonus ||
@@ -644,18 +636,12 @@ export default function Admin() {
       });
 
     if (updatedUser) {
-      /* SAVE UPDATED USER */
       localStorage.setItem(
         "transportUsers",
         JSON.stringify(
           updatedUsers
         )
       );
-
-      /* =========================
-         ADD REFERRAL BONUS TO
-         WITHDRAWABLE BALANCE
-      ========================= */
 
       const withdrawableKey =
         "transportWithdrawableReturns_" +
@@ -769,23 +755,19 @@ export default function Admin() {
 
           return {
             ...member,
-
             bonusEarned:
               Number(
                 member.bonusEarned ||
                   member.bonus ||
                   0
               ) + bonusAmount,
-
             referralBonus:
               Number(
                 member.referralBonus ||
                   0
               ) + bonusAmount,
-
             lastReferralBonus:
               bonusAmount,
-
             lastReferralBonusLevel:
               level,
           };
@@ -952,45 +934,33 @@ export default function Admin() {
         {
           id:
             transactionId,
-
           type:
             "Referral Bonus",
-
           amount:
             bonusAmount,
-
           depositAmount:
             depositAmount,
-
           percentage:
             percent,
-
           level:
             item.level,
-
           referredPhone:
             getUserPhone(
               referredUser
             ),
-
           referredName:
             referredUser.fullName ||
             referredUser.name ||
             referredUser.username ||
             "User",
-
           status:
             "Completed",
-
           phone:
             referrerPhone,
-
           transactionId:
             transactionId,
-
           number:
             referrerPhone,
-
           date:
             new Date().toLocaleString(),
         },
@@ -1089,10 +1059,6 @@ export default function Admin() {
       return;
     }
 
-    /* =========================
-       PLAN DATA
-    ========================= */
-
     const requestPlan =
       request.plan || {};
 
@@ -1125,74 +1091,50 @@ export default function Admin() {
 
     const updatedRequest = {
       ...request,
-
       status:
         newStatus,
-
       updatedAt:
         new Date().toISOString(),
-
       plan: {
         ...requestPlan,
-
         id:
           requestPlan.id ||
           request.planId ||
           "",
-
         name:
           planName,
-
         amount:
           planAmount,
-
         weekly:
           weeklyReturn,
-
         daily:
           weeklyReturn,
-
         durationYears:
           DURATION_YEARS,
-
         durationWeeks:
           DURATION_WEEKS,
-
         duration:
           DURATION_WEEKS,
-
         totalReturn:
           totalReturn,
       },
-
       planName:
         planName,
-
       amount:
         planAmount,
-
       weeklyReturn:
         weeklyReturn,
-
       dailyReturn:
         weeklyReturn,
-
       durationYears:
         DURATION_YEARS,
-
       durationWeeks:
         DURATION_WEEKS,
-
       duration:
         DURATION_WEEKS,
-
       totalReturn:
         totalReturn,
     };
-
-    /* =========================
-       SAVE REQUEST
-    ========================= */
 
     const updatedRequests =
       depositRequests.map(
@@ -1206,10 +1148,6 @@ export default function Admin() {
       updatedRequests
     );
 
-    /* =========================
-       REJECT
-    ========================= */
-
     if (
       newStatus === "Rejected"
     ) {
@@ -1221,17 +1159,8 @@ export default function Admin() {
       return;
     }
 
-    /* =========================
-       APPROVAL
-    ========================= */
-
     const approvedAt =
       new Date().toISOString();
-
-    /* =========================
-       FIRST WEEKLY RETURN
-       IMMEDIATELY CREDIT
-    ========================= */
 
     const returnsKey =
       "transportWithdrawableReturns_" +
@@ -1258,11 +1187,6 @@ export default function Admin() {
       )
     );
 
-    /* =========================
-       NEXT RETURN
-       7 DAYS AFTER APPROVAL
-    ========================= */
-
     const nextReturnDate =
       new Date(
         Date.now() +
@@ -1272,10 +1196,6 @@ export default function Admin() {
             60 *
             1000
       ).toISOString();
-
-    /* =========================
-       ACTIVE PLAN
-    ========================= */
 
     const activePlan = {
       id:
@@ -1345,10 +1265,6 @@ export default function Admin() {
       phone
     );
 
-    /* =========================
-       DEPOSIT TRANSACTION
-    ========================= */
-
     saveTransaction(
       {
         id:
@@ -1401,10 +1317,6 @@ export default function Admin() {
       phone
     );
 
-    /* =========================
-       FIRST WEEKLY RETURN TRANSACTION
-    ========================= */
-
     if (weeklyReturn > 0) {
       saveTransaction(
         {
@@ -1440,11 +1352,6 @@ export default function Admin() {
       );
     }
 
-    /* =========================
-       REFERRAL BONUS
-       CREDIT ON APPROVAL
-    ========================= */
-
     let referralResult = {
       credited: false,
       totalBonus: 0,
@@ -1466,10 +1373,6 @@ export default function Admin() {
         );
     }
 
-    /* =========================
-       REFERRAL MESSAGE
-    ========================= */
-
     let referralMessage = "";
 
     if (
@@ -1483,10 +1386,6 @@ export default function Admin() {
       referralMessage =
         " No eligible referral bonus was found for this user.";
     }
-
-    /* =========================
-       SUCCESS MESSAGE
-    ========================= */
 
     setMessage(
       planName +
@@ -1503,7 +1402,6 @@ export default function Admin() {
         referralMessage
     );
 
-    /* Refresh users because referral balance may have changed */
     loadUsers();
   };
 
@@ -1926,40 +1824,6 @@ export default function Admin() {
   ]);
 
   /* =========================
-     STATUS HELPERS
-  ========================= */
-
-  const getStatusStyle = (status) => {
-    if (status === "Approved") {
-      return {
-        background:
-          "rgba(143, 214, 148, 0.14)",
-        color: GREEN,
-        border:
-          "1px solid rgba(143, 214, 148, 0.25)",
-      };
-    }
-
-    if (status === "Rejected") {
-      return {
-        background:
-          "rgba(255, 159, 150, 0.14)",
-        color: RED,
-        border:
-          "1px solid rgba(255, 159, 150, 0.25)",
-      };
-    }
-
-    return {
-      background:
-        "rgba(244, 215, 122, 0.14)",
-      color: GOLD,
-      border:
-        "1px solid rgba(244, 215, 122, 0.25)",
-    };
-  };
-
-  /* =========================
      LOADING
   ========================= */
 
@@ -2340,6 +2204,21 @@ export default function Admin() {
                 )
               }
             />
+
+            {/* =========================
+                SUPPORT CHAT CARD
+            ========================= */}
+
+            <AdminCard
+              icon="💬"
+              title="Support Chats"
+              text="View customer support messages and reply to users in real time."
+              buttonText="Open Support Chats"
+              onClick={() => {
+                window.location.href =
+                  "/admin-support";
+              }}
+            />
           </div>
         )}
 
@@ -2384,8 +2263,6 @@ export default function Admin() {
                           "0 10px 28px rgba(16,42,67,0.13)",
                       }}
                     >
-                      {/* USER HEADER */}
-
                       <div
                         style={{
                           display:
@@ -2530,8 +2407,6 @@ export default function Admin() {
                           </span>
                         </div>
                       </div>
-
-                      {/* USER BANK DETAILS */}
 
                       <DetailsGrid>
                         <Detail
