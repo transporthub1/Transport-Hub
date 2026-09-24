@@ -83,15 +83,10 @@ const plans = [
 
 /* =========================
    PAYMENT METHODS
+   ONLY EASYPaisa + BANK
 ========================= */
 
 const paymentMethods = [
-  {
-    id: "jazzcash",
-    title: "JazzCash",
-    accountName: "Fakhar Abbas",
-    accountNumber: "0308-0127173",
-  },
   {
     id: "easypaisa",
     title: "Easypaisa",
@@ -99,17 +94,11 @@ const paymentMethods = [
     accountNumber: "0345-5096922",
   },
   {
-    id: "sadapay",
-    title: "SadaPay",
-    accountName: "Transport Hub",
-    accountNumber: "0300-0000000",
-  },
-  {
     id: "bank",
     title: "Bank Transfer",
     accountName: "WAJAHAT ABBAS",
     accountNumber: "0407326243356",
-    bankName: "United bank Limited",
+    bankName: "United Bank Limited",
   },
 ];
 
@@ -134,7 +123,9 @@ export default function Deposit() {
   ========================= */
 
   const normalizePlan = (savedPlan) => {
-    if (!savedPlan) return null;
+    if (!savedPlan) {
+      return null;
+    }
 
     const savedId = Number(savedPlan.id || 0);
 
@@ -222,7 +213,9 @@ export default function Deposit() {
   ========================= */
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") {
+      return;
+    }
 
     const loggedIn = localStorage.getItem("transportLoggedIn");
     const savedUser = localStorage.getItem("transportUser");
@@ -264,7 +257,9 @@ export default function Deposit() {
       const savedPlan =
         userSavedPlan || commonSavedPlan;
 
-      if (!savedPlan) return;
+      if (!savedPlan) {
+        return;
+      }
 
       try {
         const parsedPlan = JSON.parse(savedPlan);
@@ -272,7 +267,9 @@ export default function Deposit() {
         const normalizedPlan =
           normalizePlan(parsedPlan);
 
-        if (!normalizedPlan) return;
+        if (!normalizedPlan) {
+          return;
+        }
 
         setSelectedPlan(normalizedPlan);
 
@@ -422,7 +419,10 @@ export default function Deposit() {
       return;
     }
 
-    if (!depositAmount || Number(depositAmount) <= 0) {
+    if (
+      !depositAmount ||
+      Number(depositAmount) <= 0
+    ) {
       setMessage(
         "Please enter a valid deposit amount."
       );
@@ -482,7 +482,9 @@ export default function Deposit() {
         },
 
         paymentMethod: selectedPayment.title,
-        paymentMethodId: selectedPayment.id,
+
+        paymentMethodId:
+          selectedPayment.id,
 
         accountName:
           selectedPayment.accountName,
@@ -507,19 +509,26 @@ export default function Deposit() {
           amount:
             Number(selectedPlan.amount),
 
-          weekly: weeklyReturn,
+          weekly:
+            weeklyReturn,
 
-          weeklyReturn: weeklyReturn,
+          weeklyReturn:
+            weeklyReturn,
 
-          daily: weeklyReturn,
+          daily:
+            weeklyReturn,
 
-          dailyReturn: weeklyReturn,
+          dailyReturn:
+            weeklyReturn,
 
-          duration: 260,
+          duration:
+            260,
 
-          durationWeeks: 260,
+          durationWeeks:
+            260,
 
-          durationYears: 5,
+          durationYears:
+            5,
 
           totalReturn:
             weeklyReturn * 260,
@@ -531,13 +540,16 @@ export default function Deposit() {
         screenshotName:
           screenshot.name,
 
-        status: "Pending",
+        status:
+          "Pending",
 
         createdAt:
           new Date().toISOString(),
       };
 
-      /* User-specific requests */
+      /* =========================
+         USER-SPECIFIC REQUESTS
+      ========================= */
 
       const userKey =
         "transportDepositRequests_" +
@@ -545,17 +557,22 @@ export default function Deposit() {
 
       const existingUserRequests =
         JSON.parse(
-          localStorage.getItem(userKey) || "[]"
+          localStorage.getItem(userKey) ||
+            "[]"
         );
 
       existingUserRequests.push(request);
 
       localStorage.setItem(
         userKey,
-        JSON.stringify(existingUserRequests)
+        JSON.stringify(
+          existingUserRequests
+        )
       );
 
-      /* All requests */
+      /* =========================
+         ALL REQUESTS
+      ========================= */
 
       const allRequests =
         JSON.parse(
@@ -571,14 +588,19 @@ export default function Deposit() {
         JSON.stringify(allRequests)
       );
 
-      /* Latest user request */
+      /* =========================
+         LATEST USER REQUEST
+      ========================= */
 
       localStorage.setItem(
-        "transportDepositRequest_" + phone,
+        "transportDepositRequest_" +
+          phone,
         JSON.stringify(request)
       );
 
-      /* Latest common request */
+      /* =========================
+         LATEST COMMON REQUEST
+      ========================= */
 
       localStorage.setItem(
         "transportDepositRequest",
@@ -1084,10 +1106,6 @@ export default function Deposit() {
           margin: 0 auto;
         }
 
-        /* =========================
-           HEADER
-        ========================= */
-
         .pageHeader {
           margin-bottom: 24px;
         }
@@ -1109,10 +1127,6 @@ export default function Deposit() {
 
           font-size: 15px;
         }
-
-        /* =========================
-           GENERAL CARD
-        ========================= */
 
         .sectionCard {
           background:
@@ -1172,10 +1186,6 @@ export default function Deposit() {
           font-size: 14px;
         }
 
-        /* =========================
-           SELECTED PLAN
-        ========================= */
-
         .selectedPlanBox {
           display: grid;
 
@@ -1230,10 +1240,6 @@ export default function Deposit() {
           font-size: 16px;
         }
 
-        /* =========================
-           NO PLAN
-        ========================= */
-
         .noPlanBox {
           display: flex;
 
@@ -1266,10 +1272,6 @@ export default function Deposit() {
 
           color: #9a7737;
         }
-
-        /* =========================
-           PAYMENT METHOD
-        ========================= */
 
         .paymentSection {
           position: relative;
@@ -1455,10 +1457,6 @@ export default function Deposit() {
             #2d8a38;
         }
 
-        /* =========================
-           PAYMENT INFO
-        ========================= */
-
         .paymentInfoCard {
           background:
             linear-gradient(
@@ -1587,11 +1585,6 @@ export default function Deposit() {
           line-height: 1.5;
         }
 
-        /* =========================
-           PAYMENT DETAILS CARD
-           NAVY BLUE
-        ========================= */
-
         .formCard {
           margin-bottom: 30px;
 
@@ -1630,10 +1623,6 @@ export default function Deposit() {
         .formCard .sectionHeading p {
           color: #a9bac9;
         }
-
-        /* =========================
-           FORM
-        ========================= */
 
         .formGrid {
           display: grid;
@@ -1715,10 +1704,6 @@ export default function Deposit() {
               0.12
             );
         }
-
-        /* =========================
-           UPLOAD
-        ========================= */
 
         .uploadBox {
           position: relative;
@@ -1816,10 +1801,6 @@ export default function Deposit() {
           font-size: 11px;
         }
 
-        /* =========================
-           MESSAGE
-        ========================= */
-
         .message {
           margin-top: 20px;
 
@@ -1858,10 +1839,6 @@ export default function Deposit() {
             1px solid
             #efc0c0;
         }
-
-        /* =========================
-           SUBMIT
-        ========================= */
 
         .submitButton {
           width: 100%;
@@ -1915,10 +1892,6 @@ export default function Deposit() {
 
           transform: none;
         }
-
-        /* =========================
-           RESPONSIVE
-        ========================= */
 
         @media (max-width: 800px) {
 
