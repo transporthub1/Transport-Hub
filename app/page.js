@@ -465,6 +465,16 @@ export default function Dashboard() {
           }
         }
 
+        @keyframes welcomeTextMove {
+          0% {
+            transform: translateX(-100%);
+          }
+
+          100% {
+            transform: translateX(100%);
+          }
+        }
+
         @keyframes prizePopupIn {
           0% {
             opacity: 0;
@@ -514,9 +524,27 @@ export default function Dashboard() {
             0 12px 28px rgba(16, 42, 67, 0.2);
         }
 
+        .welcome-scroll-wrapper {
+          overflow: hidden;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .welcome-scroll-content {
+          width: max-content;
+          animation:
+            welcomeTextMove 10s linear infinite;
+          will-change: transform;
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .transport-animated-card {
             animation: none !important;
+          }
+
+          .welcome-scroll-content {
+            animation: none !important;
+            transform: none !important;
           }
         }
       `}</style>
@@ -801,6 +829,8 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* ================= WELCOME CARD ================= */}
+
         <section
           className="transport-animated-card"
           style={{
@@ -810,28 +840,20 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div
-            style={{
-              minWidth: 0,
-              flex: 1,
-            }}
-          >
-            <div style={styles.welcomeSmall}>
-              Welcome back
-            </div>
+          <div className="welcome-scroll-wrapper">
+            <div className="welcome-scroll-content">
+              <div style={styles.welcomeSmall}>
+                Welcome back
+              </div>
 
-            <div
-              style={{
-                ...styles.welcomeTitle,
-                overflowWrap: "anywhere",
-              }}
-            >
-              {displayName} 👋
-            </div>
+              <div style={styles.welcomeTitle}>
+                {displayName} 👋
+              </div>
 
-            <div style={styles.welcomeText}>
-              Track your investments, weekly returns
-              and team activity from one place.
+              <div style={styles.welcomeText}>
+                Track your investments, weekly returns
+                and team activity from one place.
+              </div>
             </div>
           </div>
 
