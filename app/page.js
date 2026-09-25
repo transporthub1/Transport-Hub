@@ -1684,11 +1684,15 @@ const styles = {
     justifyContent: "center",
   },
 
+  /* ===== FIXED MOBILE OVERLAY ===== */
   mobileOverlay: {
     position: "fixed",
-    inset: 0,
+    top: "calc(58px + env(safe-area-inset-top, 0px))",
+    left: 0,
+    right: 0,
+    bottom: 0,
     background: "rgba(0,0,0,.55)",
-    zIndex: 999,
+    zIndex: 1150,
   },
 
   sidebar: {
@@ -1706,10 +1710,15 @@ const styles = {
     zIndex: 1000,
   },
 
+  /* ===== FIXED MOBILE SIDEBAR ===== */
   mobileSidebar: {
     width: "270px",
     maxWidth: "82vw",
+    top: "calc(58px + env(safe-area-inset-top, 0px))",
+    bottom: 0,
+    height: "calc(100vh - 58px - env(safe-area-inset-top, 0px))",
     boxShadow: "8px 0 25px rgba(0,0,0,.25)",
+    zIndex: 1200,
   },
 
   logoArea: {
