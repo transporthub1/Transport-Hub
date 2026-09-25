@@ -792,38 +792,60 @@ export default function Dashboard() {
 
           <div
             style={{
-              ...styles.topUser,
-              ...(isMobile
-                ? styles.mobileTopUser
-                : {}),
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              flexShrink: 0,
             }}
           >
-            <div style={styles.topAvatar}>
-              👤
-            </div>
+            <a
+              href="/transport-hub.apk"
+              download="Transport-Hub.apk"
+              style={{
+                ...styles.downloadAppButton,
+                ...(isMobile
+                  ? styles.mobileDownloadAppButton
+                  : {}),
+              }}
+            >
+              📱 Download App
+            </a>
 
             <div
               style={{
-                minWidth: 0,
-                overflow: "hidden",
+                ...styles.topUser,
+                ...(isMobile
+                  ? styles.mobileTopUser
+                  : {}),
               }}
             >
-              <div
-                style={{
-                  ...styles.topUserName,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  maxWidth: isMobile
-                    ? "100px"
-                    : "180px",
-                }}
-              >
-                {displayName}
+              <div style={styles.topAvatar}>
+                👤
               </div>
 
-              <div style={styles.topUserBalance}>
-                Balance: {formatMoney(walletBalance)}
+              <div
+                style={{
+                  minWidth: 0,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    ...styles.topUserName,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    maxWidth: isMobile
+                      ? "100px"
+                      : "180px",
+                  }}
+                >
+                  {displayName}
+                </div>
+
+                <div style={styles.topUserBalance}>
+                  Balance: {formatMoney(walletBalance)}
+                </div>
               </div>
             </div>
           </div>
@@ -1920,6 +1942,32 @@ const styles = {
 
   mobileTopUser: {
     padding: "6px 8px",
+  },
+
+  /* ===== DOWNLOAD APP BUTTON ===== */
+  downloadAppButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px",
+    textDecoration: "none",
+    background:
+      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
+    color: "#ffffff",
+    padding: "10px 14px",
+    borderRadius: "9px",
+    border: "1px solid #4FA66A",
+    fontSize: "10px",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+    cursor: "pointer",
+    boxShadow:
+      "0 5px 14px rgba(46,107,74,.18)",
+  },
+
+  mobileDownloadAppButton: {
+    padding: "9px 10px",
+    fontSize: "9px",
   },
 
   topAvatar: {
