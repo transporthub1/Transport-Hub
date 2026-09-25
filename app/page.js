@@ -798,19 +798,6 @@ export default function Dashboard() {
               flexShrink: 0,
             }}
           >
-            <a
-              href="/transport-hub.apk"
-              download="Transport-Hub.apk"
-              style={{
-                ...styles.downloadAppButton,
-                ...(isMobile
-                  ? styles.mobileDownloadAppButton
-                  : {}),
-              }}
-            >
-              📱 Download App
-            </a>
-
             <div
               style={{
                 ...styles.topUser,
@@ -1548,6 +1535,40 @@ export default function Dashboard() {
             </a>
           </div>
         </section>
+
+        {/* ===== MOBILE APP DOWNLOAD CARD ===== */}
+        <section
+          className="transport-animated-card"
+          style={{
+            ...styles.appDownloadCard,
+            ...(isMobile
+              ? styles.mobileAppDownloadCard
+              : {}),
+          }}
+        >
+          <div style={styles.appDownloadIcon}>
+            📱
+          </div>
+
+          <div style={styles.appDownloadContent}>
+            <div style={styles.appDownloadTitle}>
+              Transport Hub Mobile App
+            </div>
+
+            <div style={styles.appDownloadText}>
+              Download the Transport Hub app for a faster,
+              smoother, and more convenient experience.
+            </div>
+          </div>
+
+          <a
+            href="/transport-hub.apk"
+            download="Transport-Hub.apk"
+            style={styles.appDownloadButton}
+          >
+            📥 Download App
+          </a>
+        </section>
       </main>
 
       {showPrizePopup && (
@@ -1942,32 +1963,6 @@ const styles = {
 
   mobileTopUser: {
     padding: "6px 8px",
-  },
-
-  /* ===== DOWNLOAD APP BUTTON ===== */
-  downloadAppButton: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "6px",
-    textDecoration: "none",
-    background:
-      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
-    color: "#ffffff",
-    padding: "10px 14px",
-    borderRadius: "9px",
-    border: "1px solid #4FA66A",
-    fontSize: "10px",
-    fontWeight: 900,
-    whiteSpace: "nowrap",
-    cursor: "pointer",
-    boxShadow:
-      "0 5px 14px rgba(46,107,74,.18)",
-  },
-
-  mobileDownloadAppButton: {
-    padding: "9px 10px",
-    fontSize: "9px",
   },
 
   topAvatar: {
@@ -2594,6 +2589,84 @@ const styles = {
     fontSize: "11px",
     fontWeight: 800,
     whiteSpace: "nowrap",
+  },
+
+  /* ===== MOBILE APP DOWNLOAD CARD ===== */
+  appDownloadCard: {
+    background:
+      "linear-gradient(135deg, #102A43, #173B5A)",
+    borderRadius: "18px",
+    padding: "22px",
+    marginTop: "20px",
+    marginBottom: "20px",
+    border: "1px solid #294B66",
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    boxShadow:
+      "0 8px 24px rgba(16,42,67,.12)",
+    minWidth: 0,
+    boxSizing: "border-box",
+  },
+
+  mobileAppDownloadCard: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    textAlign: "center",
+    padding: "20px 16px",
+  },
+
+  appDownloadIcon: {
+    width: "58px",
+    height: "58px",
+    borderRadius: "15px",
+    background: "#1E3A56",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "27px",
+    flexShrink: 0,
+    alignSelf: "center",
+  },
+
+  appDownloadContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  appDownloadTitle: {
+    color: "#ffffff",
+    fontSize: "18px",
+    fontWeight: 900,
+    marginBottom: "6px",
+  },
+
+  appDownloadText: {
+    color: "#C9D8E6",
+    fontSize: "11px",
+    lineHeight: 1.6,
+    overflowWrap: "anywhere",
+  },
+
+  appDownloadButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px",
+    textDecoration: "none",
+    background:
+      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
+    color: "#ffffff",
+    padding: "12px 18px",
+    borderRadius: "9px",
+    border: "1px solid #4FA66A",
+    fontSize: "10px",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+    cursor: "pointer",
+    boxShadow:
+      "0 5px 14px rgba(46,107,74,.18)",
+    flexShrink: 0,
   },
 
   loadingScreen: {

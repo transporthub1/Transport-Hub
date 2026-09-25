@@ -1083,6 +1083,8 @@ export default function Deposit() {
         }
 
         .depositPage {
+          position: relative;
+
           min-height: 100vh;
 
           background:
@@ -1894,7 +1896,7 @@ export default function Deposit() {
         }
 
         /* =========================
-           MOBILE APP STATUS BAR FIX
+           MOBILE
         ========================= */
 
         @media (max-width: 800px) {
