@@ -563,10 +563,6 @@ export default function Dashboard() {
           <div style={styles.mobileHeaderTitle}>
             Transport Hub
           </div>
-
-          <div style={styles.mobileHeaderUser}>
-            👤
-          </div>
         </div>
       )}
 
@@ -591,27 +587,6 @@ export default function Dashboard() {
 
               <div style={styles.logoSubtitle}>
                 Investment Platform
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.userMiniCard}>
-            <div style={styles.avatar}>
-              👤
-            </div>
-
-            <div
-              style={{
-                minWidth: 0,
-                overflow: "hidden",
-              }}
-            >
-              <div style={styles.userMiniName}>
-                {displayName}
-              </div>
-
-              <div style={styles.userMiniPhone}>
-                {user?.phone || ""}
               </div>
             </div>
           </div>
@@ -717,16 +692,6 @@ export default function Dashboard() {
             <button
               style={styles.navItem}
               onClick={() =>
-                goTo("/profile")
-              }
-            >
-              <span>👤</span>
-              <span>Profile</span>
-            </button>
-
-            <button
-              style={styles.navItem}
-              onClick={() =>
                 setShowFeatures(true)
               }
             >
@@ -787,53 +752,6 @@ export default function Dashboard() {
 
             <div style={styles.pageSubtitle}>
               Manage your transport investment account
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              flexShrink: 0,
-            }}
-          >
-            <div
-              style={{
-                ...styles.topUser,
-                ...(isMobile
-                  ? styles.mobileTopUser
-                  : {}),
-              }}
-            >
-              <div style={styles.topAvatar}>
-                👤
-              </div>
-
-              <div
-                style={{
-                  minWidth: 0,
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    ...styles.topUserName,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    maxWidth: isMobile
-                      ? "100px"
-                      : "180px",
-                  }}
-                >
-                  {displayName}
-                </div>
-
-                <div style={styles.topUserBalance}>
-                  Balance: {formatMoney(walletBalance)}
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -1721,7 +1639,6 @@ const styles = {
     fontFamily: "Arial, sans-serif",
   },
 
-  /* ===== MOBILE APP TOP STATUS BAR FIX ===== */
   mobileHeader: {
     position: "fixed",
     top: 0,
@@ -1800,7 +1717,6 @@ const styles = {
     alignItems: "center",
     gap: "10px",
     padding: "8px 8px 18px",
-    borderBottom: "1px solid #29435A",
   },
 
   logoIcon: {
@@ -1824,40 +1740,6 @@ const styles = {
   logoSubtitle: {
     fontSize: "9px",
     color: "#9FB3C8",
-    marginTop: "2px",
-  },
-
-  userMiniCard: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    padding: "14px 8px",
-    marginBottom: "8px",
-  },
-
-  avatar: {
-    width: "38px",
-    height: "38px",
-    borderRadius: "50%",
-    background: "#1E3A56",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-
-  userMiniName: {
-    color: "#ffffff",
-    fontWeight: 800,
-    fontSize: "12px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-
-  userMiniPhone: {
-    color: "#9FB3C8",
-    fontSize: "9px",
     marginTop: "2px",
   },
 
@@ -1914,7 +1796,6 @@ const styles = {
     minWidth: 0,
   },
 
-  /* ===== MOBILE CONTENT STATUS BAR FIX ===== */
   mobileMainContent: {
     marginLeft: 0,
     width: "100%",
