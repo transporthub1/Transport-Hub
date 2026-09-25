@@ -128,21 +128,6 @@ export default function TransportPlans() {
               Choose a plan and start your journey.
             </p>
           </div>
-
-          <div
-            style={{
-              background: "#102A43",
-              color: "#ffffff",
-              border: "1px solid #1E3A56",
-              borderRadius: "10px",
-              padding: "10px 14px",
-              fontSize: "11px",
-              fontWeight: 800,
-              boxShadow: "0 5px 15px rgba(16,42,67,.12)"
-            }}
-          >
-            👤 User
-          </div>
         </div>
 
         {/* Available Plans Header */}
