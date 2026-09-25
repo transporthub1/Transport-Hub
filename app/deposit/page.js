@@ -1893,10 +1893,27 @@ export default function Deposit() {
           transform: none;
         }
 
+        /* =========================
+           MOBILE APP STATUS BAR FIX
+        ========================= */
+
         @media (max-width: 800px) {
 
           .depositPage {
-            padding: 18px;
+            padding-top:
+              calc(
+                76px +
+                env(
+                  safe-area-inset-top,
+                  0px
+                )
+              );
+
+            padding-right: 18px;
+
+            padding-bottom: 18px;
+
+            padding-left: 18px;
           }
 
           .selectedPlanBox {
@@ -1920,12 +1937,26 @@ export default function Deposit() {
           .paymentSelector {
             max-width: 100%;
           }
+
         }
 
         @media (max-width: 550px) {
 
           .depositPage {
-            padding: 12px;
+            padding-top:
+              calc(
+                76px +
+                env(
+                  safe-area-inset-top,
+                  0px
+                )
+              );
+
+            padding-right: 12px;
+
+            padding-bottom: 12px;
+
+            padding-left: 12px;
           }
 
           .pageHeader h1 {
@@ -1961,6 +1992,7 @@ export default function Deposit() {
           .paymentInfoHeader h2 {
             font-size: 20px;
           }
+
         }
 
       `}</style>
