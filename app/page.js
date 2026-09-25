@@ -829,8 +829,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ================= WELCOME CARD ================= */}
-
         <section
           className="transport-animated-card"
           style={{
@@ -1530,10 +1528,6 @@ export default function Dashboard() {
         </section>
       </main>
 
-      {/* =====================================================
-          PREMIUM 5 LAKH PRIZE POPUP
-      ===================================================== */}
-
       {showPrizePopup && (
         <div style={styles.prizePopupOverlay}>
           <div
@@ -1543,7 +1537,6 @@ export default function Dashboard() {
                 "prizePopupIn .35s ease-out forwards",
             }}
           >
-            {/* TOP */}
             <div style={styles.prizePopupTop}>
               <div style={styles.prizeBrandPill}>
                 🚛 TRANSPORT HUB
@@ -1560,7 +1553,6 @@ export default function Dashboard() {
               </button>
             </div>
 
-            {/* HERO */}
             <div style={styles.prizeHero}>
               <div
                 style={{
@@ -1607,7 +1599,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* CHANNEL */}
             <div style={styles.channelPrizeCard}>
               <div style={styles.channelIcon}>
                 📢
@@ -1633,7 +1624,6 @@ export default function Dashboard() {
               </a>
             </div>
 
-            {/* CLOSE */}
             <div style={styles.prizeBottomButtons}>
               <button
                 style={styles.prizeCloseButton}
@@ -1647,8 +1637,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
-      {/* SECURITY MODAL */}
 
       {showFeatures && (
         <div style={styles.modalOverlay}>
@@ -1690,18 +1678,21 @@ const styles = {
     fontFamily: "Arial, sans-serif",
   },
 
+  /* ===== MOBILE APP TOP STATUS BAR FIX ===== */
   mobileHeader: {
     position: "fixed",
     top: 0,
     left: 0,
     right: 0,
-    height: "58px",
+    height: "calc(58px + env(safe-area-inset-top, 0px))",
+    paddingTop: "env(safe-area-inset-top, 0px)",
     background: "#102A43",
     color: "#ffffff",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "0 14px",
+    paddingLeft: "14px",
+    paddingRight: "14px",
     boxSizing: "border-box",
     zIndex: 1100,
     boxShadow: "0 3px 15px rgba(0,0,0,.15)",
@@ -1880,10 +1871,15 @@ const styles = {
     minWidth: 0,
   },
 
+  /* ===== MOBILE CONTENT STATUS BAR FIX ===== */
   mobileMainContent: {
     marginLeft: 0,
     width: "100%",
-    padding: "76px 12px 20px",
+    paddingTop: "calc(76px + env(safe-area-inset-top, 0px))",
+    paddingRight: "12px",
+    paddingBottom: "20px",
+    paddingLeft: "12px",
+    boxSizing: "border-box",
   },
 
   topBar: {
@@ -2589,10 +2585,6 @@ const styles = {
     fontSize: "10px",
     marginTop: "6px",
   },
-
-  /* =====================================================
-     PREMIUM PRIZE POPUP STYLES
-  ===================================================== */
 
   prizePopupOverlay: {
     position: "fixed",

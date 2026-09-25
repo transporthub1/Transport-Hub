@@ -912,3 +912,13 @@ select:focus-visible {
     padding: 22px;
   }
 }
+
+/* =========================================
+   ANDROID SAFE AREA FIX
+   ========================================= */
+
+@supports (padding-top: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+  }
+}
