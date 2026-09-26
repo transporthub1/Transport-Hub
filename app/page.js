@@ -48,17 +48,48 @@ function saveStorage(key, value) {
 }
 
 function normalizePhone(value) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
+  if (value === null || value === undefined) {
     return "";
   }
 
-  return String(value)
+  let phone = String(value)
     .replace(/\s+/g, "")
     .replace(/-/g, "")
     .trim();
+
+  if (phone.startsWith("+92")) {
+    phone = "0" + phone.slice(3);
+  } else if (phone.startsWith("0092")) {
+    phone = "0" + phone.slice(4);
+  }
+
+  return phone;
+}
+
+function phonesMatch(value1, value2) {
+  const a = normalizePhone(value1);
+  const b = normalizePhone(value2);
+
+  if (!a || !b) return false;
+
+  if (a === b) return true;
+
+  const digitsA = a.replace(/\D/g, "");
+  const digitsB = b.replace(/\D/g, "");
+
+  if (!digitsA || !digitsB) return false;
+
+  if (digitsA === digitsB) return true;
+
+  if (
+    digitsA.length >= 10 &&
+    digitsB.length >= 10 &&
+    digitsA.slice(-10) === digitsB.slice(-10)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function getUserName(user) {
@@ -161,21 +192,25 @@ export default function Dashboard() {
           normalizedUser.phone ||
           normalizedUser.mobile ||
           normalizedUser.phoneNumber ||
+          normalizedUser.username ||
           "";
 
-        const phone =
-          normalizePhone(rawPhone);
+        const phone = normalizePhone(rawPhone);
 
         /*
           =========================================================
           ACTIVE PLANS
           =========================================================
 
-          NEW SYSTEM:
-          Supabase active_plans is now the MAIN source.
+          Supabase is the MAIN source.
 
-          Existing localStorage remains as compatibility/fallback
-          so the old system is not broken.
+          IMPORTANT FIX:
+          We no longer depend only on an exact user_phone query.
+          We load the active plan rows and match the current user
+          using flexible Pakistan phone-number normalization.
+
+          This prevents plans such as the PKR 100 Starter plan
+          from being skipped because of a phone-format difference.
         */
 
         if (phone) {
@@ -190,7 +225,7 @@ export default function Dashboard() {
 
           /*
             -------------------------------------------------------
-            1. LOAD THIS USER'S ACTIVE PLANS FROM SUPABASE
+            1. LOAD ACTIVE PLANS FROM SUPABASE
             -------------------------------------------------------
           */
 
@@ -201,7 +236,6 @@ export default function Dashboard() {
             } = await supabase
               .from("active_plans")
               .select("*")
-              .eq("user_phone", phone)
               .order("created_at", {
                 ascending: false,
               });
@@ -211,160 +245,196 @@ export default function Dashboard() {
                 "Could not load active plans from Supabase:",
                 supabasePlansError
               );
-            } else if (
-              Array.isArray(supabasePlans) &&
-              supabasePlans.length > 0
-            ) {
-              loadedPlans =
-                supabasePlans
-                  .filter(
-                    (row) =>
-                      String(
-                        row.status || "Active"
-                      ).toLowerCase() ===
-                      "active"
-                  )
-                  .map((row) => {
-                    const planData =
-                      row.plan &&
-                      typeof row.plan === "object"
-                        ? row.plan
-                        : {};
+            } else if (Array.isArray(supabasePlans)) {
+              /*
+                Match the logged-in user's phone number
+                against the user_phone stored in active_plans.
+              */
+              const userRows = supabasePlans.filter((row) => {
+                const rowPhone = row?.user_phone || "";
 
-                    const amount =
-                      Number(
-                        planData.amount ??
-                          planData.price ??
-                          0
-                      );
+                const status = String(
+                  row?.status || "Active"
+                )
+                  .trim()
+                  .toLowerCase();
 
-                    const weekly =
-                      Number(
-                        planData.weekly ??
-                          planData.weeklyReturn ??
-                          planData.daily ??
-                          planData.dailyReturn ??
-                          0
-                      );
-
-                    return {
-                      ...planData,
-
-                      id:
-                        planData.id ||
-                        row.id ||
-                        "",
-
-                      depositRequestId:
-                        planData.depositRequestId ||
-                        row.deposit_request_id ||
-                        "",
-
-                      userPhone:
-                        planData.userPhone ||
-                        row.user_phone ||
-                        phone,
-
-                      name:
-                        planData.name ||
-                        "Transport Plan",
-
-                      price:
-                        amount,
-
-                      amount:
-                        amount,
-
-                      weekly:
-                        weekly,
-
-                      daily:
-                        weekly,
-
-                      durationWeeks:
-                        Number(
-                          planData.durationWeeks ??
-                            PLAN_DURATION_WEEKS
-                        ),
-
-                      durationYears:
-                        Number(
-                          planData.durationYears ??
-                            PLAN_DURATION_YEARS
-                        ),
-
-                      duration:
-                        Number(
-                          planData.duration ??
-                            planData.durationWeeks ??
-                            PLAN_DURATION_WEEKS
-                        ),
-
-                      totalReturn:
-                        Number(
-                          planData.totalReturn ??
-                            weekly *
-                              PLAN_DURATION_WEEKS
-                        ),
-
-                      activatedAt:
-                        planData.activatedAt ||
-                        row.activated_at ||
-                        "",
-
-                      approvedAt:
-                        planData.approvedAt ||
-                        row.approved_at ||
-                        "",
-
-                      lastReturnAt:
-                        planData.lastReturnAt ||
-                        row.last_return_at ||
-                        "",
-
-                      nextReturnAt:
-                        planData.nextReturnAt ||
-                        row.next_return_at ||
-                        "",
-
-                      returnsPaid:
-                        Number(
-                          row.returns_paid ??
-                            planData.returnsPaid ??
-                            0
-                        ),
-
-                      earnedReturns:
-                        Number(
-                          row.earned_returns ??
-                            planData.earnedReturns ??
-                            0
-                        ),
-
-                      totalEarned:
-                        Number(
-                          row.total_earned ??
-                            planData.totalEarned ??
-                            0
-                        ),
-
-                      remainingWeeks:
-                        Number(
-                          row.remaining_weeks ??
-                            planData.remainingWeeks ??
-                            PLAN_DURATION_WEEKS
-                        ),
-
-                      status:
-                        row.status ||
-                        planData.status ||
-                        "Active",
-                    };
-                  });
+                return (
+                  phonesMatch(rowPhone, phone) &&
+                  status === "active"
+                );
+              });
 
               /*
-                Save the Supabase result to the existing local key
-                as a compatibility copy.
+                Convert every matching Supabase row into
+                the Dashboard's existing plan format.
+              */
+              loadedPlans = userRows.map((row) => {
+                const planData =
+                  row.plan &&
+                  typeof row.plan === "object"
+                    ? row.plan
+                    : {};
+
+                const amount = Number(
+                  planData.amount ??
+                    planData.price ??
+                    0
+                );
+
+                const weekly = Number(
+                  planData.weekly ??
+                    planData.weeklyReturn ??
+                    planData.daily ??
+                    planData.dailyReturn ??
+                    0
+                );
+
+                const durationWeeks = Number(
+                  planData.durationWeeks ??
+                    planData.duration ??
+                    PLAN_DURATION_WEEKS
+                );
+
+                const durationYears = Number(
+                  planData.durationYears ??
+                    PLAN_DURATION_YEARS
+                );
+
+                return {
+                  ...planData,
+
+                  /*
+                    Keep the database row ID unique.
+                  */
+                  id:
+                    planData.id ||
+                    row.id ||
+                    "",
+
+                  depositRequestId:
+                    planData.depositRequestId ||
+                    row.deposit_request_id ||
+                    "",
+
+                  userPhone:
+                    planData.userPhone ||
+                    row.user_phone ||
+                    phone,
+
+                  name:
+                    planData.name ||
+                    "Transport Plan",
+
+                  price: amount,
+
+                  amount: amount,
+
+                  weekly: weekly,
+
+                  /*
+                    Keep old daily compatibility.
+                  */
+                  daily: weekly,
+
+                  durationWeeks:
+                    durationWeeks ||
+                    PLAN_DURATION_WEEKS,
+
+                  durationYears:
+                    durationYears ||
+                    PLAN_DURATION_YEARS,
+
+                  duration:
+                    durationWeeks ||
+                    PLAN_DURATION_WEEKS,
+
+                  totalReturn: Number(
+                    planData.totalReturn ??
+                      weekly *
+                        (durationWeeks ||
+                          PLAN_DURATION_WEEKS)
+                  ),
+
+                  activatedAt:
+                    planData.activatedAt ||
+                    row.activated_at ||
+                    "",
+
+                  approvedAt:
+                    planData.approvedAt ||
+                    row.approved_at ||
+                    "",
+
+                  lastReturnAt:
+                    planData.lastReturnAt ||
+                    row.last_return_at ||
+                    "",
+
+                  nextReturnAt:
+                    planData.nextReturnAt ||
+                    row.next_return_at ||
+                    "",
+
+                  returnsPaid: Number(
+                    row.returns_paid ??
+                      planData.returnsPaid ??
+                      0
+                  ),
+
+                  earnedReturns: Number(
+                    row.earned_returns ??
+                      planData.earnedReturns ??
+                      0
+                  ),
+
+                  totalEarned: Number(
+                    row.total_earned ??
+                      planData.totalEarned ??
+                      0
+                  ),
+
+                  remainingWeeks: Number(
+                    row.remaining_weeks ??
+                      planData.remainingWeeks ??
+                      PLAN_DURATION_WEEKS
+                  ),
+
+                  status:
+                    String(
+                      row.status ||
+                        planData.status ||
+                        "Active"
+                    ).trim() || "Active",
+                };
+              });
+
+              /*
+                Remove duplicates by active_plans row ID.
+                This keeps every separate active plan, including
+                two separate PKR 25,000 plans.
+              */
+              const uniqueMap = new Map();
+
+              loadedPlans.forEach((plan, index) => {
+                const uniqueKey =
+                  plan.id ||
+                  plan.depositRequestId ||
+                  `${plan.name}-${plan.amount}-${index}`;
+
+                uniqueMap.set(
+                  String(uniqueKey),
+                  plan
+                );
+              });
+
+              loadedPlans = Array.from(
+                uniqueMap.values()
+              );
+
+              /*
+                Save the fresh Supabase result locally as a
+                compatibility copy.
               */
               saveStorage(
                 userActivePlansKey,
@@ -390,11 +460,10 @@ export default function Dashboard() {
 
           /*
             -------------------------------------------------------
-            2. LOCALSTORAGE FALLBACK
+            2. LOCAL STORAGE FALLBACK
             -------------------------------------------------------
 
-            If Supabase has no active plan, use the existing
-            localStorage plan for compatibility.
+            Only use localStorage if Supabase gave no active plans.
           */
 
           if (loadedPlans.length === 0) {
@@ -495,20 +564,57 @@ export default function Dashboard() {
                 ),
 
                 status:
-                  plan.status ||
-                  "Active",
+                  String(
+                    plan.status ||
+                      "Active"
+                  ).trim() || "Active",
               }));
+
+            /*
+              Final duplicate cleanup.
+            */
+            const finalPlanMap =
+              new Map();
+
+            normalizedPlans.forEach(
+              (plan, index) => {
+                const uniqueKey =
+                  plan.id ||
+                  plan.depositRequestId ||
+                  `${plan.name}-${plan.amount}-${index}`;
+
+                finalPlanMap.set(
+                  String(uniqueKey),
+                  plan
+                );
+              }
+            );
+
+            const finalPlans =
+              Array.from(
+                finalPlanMap.values()
+              );
 
             if (!cancelled) {
               setActivePlans(
-                normalizedPlans
+                finalPlans
               );
             }
 
             saveStorage(
               userActivePlansKey,
-              normalizedPlans
+              finalPlans
             );
+
+            if (
+              rawUserActivePlansKey !==
+              userActivePlansKey
+            ) {
+              saveStorage(
+                rawUserActivePlansKey,
+                finalPlans
+              );
+            }
           } else {
             if (!cancelled) {
               setActivePlans([]);
@@ -526,7 +632,9 @@ export default function Dashboard() {
           =========================================================
         */
 
-        localStorage.removeItem("transportActivePlan");
+        localStorage.removeItem(
+          "transportActivePlan"
+        );
 
         /*
           =========================================================
@@ -534,15 +642,19 @@ export default function Dashboard() {
           =========================================================
         */
 
-        const storedWithdrawable = Number(
-          localStorage.getItem(
-            "transportWithdrawableReturns_" + phone
-          ) || 0
-        );
+        const storedWithdrawable =
+          Number(
+            localStorage.getItem(
+              "transportWithdrawableReturns_" +
+                phone
+            ) || 0
+          );
 
         if (!cancelled) {
           setWithdrawableReturns(
-            Number.isFinite(storedWithdrawable)
+            Number.isFinite(
+              storedWithdrawable
+            )
               ? storedWithdrawable
               : 0
           );
@@ -557,7 +669,8 @@ export default function Dashboard() {
         if (!cancelled) {
           setTransactions(
             getStorageArray(
-              "transportTransactions_" + phone
+              "transportTransactions_" +
+                phone
             )
           );
         }
@@ -571,7 +684,8 @@ export default function Dashboard() {
         if (!cancelled) {
           setTeamMembers(
             getStorageArray(
-              "transportTeam_" + phone
+              "transportTeam_" +
+                phone
             )
           );
         }
@@ -602,191 +716,284 @@ export default function Dashboard() {
     };
   }, []);
 
-  const displayName = getUserName(user);
+  const displayName =
+    getUserName(user);
 
-  const totalInvestment = useMemo(() => {
-    return activePlans.reduce(
-      (total, plan) =>
-        total + Number(plan.price || plan.amount || 0),
-      0
-    );
-  }, [activePlans]);
+  const totalInvestment =
+    useMemo(() => {
+      return activePlans.reduce(
+        (total, plan) =>
+          total +
+          Number(
+            plan.price ||
+              plan.amount ||
+              0
+          ),
+        0
+      );
+    }, [activePlans]);
 
-  const weeklyReturn = useMemo(() => {
-    return activePlans.reduce(
-      (total, plan) =>
-        total + getWeeklyReturn(plan),
-      0
-    );
-  }, [activePlans]);
+  const weeklyReturn =
+    useMemo(() => {
+      return activePlans.reduce(
+        (total, plan) =>
+          total +
+          getWeeklyReturn(plan),
+        0
+      );
+    }, [activePlans]);
 
-  const earnedReturns = useMemo(() => {
-    return activePlans.reduce((total, plan) => {
-      const storedEarned = Number(
-        plan.earnedReturns ??
-          plan.totalEarned ??
+  const earnedReturns =
+    useMemo(() => {
+      return activePlans.reduce(
+        (total, plan) => {
+          const storedEarned =
+            Number(
+              plan.earnedReturns ??
+                plan.totalEarned ??
+                0
+            );
+
+          if (storedEarned > 0) {
+            return (
+              total +
+              storedEarned
+            );
+          }
+
+          return total;
+        },
+        0
+      );
+    }, [activePlans]);
+
+  const expectedReturn =
+    useMemo(() => {
+      return activePlans.reduce(
+        (total, plan) =>
+          total +
+          getWeeklyReturn(plan) *
+            PLAN_DURATION_WEEKS,
+        0
+      );
+    }, [activePlans]);
+
+  const depositTotal =
+    useMemo(() => {
+      return transactions
+        .filter(
+          (item) =>
+            String(
+              item.type || ""
+            ).toLowerCase() ===
+              "deposit" &&
+            String(
+              item.status || ""
+            ).toLowerCase() ===
+              "approved"
+        )
+        .reduce(
+          (total, item) =>
+            total +
+            Number(
+              item.amount || 0
+            ),
           0
-      );
+        );
+    }, [transactions]);
 
-      if (storedEarned > 0) {
-        return total + storedEarned;
-      }
+  const withdrawalTotal =
+    useMemo(() => {
+      return transactions
+        .filter(
+          (item) =>
+            String(
+              item.type || ""
+            ).toLowerCase() ===
+              "withdraw" &&
+            String(
+              item.status || ""
+            ).toLowerCase() ===
+              "approved"
+        )
+        .reduce(
+          (total, item) =>
+            total +
+            Number(
+              item.amount || 0
+            ),
+          0
+        );
+    }, [transactions]);
 
-      return total;
-    }, 0);
-  }, [activePlans]);
+  const pendingDeposits =
+    useMemo(() => {
+      return transactions
+        .filter(
+          (item) =>
+            String(
+              item.type || ""
+            ).toLowerCase() ===
+              "deposit" &&
+            String(
+              item.status || ""
+            ).toLowerCase() ===
+              "pending"
+        )
+        .reduce(
+          (total, item) =>
+            total +
+            Number(
+              item.amount || 0
+            ),
+          0
+        );
+    }, [transactions]);
 
-  const expectedReturn = useMemo(() => {
-    return activePlans.reduce(
-      (total, plan) =>
-        total +
-        getWeeklyReturn(plan) *
-          PLAN_DURATION_WEEKS,
-      0
-    );
-  }, [activePlans]);
+  const pendingWithdrawals =
+    useMemo(() => {
+      return transactions
+        .filter(
+          (item) =>
+            String(
+              item.type || ""
+            ).toLowerCase() ===
+              "withdraw" &&
+            String(
+              item.status || ""
+            ).toLowerCase() ===
+              "pending"
+        )
+        .reduce(
+          (total, item) =>
+            total +
+            Number(
+              item.amount || 0
+            ),
+          0
+        );
+    }, [transactions]);
 
-  const depositTotal = useMemo(() => {
-    return transactions
-      .filter(
-        (item) =>
-          String(item.type || "").toLowerCase() ===
-            "deposit" &&
-          String(item.status || "").toLowerCase() ===
-            "approved"
-      )
-      .reduce(
-        (total, item) =>
-          total + Number(item.amount || 0),
+  const teamInvestment =
+    useMemo(() => {
+      return teamMembers.reduce(
+        (total, member) =>
+          total +
+          Number(
+            member.investment || 0
+          ),
         0
       );
-  }, [transactions]);
+    }, [teamMembers]);
 
-  const withdrawalTotal = useMemo(() => {
-    return transactions
-      .filter(
-        (item) =>
-          String(item.type || "").toLowerCase() ===
-            "withdraw" &&
-          String(item.status || "").toLowerCase() ===
-            "approved"
-      )
-      .reduce(
-        (total, item) =>
-          total + Number(item.amount || 0),
+  const paidTeam =
+    useMemo(() => {
+      return teamMembers.reduce(
+        (total, member) =>
+          total +
+          Number(
+            member.commission || 0
+          ),
         0
       );
-  }, [transactions]);
+    }, [teamMembers]);
 
-  const pendingDeposits = useMemo(() => {
-    return transactions
-      .filter(
-        (item) =>
-          String(item.type || "").toLowerCase() ===
-            "deposit" &&
-          String(item.status || "").toLowerCase() ===
-            "pending"
-      )
-      .reduce(
-        (total, item) =>
-          total + Number(item.amount || 0),
+  const todayTeam =
+    useMemo(() => {
+      return teamMembers.reduce(
+        (total, member) => {
+          if (!member.joinedAt) {
+            return total;
+          }
+
+          const joined =
+            new Date(
+              member.joinedAt
+            );
+
+          const now =
+            new Date();
+
+          const sameDay =
+            joined.getDate() ===
+              now.getDate() &&
+            joined.getMonth() ===
+              now.getMonth() &&
+            joined.getFullYear() ===
+              now.getFullYear();
+
+          return sameDay
+            ? total +
+                Number(
+                  member.commission ||
+                    0
+                )
+            : total;
+        },
         0
       );
-  }, [transactions]);
+    }, [teamMembers]);
 
-  const pendingWithdrawals = useMemo(() => {
-    return transactions
-      .filter(
-        (item) =>
-          String(item.type || "").toLowerCase() ===
-            "withdraw" &&
-          String(item.status || "").toLowerCase() ===
-            "pending"
-      )
-      .reduce(
-        (total, item) =>
-          total + Number(item.amount || 0),
-        0
-      );
-  }, [transactions]);
+  const todayProfit =
+    weeklyReturn;
 
-  const teamInvestment = useMemo(() => {
-    return teamMembers.reduce(
-      (total, member) =>
-        total + Number(member.investment || 0),
-      0
-    );
-  }, [teamMembers]);
+  const yesterdayProfit =
+    weeklyReturn;
 
-  const paidTeam = useMemo(() => {
-    return teamMembers.reduce(
-      (total, member) =>
-        total + Number(member.commission || 0),
-      0
-    );
-  }, [teamMembers]);
+  const weekProfit =
+    weeklyReturn;
 
-  const todayTeam = useMemo(() => {
-    return teamMembers.reduce((total, member) => {
-      if (!member.joinedAt) return total;
-
-      const joined = new Date(member.joinedAt);
-      const now = new Date();
-
-      const sameDay =
-        joined.getDate() === now.getDate() &&
-        joined.getMonth() === now.getMonth() &&
-        joined.getFullYear() === now.getFullYear();
-
-      return sameDay
-        ? total + Number(member.commission || 0)
-        : total;
-    }, 0);
-  }, [teamMembers]);
-
-  const todayProfit = weeklyReturn;
-  const yesterdayProfit = weeklyReturn;
-  const weekProfit = weeklyReturn;
-  const monthProfit = weeklyReturn * 4;
+  const monthProfit =
+    weeklyReturn * 4;
 
   const walletBalance =
     Number(user?.balance || 0) +
-    Number(withdrawableReturns || 0);
+    Number(
+      withdrawableReturns || 0
+    );
 
-  const referralCode = useMemo(() => {
-    if (!user) return "";
+  const referralCode =
+    useMemo(() => {
+      if (!user) return "";
 
-    const userKey =
-      user.phone ||
-      user.mobile ||
-      user.username ||
-      user.email ||
-      user.name ||
-      "user";
+      const userKey =
+        user.phone ||
+        user.mobile ||
+        user.username ||
+        user.email ||
+        user.name ||
+        "user";
 
-    const storageKey =
-      "transportReferralCode_" + String(userKey);
+      const storageKey =
+        "transportReferralCode_" +
+        String(userKey);
 
-    let savedCode = localStorage.getItem(storageKey);
+      let savedCode =
+        localStorage.getItem(
+          storageKey
+        );
 
-    if (!savedCode) {
-      savedCode =
-        "TH" +
-        Math.floor(
-          100000 + Math.random() * 900000
-        ).toString();
+      if (!savedCode) {
+        savedCode =
+          "TH" +
+          Math.floor(
+            100000 +
+              Math.random() *
+                900000
+          ).toString();
 
-      localStorage.setItem(
-        storageKey,
-        savedCode
-      );
-    }
+        localStorage.setItem(
+          storageKey,
+          savedCode
+        );
+      }
 
-    return savedCode;
-  }, [user]);
+      return savedCode;
+    }, [user]);
 
   const referralLink =
-    typeof window !== "undefined"
+    typeof window !==
+    "undefined"
       ? window.location.origin +
         "/register?ref=" +
         referralCode
@@ -794,13 +1001,17 @@ export default function Dashboard() {
 
   function goTo(path) {
     setMenuOpen(false);
-    window.location.href = path;
+    window.location.href =
+      path;
   }
 
   function copyReferral() {
     if (!referralLink) return;
 
-    navigator.clipboard.writeText(referralLink);
+    navigator.clipboard.writeText(
+      referralLink
+    );
+
     setCopied(true);
 
     setTimeout(() => {
@@ -809,26 +1020,55 @@ export default function Dashboard() {
   }
 
   function logout() {
-    localStorage.removeItem("transportLoggedIn");
-    localStorage.removeItem("transportUser");
-    localStorage.removeItem("transportCurrentUser");
+    localStorage.removeItem(
+      "transportLoggedIn"
+    );
 
-    window.location.href = "/login";
+    localStorage.removeItem(
+      "transportUser"
+    );
+
+    localStorage.removeItem(
+      "transportCurrentUser"
+    );
+
+    window.location.href =
+      "/login";
   }
 
   if (loading) {
     return (
-      <div style={styles.loadingScreen}>
-        <div style={styles.loadingCard}>
-          <div style={styles.loadingIcon}>
+      <div
+        style={
+          styles.loadingScreen
+        }
+      >
+        <div
+          style={
+            styles.loadingCard
+          }
+        >
+          <div
+            style={
+              styles.loadingIcon
+            }
+          >
             🚛
           </div>
 
-          <div style={styles.loadingTitle}>
+          <div
+            style={
+              styles.loadingTitle
+            }
+          >
             Transport Hub
           </div>
 
-          <div style={styles.loadingText}>
+          <div
+            style={
+              styles.loadingText
+            }
+          >
             Loading your dashboard...
           </div>
         </div>
@@ -840,7 +1080,8 @@ export default function Dashboard() {
     <div
       style={{
         ...styles.dashboard,
-        overflowX: "hidden",
+        overflowX:
+          "hidden",
       }}
     >
       <style jsx global>{`
@@ -868,12 +1109,14 @@ export default function Dashboard() {
         @keyframes prizePopupIn {
           0% {
             opacity: 0;
-            transform: scale(0.92) translateY(20px);
+            transform: scale(0.92)
+              translateY(20px);
           }
 
           100% {
             opacity: 1;
-            transform: scale(1) translateY(0);
+            transform: scale(1)
+              translateY(0);
           }
         }
 
@@ -881,14 +1124,18 @@ export default function Dashboard() {
           0%,
           100% {
             box-shadow:
-              0 0 15px rgba(247, 201, 72, 0.12),
-              0 0 35px rgba(44, 130, 201, 0.08);
+              0 0 15px
+                rgba(247, 201, 72, 0.12),
+              0 0 35px
+                rgba(44, 130, 201, 0.08);
           }
 
           50% {
             box-shadow:
-              0 0 28px rgba(247, 201, 72, 0.25),
-              0 0 55px rgba(44, 130, 201, 0.14);
+              0 0 28px
+                rgba(247, 201, 72, 0.25),
+              0 0 55px
+                rgba(44, 130, 201, 0.14);
           }
         }
 
@@ -904,14 +1151,16 @@ export default function Dashboard() {
         }
 
         .transport-animated-card {
-          animation: transportCardFloat 5s ease-in-out infinite;
+          animation:
+            transportCardFloat 5s ease-in-out infinite;
         }
 
         .transport-animated-card:hover {
           animation-play-state: paused;
           transform: translateY(-8px);
           box-shadow:
-            0 12px 28px rgba(16, 42, 67, 0.2);
+            0 12px 28px
+              rgba(16, 42, 67, 0.2);
         }
 
         .welcome-scroll-wrapper {
@@ -940,23 +1189,36 @@ export default function Dashboard() {
       `}</style>
 
       {isMobile && (
-        <div style={styles.mobileHeader}>
+        <div
+          style={
+            styles.mobileHeader
+          }
+        >
           <button
-            style={styles.menuButton}
+            style={
+              styles.menuButton
+            }
             onClick={() =>
-              setMenuOpen(!menuOpen)
+              setMenuOpen(
+                !menuOpen
+              )
             }
           >
             ☰
           </button>
 
-          <div style={styles.mobileHeaderTitle}>
+          <div
+            style={
+              styles.mobileHeaderTitle
+            }
+          >
             Transport Hub
           </div>
         </div>
       )}
 
-      {(!isMobile || menuOpen) && (
+      {(!isMobile ||
+        menuOpen) && (
         <aside
           style={{
             ...styles.sidebar,
@@ -965,159 +1227,254 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={styles.logoArea}>
-            <div style={styles.logoIcon}>
+          <div
+            style={
+              styles.logoArea
+            }
+          >
+            <div
+              style={
+                styles.logoIcon
+              }
+            >
               🚛
             </div>
 
             <div>
-              <div style={styles.logoTitle}>
+              <div
+                style={
+                  styles.logoTitle
+                }
+              >
                 Transport Hub
               </div>
 
-              <div style={styles.logoSubtitle}>
+              <div
+                style={
+                  styles.logoSubtitle
+                }
+              >
                 Investment Platform
               </div>
             </div>
           </div>
 
-          <nav style={styles.navigation}>
+          <nav
+            style={
+              styles.navigation
+            }
+          >
             <button
               style={{
                 ...styles.navItem,
                 ...styles.activeNavItem,
               }}
-              onClick={() => goTo("/")}
+              onClick={() =>
+                goTo("/")
+              }
             >
               <span>🏠</span>
-              <span>Dashboard</span>
+              <span>
+                Dashboard
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/transport-plans")
+                goTo(
+                  "/transport-plans"
+                )
               }
             >
               <span>🚛</span>
-              <span>Transport Plans</span>
+              <span>
+                Transport Plans
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
-              onClick={() => goTo("/deposit")}
+              style={
+                styles.navItem
+              }
+              onClick={() =>
+                goTo("/deposit")
+              }
             >
               <span>💰</span>
-              <span>Deposit</span>
+              <span>
+                Deposit
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
-              onClick={() => goTo("/withdraw")}
+              style={
+                styles.navItem
+              }
+              onClick={() =>
+                goTo("/withdraw")
+              }
             >
               <span>💸</span>
-              <span>Withdraw</span>
+              <span>
+                Withdraw
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/transactions")
+                goTo(
+                  "/transactions"
+                )
               }
             >
               <span>📊</span>
-              <span>Transactions</span>
+              <span>
+                Transactions
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/deposit-history")
+                goTo(
+                  "/deposit-history"
+                )
               }
             >
               <span>📋</span>
-              <span>Deposit History</span>
+              <span>
+                Deposit History
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/withdraw-history")
+                goTo(
+                  "/withdraw-history"
+                )
               }
             >
               <span>📋</span>
-              <span>Withdraw History</span>
+              <span>
+                Withdraw History
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/weekly-returns")
+                goTo(
+                  "/weekly-returns"
+                )
               }
             >
               <span>🎁</span>
-              <span>Weekly Returns</span>
+              <span>
+                Weekly Returns
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/my-team")
+                goTo(
+                  "/my-team"
+                )
               }
             >
               <span>👥</span>
-              <span>My Team</span>
+              <span>
+                My Team
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/referral")
+                goTo(
+                  "/referral"
+                )
               }
             >
               <span>🔗</span>
-              <span>Referral</span>
+              <span>
+                Referral
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                setShowFeatures(true)
+                setShowFeatures(
+                  true
+                )
               }
             >
               <span>🔐</span>
-              <span>Security</span>
+              <span>
+                Security
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
                 goTo("/support")
               }
             >
               <span>🎧</span>
-              <span>Support</span>
+              <span>
+                Support
+              </span>
             </button>
 
             <button
-              style={styles.logoutNavItem}
+              style={
+                styles.logoutNavItem
+              }
               onClick={logout}
             >
               <span>🚪</span>
-              <span>Logout</span>
+              <span>
+                Logout
+              </span>
             </button>
           </nav>
         </aside>
       )}
 
-      {isMobile && menuOpen && (
-        <div
-          style={styles.mobileOverlay}
-          onClick={() =>
-            setMenuOpen(false)
-          }
-        />
-      )}
+      {isMobile &&
+        menuOpen && (
+          <div
+            style={
+              styles.mobileOverlay
+            }
+            onClick={() =>
+              setMenuOpen(false)
+            }
+          />
+        )}
 
       <main
         style={{
@@ -1135,12 +1492,24 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div style={styles.pageTitle}>
+          <div
+            style={{
+              minWidth: 0,
+            }}
+          >
+            <div
+              style={
+                styles.pageTitle
+              }
+            >
               Dashboard
             </div>
 
-            <div style={styles.pageSubtitle}>
+            <div
+              style={
+                styles.pageSubtitle
+              }
+            >
               Manage your transport investment account
             </div>
           </div>
@@ -1157,22 +1526,38 @@ export default function Dashboard() {
         >
           <div className="welcome-scroll-wrapper">
             <div className="welcome-scroll-content">
-              <div style={styles.welcomeSmall}>
+              <div
+                style={
+                  styles.welcomeSmall
+                }
+              >
                 Welcome back
               </div>
 
-              <div style={styles.welcomeTitle}>
+              <div
+                style={
+                  styles.welcomeTitle
+                }
+              >
                 {displayName} 👋
               </div>
 
-              <div style={styles.welcomeText}>
+              <div
+                style={
+                  styles.welcomeText
+                }
+              >
                 Track your investments, weekly returns
                 and team activity from one place.
               </div>
             </div>
           </div>
 
-          <div style={styles.welcomeTruck}>
+          <div
+            style={
+              styles.welcomeTruck
+            }
+          >
             🚛
           </div>
         </section>
@@ -1187,18 +1572,34 @@ export default function Dashboard() {
         >
           <div
             className="transport-animated-card"
-            style={styles.summaryCard}
+            style={
+              styles.summaryCard
+            }
           >
-            <div style={styles.summaryIcon}>
+            <div
+              style={
+                styles.summaryIcon
+              }
+            >
               💼
             </div>
 
-            <div style={styles.summaryLabel}>
+            <div
+              style={
+                styles.summaryLabel
+              }
+            >
               Total Investment
             </div>
 
-            <div style={styles.summaryValue}>
-              {formatMoney(totalInvestment)}
+            <div
+              style={
+                styles.summaryValue
+              }
+            >
+              {formatMoney(
+                totalInvestment
+              )}
             </div>
           </div>
 
@@ -1206,19 +1607,34 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.summaryCard,
-              animationDelay: "0.5s",
+              animationDelay:
+                "0.5s",
             }}
           >
-            <div style={styles.summaryIcon}>
+            <div
+              style={
+                styles.summaryIcon
+              }
+            >
               📈
             </div>
 
-            <div style={styles.summaryLabel}>
+            <div
+              style={
+                styles.summaryLabel
+              }
+            >
               Weekly Return
             </div>
 
-            <div style={styles.summaryValue}>
-              {formatMoney(weeklyReturn)}
+            <div
+              style={
+                styles.summaryValue
+              }
+            >
+              {formatMoney(
+                weeklyReturn
+              )}
             </div>
           </div>
 
@@ -1226,19 +1642,34 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.summaryCard,
-              animationDelay: "1s",
+              animationDelay:
+                "1s",
             }}
           >
-            <div style={styles.summaryIcon}>
+            <div
+              style={
+                styles.summaryIcon
+              }
+            >
               💰
             </div>
 
-            <div style={styles.summaryLabel}>
+            <div
+              style={
+                styles.summaryLabel
+              }
+            >
               Wallet Balance
             </div>
 
-            <div style={styles.summaryValue}>
-              {formatMoney(walletBalance)}
+            <div
+              style={
+                styles.summaryValue
+              }
+            >
+              {formatMoney(
+                walletBalance
+              )}
             </div>
           </div>
 
@@ -1246,26 +1677,43 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.summaryCard,
-              animationDelay: "1.5s",
+              animationDelay:
+                "1.5s",
             }}
           >
-            <div style={styles.summaryIcon}>
+            <div
+              style={
+                styles.summaryIcon
+              }
+            >
               🎯
             </div>
 
-            <div style={styles.summaryLabel}>
+            <div
+              style={
+                styles.summaryLabel
+              }
+            >
               Expected Return
             </div>
 
-            <div style={styles.summaryValue}>
-              {formatMoney(expectedReturn)}
+            <div
+              style={
+                styles.summaryValue
+              }
+            >
+              {formatMoney(
+                expectedReturn
+              )}
             </div>
           </div>
         </section>
 
         <section
           className="transport-animated-card"
-          style={styles.largeCard}
+          style={
+            styles.largeCard
+          }
         >
           <div
             style={{
@@ -1275,45 +1723,82 @@ export default function Dashboard() {
                 : {}),
             }}
           >
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.sectionTitle}>
+            <div
+              style={{
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={
+                  styles.sectionTitle
+                }
+              >
                 🚛 Active Transport Plans
               </div>
 
-              <div style={styles.sectionSubtitle}>
+              <div
+                style={
+                  styles.sectionSubtitle
+                }
+              >
                 Your currently active investment plans
               </div>
             </div>
 
             <button
-              style={styles.greenButton}
+              style={
+                styles.greenButton
+              }
               onClick={() =>
-                goTo("/transport-plans")
+                goTo(
+                  "/transport-plans"
+                )
               }
             >
               + Add Plan
             </button>
           </div>
 
-          {activePlans.length === 0 ? (
-            <div style={styles.emptyState}>
-              <div style={styles.emptyIcon}>
+          {activePlans.length ===
+          0 ? (
+            <div
+              style={
+                styles.emptyState
+              }
+            >
+              <div
+                style={
+                  styles.emptyIcon
+                }
+              >
                 🚛
               </div>
 
-              <div style={styles.emptyTitle}>
+              <div
+                style={
+                  styles.emptyTitle
+                }
+              >
                 No Active Transport Plans
               </div>
 
-              <div style={styles.emptyText}>
+              <div
+                style={
+                  styles.emptyText
+                }
+              >
                 Select a transport plan to start
                 earning weekly returns.
               </div>
 
               <button
-                style={styles.greenButtonLarge}
+                style={
+                  styles.greenButtonLarge
+                }
                 onClick={() =>
-                  goTo("/transport-plans")
+                  goTo(
+                    "/transport-plans"
+                  )
                 }
               >
                 View Transport Plans
@@ -1329,15 +1814,21 @@ export default function Dashboard() {
               }}
             >
               {activePlans.map(
-                (plan, index) => {
+                (
+                  plan,
+                  index
+                ) => {
                   const weekly =
-                    getWeeklyReturn(plan);
+                    getWeeklyReturn(
+                      plan
+                    );
 
                   const durationWeeks =
                     PLAN_DURATION_WEEKS;
 
                   const totalPlanReturn =
-                    weekly * durationWeeks;
+                    weekly *
+                    durationWeeks;
 
                   return (
                     <div
@@ -1345,62 +1836,94 @@ export default function Dashboard() {
                       style={{
                         ...styles.planCard,
                         animationDelay:
-                          index * 0.35 + "s",
+                          index *
+                            0.35 +
+                          "s",
                       }}
                       key={
                         plan.id ||
                         plan.depositRequestId ||
-                        index
+                        `${plan.name}-${plan.amount}-${index}`
                       }
                     >
-                      <div style={styles.planTop}>
+                      <div
+                        style={
+                          styles.planTop
+                        }
+                      >
                         <div
                           style={{
                             minWidth: 0,
                           }}
                         >
-                          <div style={styles.planName}>
+                          <div
+                            style={
+                              styles.planName
+                            }
+                          >
                             {plan.name}
                           </div>
 
-                          <div style={styles.planPrice}>
+                          <div
+                            style={
+                              styles.planPrice
+                            }
+                          >
                             {formatMoney(
-                              plan.price ?? 
-                                plan.amount ?? 
+                              plan.price ??
+                                plan.amount ??
                                 0
                             )}
                           </div>
                         </div>
 
-                        <div style={styles.activeBadge}>
+                        <div
+                          style={
+                            styles.activeBadge
+                          }
+                        >
                           ACTIVE
                         </div>
                       </div>
 
-                      <div style={styles.planStats}>
+                      <div
+                        style={
+                          styles.planStats
+                        }
+                      >
                         <div>
                           <span
-                            style={styles.statLabel}
+                            style={
+                              styles.statLabel
+                            }
                           >
                             Weekly
                           </span>
 
                           <strong
-                            style={styles.statValue}
+                            style={
+                              styles.statValue
+                            }
                           >
-                            {formatMoney(weekly)}
+                            {formatMoney(
+                              weekly
+                            )}
                           </strong>
                         </div>
 
                         <div>
                           <span
-                            style={styles.statLabel}
+                            style={
+                              styles.statLabel
+                            }
                           >
                             Duration
                           </span>
 
                           <strong
-                            style={styles.statValue}
+                            style={
+                              styles.statValue
+                            }
                           >
                             {durationWeeks} Weeks
                           </strong>
@@ -1408,13 +1931,17 @@ export default function Dashboard() {
 
                         <div>
                           <span
-                            style={styles.statLabel}
+                            style={
+                              styles.statLabel
+                            }
                           >
                             Total Return
                           </span>
 
                           <strong
-                            style={styles.statValue}
+                            style={
+                              styles.statValue
+                            }
                           >
                             {formatMoney(
                               totalPlanReturn
@@ -1442,51 +1969,100 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.sideCard,
-              animationDelay: "0.4s",
+              animationDelay:
+                "0.4s",
             }}
           >
-            <div style={styles.sectionTitle}>
+            <div
+              style={
+                styles.sectionTitle
+              }
+            >
               💰 Wallet Overview
             </div>
 
-            <div style={styles.walletRows}>
-              <div style={styles.walletRow}>
-                <span>Available Balance</span>
+            <div
+              style={
+                styles.walletRows
+              }
+            >
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Available Balance
+                </span>
 
                 <strong>
-                  {formatMoney(walletBalance)}
+                  {formatMoney(
+                    walletBalance
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Total Deposits</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Total Deposits
+                </span>
 
                 <strong>
-                  {formatMoney(depositTotal)}
+                  {formatMoney(
+                    depositTotal
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Total Withdrawals</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Total Withdrawals
+                </span>
 
                 <strong>
-                  {formatMoney(withdrawalTotal)}
+                  {formatMoney(
+                    withdrawalTotal
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Pending Deposits</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Pending Deposits
+                </span>
 
                 <strong>
-                  {formatMoney(pendingDeposits)}
+                  {formatMoney(
+                    pendingDeposits
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Pending Withdrawals</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Pending Withdrawals
+                </span>
 
                 <strong>
-                  {formatMoney(pendingWithdrawals)}
+                  {formatMoney(
+                    pendingWithdrawals
+                  )}
                 </strong>
               </div>
             </div>
@@ -1496,55 +2072,100 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.sideCard,
-              animationDelay: "0.9s",
+              animationDelay:
+                "0.9s",
             }}
           >
-            <div style={styles.sectionTitle}>
+            <div
+              style={
+                styles.sectionTitle
+              }
+            >
               📈 Return Summary
             </div>
 
-            <div style={styles.walletRows}>
-              <div style={styles.walletRow}>
+            <div
+              style={
+                styles.walletRows
+              }
+            >
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
                 <span>
                   Current Weekly Return
                 </span>
 
                 <strong>
-                  {formatMoney(todayProfit)}
+                  {formatMoney(
+                    todayProfit
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
                 <span>
                   Previous Weekly Return
                 </span>
 
                 <strong>
-                  {formatMoney(yesterdayProfit)}
+                  {formatMoney(
+                    yesterdayProfit
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Weekly Total</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Weekly Total
+                </span>
 
                 <strong>
-                  {formatMoney(weekProfit)}
+                  {formatMoney(
+                    weekProfit
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Approx. 4 Weeks</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Approx. 4 Weeks
+                </span>
 
                 <strong>
-                  {formatMoney(monthProfit)}
+                  {formatMoney(
+                    monthProfit
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Total Earned</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Total Earned
+                </span>
 
                 <strong>
-                  {formatMoney(earnedReturns)}
+                  {formatMoney(
+                    earnedReturns
+                  )}
                 </strong>
               </div>
             </div>
@@ -1563,51 +2184,96 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.sideCard,
-              animationDelay: "0.6s",
+              animationDelay:
+                "0.6s",
             }}
           >
-            <div style={styles.sectionTitle}>
+            <div
+              style={
+                styles.sectionTitle
+              }
+            >
               👥 My Team
             </div>
 
-            <div style={styles.teamMainNumber}>
+            <div
+              style={
+                styles.teamMainNumber
+              }
+            >
               {teamMembers.length}
             </div>
 
-            <div style={styles.teamLabel}>
+            <div
+              style={
+                styles.teamLabel
+              }
+            >
               Total Team Members
             </div>
 
-            <div style={styles.teamStats}>
-              <div style={styles.teamStat}>
-                <span>Team Investment</span>
+            <div
+              style={
+                styles.teamStats
+              }
+            >
+              <div
+                style={
+                  styles.teamStat
+                }
+              >
+                <span>
+                  Team Investment
+                </span>
 
                 <strong>
-                  {formatMoney(teamInvestment)}
+                  {formatMoney(
+                    teamInvestment
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.teamStat}>
-                <span>Paid Commission</span>
+              <div
+                style={
+                  styles.teamStat
+                }
+              >
+                <span>
+                  Paid Commission
+                </span>
 
                 <strong>
-                  {formatMoney(paidTeam)}
+                  {formatMoney(
+                    paidTeam
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.teamStat}>
-                <span>Today Commission</span>
+              <div
+                style={
+                  styles.teamStat
+                }
+              >
+                <span>
+                  Today Commission
+                </span>
 
                 <strong>
-                  {formatMoney(todayTeam)}
+                  {formatMoney(
+                    todayTeam
+                  )}
                 </strong>
               </div>
             </div>
 
             <button
-              style={styles.outlineButton}
+              style={
+                styles.outlineButton
+              }
               onClick={() =>
-                goTo("/my-team")
+                goTo(
+                  "/my-team"
+                )
               }
             >
               View My Team
@@ -1618,45 +2284,75 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.sideCard,
-              animationDelay: "1.1s",
+              animationDelay:
+                "1.1s",
             }}
           >
-            <div style={styles.sectionTitle}>
+            <div
+              style={
+                styles.sectionTitle
+              }
+            >
               🔗 Referral Program
             </div>
 
-            <div style={styles.referralText}>
+            <div
+              style={
+                styles.referralText
+              }
+            >
               Invite friends and grow your team.
             </div>
 
-            <div style={styles.referralCodeBox}>
+            <div
+              style={
+                styles.referralCodeBox
+              }
+            >
               <span
                 style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  overflow:
+                    "hidden",
+                  textOverflow:
+                    "ellipsis",
+                  whiteSpace:
+                    "nowrap",
                 }}
               >
                 {referralCode}
               </span>
 
               <button
-                style={styles.copyButton}
-                onClick={copyReferral}
+                style={
+                  styles.copyButton
+                }
+                onClick={
+                  copyReferral
+                }
               >
-                {copied ? "Copied" : "Copy"}
+                {copied
+                  ? "Copied"
+                  : "Copy"}
               </button>
             </div>
 
-            <div style={styles.referralLinkBox}>
+            <div
+              style={
+                styles.referralLinkBox
+              }
+            >
               {referralLink ||
                 "Referral link unavailable"}
             </div>
 
             <button
-              style={styles.greenButton}
+              style={
+                styles.greenButton
+              }
               onClick={() =>
-                goTo("/referral")
+                goTo(
+                  "/referral"
+                )
               }
             >
               Open Referral
@@ -1666,7 +2362,9 @@ export default function Dashboard() {
 
         <section
           className="transport-animated-card"
-          style={styles.activityCard}
+          style={
+            styles.activityCard
+          }
         >
           <div
             style={{
@@ -1677,124 +2375,165 @@ export default function Dashboard() {
             }}
           >
             <div>
-              <div style={styles.sectionTitle}>
+              <div
+                style={
+                  styles.sectionTitle
+                }
+              >
                 📊 Recent Transactions
               </div>
 
-              <div style={styles.sectionSubtitle}>
+              <div
+                style={
+                  styles.sectionSubtitle
+                }
+              >
                 Latest account activity
               </div>
             </div>
 
             <button
-              style={styles.textButton}
+              style={
+                styles.textButton
+              }
               onClick={() =>
-                goTo("/transactions")
+                goTo(
+                  "/transactions"
+                )
               }
             >
               View All →
             </button>
           </div>
 
-          {transactions.length === 0 ? (
-            <div style={styles.transactionEmpty}>
+          {transactions.length ===
+          0 ? (
+            <div
+              style={
+                styles.transactionEmpty
+              }
+            >
               No transactions yet.
             </div>
           ) : (
-            <div style={styles.transactionList}>
+            <div
+              style={
+                styles.transactionList
+              }
+            >
               {transactions
                 .slice(0, 5)
-                .map((item, index) => {
-                  const type = String(
-                    item.type || ""
-                  ).toLowerCase();
+                .map(
+                  (
+                    item,
+                    index
+                  ) => {
+                    const type =
+                      String(
+                        item.type ||
+                          ""
+                      ).toLowerCase();
 
-                  const status = String(
-                    item.status || "pending"
-                  ).toLowerCase();
+                    const status =
+                      String(
+                        item.status ||
+                          "pending"
+                      ).toLowerCase();
 
-                  const isReturn =
-                    type === "return" ||
-                    String(
-                      item.returnType || ""
-                    ).toLowerCase() === "weekly";
+                    const isReturn =
+                      type ===
+                        "return" ||
+                      String(
+                        item.returnType ||
+                          ""
+                      ).toLowerCase() ===
+                        "weekly";
 
-                  return (
-                    <div
-                      style={{
-                        ...styles.transactionRow,
-                        ...(isMobile
-                          ? styles.mobileTransactionRow
-                          : {}),
-                      }}
-                      key={index}
-                    >
-                      <div
-                        style={
-                          styles.transactionIcon
-                        }
-                      >
-                        {type === "withdraw"
-                          ? "💸"
-                          : isReturn
-                          ? "🎁"
-                          : "💰"}
-                      </div>
-
-                      <div
-                        style={
-                          styles.transactionInfo
-                        }
-                      >
-                        <div
-                          style={
-                            styles.transactionTitle
-                          }
-                        >
-                          {type === "withdraw"
-                            ? "Withdrawal"
-                            : isReturn
-                            ? "Weekly Return"
-                            : "Deposit"}
-                        </div>
-
-                        <div
-                          style={
-                            styles.transactionDate
-                          }
-                        >
-                          {item.date ||
-                            item.createdAt ||
-                            item.submittedAt ||
-                            "Recently"}
-                        </div>
-                      </div>
-
-                      <div
-                        style={
-                          styles.transactionAmount
-                        }
-                      >
-                        {formatMoney(item.amount)}
-                      </div>
-
+                    return (
                       <div
                         style={{
-                          ...styles.statusBadge,
-                          ...(status ===
-                            "approved" ||
-                          status === "completed"
-                            ? styles.approvedStatus
-                            : status === "rejected"
-                            ? styles.rejectedStatus
-                            : styles.pendingStatus),
+                          ...styles.transactionRow,
+                          ...(isMobile
+                            ? styles.mobileTransactionRow
+                            : {}),
                         }}
+                        key={
+                          index
+                        }
                       >
-                        {status.toUpperCase()}
+                        <div
+                          style={
+                            styles.transactionIcon
+                          }
+                        >
+                          {type ===
+                          "withdraw"
+                            ? "💸"
+                            : isReturn
+                            ? "🎁"
+                            : "💰"}
+                        </div>
+
+                        <div
+                          style={
+                            styles.transactionInfo
+                          }
+                        >
+                          <div
+                            style={
+                              styles.transactionTitle
+                            }
+                          >
+                            {type ===
+                            "withdraw"
+                              ? "Withdrawal"
+                              : isReturn
+                              ? "Weekly Return"
+                              : "Deposit"}
+                          </div>
+
+                          <div
+                            style={
+                              styles.transactionDate
+                            }
+                          >
+                            {item.date ||
+                              item.createdAt ||
+                              item.submittedAt ||
+                              "Recently"}
+                          </div>
+                        </div>
+
+                        <div
+                          style={
+                            styles.transactionAmount
+                          }
+                        >
+                          {formatMoney(
+                            item.amount
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            ...styles.statusBadge,
+                            ...(status ===
+                              "approved" ||
+                            status ===
+                              "completed"
+                              ? styles.approvedStatus
+                              : status ===
+                                "rejected"
+                              ? styles.rejectedStatus
+                              : styles.pendingStatus),
+                          }}
+                        >
+                          {status.toUpperCase()}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  }
+                )}
             </div>
           )}
         </section>
@@ -1808,16 +2547,32 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={styles.dashboardSupportIcon}>
+          <div
+            style={
+              styles.dashboardSupportIcon
+            }
+          >
             🎧
           </div>
 
-          <div style={styles.dashboardSupportContent}>
-            <div style={styles.dashboardSupportTitle}>
+          <div
+            style={
+              styles.dashboardSupportContent
+            }
+          >
+            <div
+              style={
+                styles.dashboardSupportTitle
+              }
+            >
               Need Help?
             </div>
 
-            <div style={styles.dashboardSupportText}>
+            <div
+              style={
+                styles.dashboardSupportText
+              }
+            >
               Have questions about your account,
               deposits, withdrawals, or transport
               plans? Our support team is here to help.
@@ -1833,9 +2588,13 @@ export default function Dashboard() {
             }}
           >
             <button
-              style={styles.liveChatButton}
+              style={
+                styles.liveChatButton
+              }
               onClick={() =>
-                goTo("/support")
+                goTo(
+                  "/support"
+                )
               }
             >
               💬 Live Chat
@@ -1845,14 +2604,15 @@ export default function Dashboard() {
               href="https://wa.me/923263159327?text=Hello%20Transport%20Hub%20Support%2C%20I%20need%20help."
               target="_blank"
               rel="noopener noreferrer"
-              style={styles.whatsappButton}
+              style={
+                styles.whatsappButton
+              }
             >
               📱 WhatsApp
             </a>
           </div>
         </section>
 
-        {/* ===== MOBILE APP DOWNLOAD CARD ===== */}
         <section
           className="transport-animated-card"
           style={{
@@ -1862,16 +2622,32 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={styles.appDownloadIcon}>
+          <div
+            style={
+              styles.appDownloadIcon
+            }
+          >
             📱
           </div>
 
-          <div style={styles.appDownloadContent}>
-            <div style={styles.appDownloadTitle}>
+          <div
+            style={
+              styles.appDownloadContent
+            }
+          >
+            <div
+              style={
+                styles.appDownloadTitle
+              }
+            >
               Transport Hub Mobile App
             </div>
 
-            <div style={styles.appDownloadText}>
+            <div
+              style={
+                styles.appDownloadText
+              }
+            >
               Download the Transport Hub app for a faster,
               smoother, and more convenient experience.
             </div>
@@ -1880,7 +2656,9 @@ export default function Dashboard() {
           <a
             href="/transport-hub.apk"
             download="Transport-Hub.apk"
-            style={styles.appDownloadButton}
+            style={
+              styles.appDownloadButton
+            }
           >
             📥 Download App
           </a>
@@ -1888,7 +2666,11 @@ export default function Dashboard() {
       </main>
 
       {showPrizePopup && (
-        <div style={styles.prizePopupOverlay}>
+        <div
+          style={
+            styles.prizePopupOverlay
+          }
+        >
           <div
             style={{
               ...styles.prizePopupCard,
@@ -1896,15 +2678,27 @@ export default function Dashboard() {
                 "prizePopupIn .35s ease-out forwards",
             }}
           >
-            <div style={styles.prizePopupTop}>
-              <div style={styles.prizeBrandPill}>
+            <div
+              style={
+                styles.prizePopupTop
+              }
+            >
+              <div
+                style={
+                  styles.prizeBrandPill
+                }
+              >
                 🚛 TRANSPORT HUB
               </div>
 
               <button
-                style={styles.prizeCloseTop}
+                style={
+                  styles.prizeCloseTop
+                }
                 onClick={() =>
-                  setShowPrizePopup(false)
+                  setShowPrizePopup(
+                    false
+                  )
                 }
                 aria-label="Close popup"
               >
@@ -1912,7 +2706,11 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div style={styles.prizeHero}>
+            <div
+              style={
+                styles.prizeHero
+              }
+            >
               <div
                 style={{
                   ...styles.prizeGlowIcon,
@@ -1923,52 +2721,108 @@ export default function Dashboard() {
                 🏆
               </div>
 
-              <div style={styles.prizeSmallTitle}>
+              <div
+                style={
+                  styles.prizeSmallTitle
+                }
+              >
                 SPECIAL TEAM REWARD
               </div>
 
-              <div style={styles.prizeMainTitle}>
+              <div
+                style={
+                  styles.prizeMainTitle
+                }
+              >
                 WIN 5 LAKH PRIZE
               </div>
 
-              <div style={styles.prizeSubtitle}>
+              <div
+                style={
+                  styles.prizeSubtitle
+                }
+              >
                 Build Your Team • Unlock Your Reward
               </div>
 
-              <div style={styles.prizeDivider} />
+              <div
+                style={
+                  styles.prizeDivider
+                }
+              />
 
-              <div style={styles.prizeMessage}>
+              <div
+                style={
+                  styles.prizeMessage
+                }
+              >
                 When your team crosses
               </div>
 
-              <div style={styles.prizeTarget}>
+              <div
+                style={
+                  styles.prizeTarget
+                }
+              >
                 50 LAKH
               </div>
 
-              <div style={styles.prizeMessage}>
+              <div
+                style={
+                  styles.prizeMessage
+                }
+              >
                 you will WIN
               </div>
 
-              <div style={styles.prizeAmount}>
+              <div
+                style={
+                  styles.prizeAmount
+                }
+              >
                 5 LAKH
               </div>
 
-              <div style={styles.prizeBottomGlow}>
+              <div
+                style={
+                  styles.prizeBottomGlow
+                }
+              >
                 🏆
               </div>
             </div>
 
-            <div style={styles.channelPrizeCard}>
-              <div style={styles.channelIcon}>
+            <div
+              style={
+                styles.channelPrizeCard
+              }
+            >
+              <div
+                style={
+                  styles.channelIcon
+                }
+              >
                 📢
               </div>
 
-              <div style={styles.channelInfo}>
-                <div style={styles.channelTitle}>
+              <div
+                style={
+                  styles.channelInfo
+                }
+              >
+                <div
+                  style={
+                    styles.channelTitle
+                  }
+                >
                   JOIN OUR OFFICIAL CHANNEL
                 </div>
 
-                <div style={styles.channelSubtitle}>
+                <div
+                  style={
+                    styles.channelSubtitle
+                  }
+                >
                   News • Updates & Announcements
                 </div>
               </div>
@@ -1977,17 +2831,27 @@ export default function Dashboard() {
                 href="https://whatsapp.com/channel/0029VbDUOmH6xCSQ4ejQlS0R"
                 target="_blank"
                 rel="noopener noreferrer"
-                style={styles.channelButton}
+                style={
+                  styles.channelButton
+                }
               >
                 JOIN CHANNEL →
               </a>
             </div>
 
-            <div style={styles.prizeBottomButtons}>
+            <div
+              style={
+                styles.prizeBottomButtons
+              }
+            >
               <button
-                style={styles.prizeCloseButton}
+                style={
+                  styles.prizeCloseButton
+                }
                 onClick={() =>
-                  setShowPrizePopup(false)
+                  setShowPrizePopup(
+                    false
+                  )
                 }
               >
                 CLOSE ✕
@@ -1998,25 +2862,49 @@ export default function Dashboard() {
       )}
 
       {showFeatures && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalCard}>
-            <div style={styles.modalIcon}>
+        <div
+          style={
+            styles.modalOverlay
+          }
+        >
+          <div
+            style={
+              styles.modalCard
+            }
+          >
+            <div
+              style={
+                styles.modalIcon
+              }
+            >
               🚧
             </div>
 
-            <div style={styles.modalTitle}>
+            <div
+              style={
+                styles.modalTitle
+              }
+            >
               Coming Soon
             </div>
 
-            <div style={styles.modalText}>
+            <div
+              style={
+                styles.modalText
+              }
+            >
               This feature is currently under
               development and will be available soon.
             </div>
 
             <button
-              style={styles.greenButtonLarge}
+              style={
+                styles.greenButtonLarge
+              }
               onClick={() =>
-                setShowFeatures(false)
+                setShowFeatures(
+                  false
+                )
               }
             >
               Close
@@ -2034,7 +2922,8 @@ const styles = {
     display: "flex",
     background: "#eef3f7",
     color: "#102A43",
-    fontFamily: "Arial, sans-serif",
+    fontFamily:
+      "Arial, sans-serif",
   },
 
   mobileHeader: {
@@ -2042,24 +2931,29 @@ const styles = {
     top: 0,
     left: 0,
     right: 0,
-    height: "calc(58px + env(safe-area-inset-top, 0px))",
-    paddingTop: "env(safe-area-inset-top, 0px)",
+    height:
+      "calc(58px + env(safe-area-inset-top, 0px))",
+    paddingTop:
+      "env(safe-area-inset-top, 0px)",
     background: "#102A43",
     color: "#ffffff",
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     paddingLeft: "14px",
     paddingRight: "14px",
     boxSizing: "border-box",
     zIndex: 1100,
-    boxShadow: "0 3px 15px rgba(0,0,0,.15)",
+    boxShadow:
+      "0 3px 15px rgba(0,0,0,.15)",
   },
 
   menuButton: {
     width: "38px",
     height: "38px",
-    border: "1px solid #294B66",
+    border:
+      "1px solid #294B66",
     borderRadius: "9px",
     background: "#173B5A",
     color: "#ffffff",
@@ -2079,16 +2973,19 @@ const styles = {
     background: "#1E3A56",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent:
+      "center",
   },
 
   mobileOverlay: {
     position: "fixed",
-    top: "calc(58px + env(safe-area-inset-top, 0px))",
+    top:
+      "calc(58px + env(safe-area-inset-top, 0px))",
     left: 0,
     right: 0,
     bottom: 0,
-    background: "rgba(0,0,0,.55)",
+    background:
+      "rgba(0,0,0,.55)",
     zIndex: 1150,
   },
 
@@ -2110,10 +3007,13 @@ const styles = {
   mobileSidebar: {
     width: "270px",
     maxWidth: "82vw",
-    top: "calc(58px + env(safe-area-inset-top, 0px))",
+    top:
+      "calc(58px + env(safe-area-inset-top, 0px))",
     bottom: 0,
-    height: "calc(100vh - 58px - env(safe-area-inset-top, 0px))",
-    boxShadow: "8px 0 25px rgba(0,0,0,.25)",
+    height:
+      "calc(100vh - 58px - env(safe-area-inset-top, 0px))",
+    boxShadow:
+      "8px 0 25px rgba(0,0,0,.25)",
     zIndex: 1200,
   },
 
@@ -2121,7 +3021,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "10px",
-    padding: "8px 8px 18px",
+    padding:
+      "8px 8px 18px",
   },
 
   logoIcon: {
@@ -2131,7 +3032,8 @@ const styles = {
     background: "#1E3A56",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent:
+      "center",
     fontSize: "21px",
     flexShrink: 0,
   },
@@ -2150,7 +3052,8 @@ const styles = {
 
   navigation: {
     display: "flex",
-    flexDirection: "column",
+    flexDirection:
+      "column",
     gap: "4px",
   },
 
@@ -2159,7 +3062,8 @@ const styles = {
     border: "none",
     background: "transparent",
     color: "#C9D8E6",
-    padding: "10px 11px",
+    padding:
+      "10px 11px",
     borderRadius: "9px",
     display: "flex",
     alignItems: "center",
@@ -2177,10 +3081,12 @@ const styles = {
 
   logoutNavItem: {
     width: "100%",
-    border: "1px solid #294B66",
+    border:
+      "1px solid #294B66",
     background: "#173B5A",
     color: "#ffffff",
-    padding: "10px 11px",
+    padding:
+      "10px 11px",
     borderRadius: "9px",
     display: "flex",
     alignItems: "center",
@@ -2194,33 +3100,41 @@ const styles = {
 
   mainContent: {
     marginLeft: "245px",
-    width: "calc(100% - 245px)",
+    width:
+      "calc(100% - 245px)",
     minHeight: "100vh",
     padding: "22px",
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
     minWidth: 0,
   },
 
   mobileMainContent: {
     marginLeft: 0,
     width: "100%",
-    paddingTop: "calc(76px + env(safe-area-inset-top, 0px))",
+    paddingTop:
+      "calc(76px + env(safe-area-inset-top, 0px))",
     paddingRight: "12px",
     paddingBottom: "20px",
     paddingLeft: "12px",
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
   },
 
   topBar: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
+    alignItems:
+      "center",
+    justifyContent:
+      "space-between",
     gap: "20px",
-    marginBottom: "18px",
+    marginBottom:
+      "18px",
   },
 
   mobileTopBar: {
-    alignItems: "flex-start",
+    alignItems:
+      "flex-start",
     gap: "8px",
   },
 
@@ -2241,14 +3155,18 @@ const styles = {
     alignItems: "center",
     gap: "9px",
     background: "#ffffff",
-    padding: "8px 12px",
-    borderRadius: "12px",
-    border: "1px solid #dce5ec",
+    padding:
+      "8px 12px",
+    borderRadius:
+      "12px",
+    border:
+      "1px solid #dce5ec",
     flexShrink: 0,
   },
 
   mobileTopUser: {
-    padding: "6px 8px",
+    padding:
+      "6px 8px",
   },
 
   topAvatar: {
@@ -2259,7 +3177,8 @@ const styles = {
     color: "#ffffff",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent:
+      "center",
     flexShrink: 0,
   },
 
@@ -2277,17 +3196,23 @@ const styles = {
 
   welcomeCard: {
     background: "#102A43",
-    borderRadius: "18px",
+    borderRadius:
+      "18px",
     padding: "24px",
     color: "#ffffff",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
+    alignItems:
+      "center",
+    justifyContent:
+      "space-between",
     gap: "15px",
-    marginBottom: "18px",
-    border: "1px solid #1E3A56",
+    marginBottom:
+      "18px",
+    border:
+      "1px solid #1E3A56",
     minWidth: 0,
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
   },
 
   mobileWelcomeCard: {
@@ -2311,17 +3236,21 @@ const styles = {
     color: "#C9D8E6",
     fontSize: "11px",
     lineHeight: 1.6,
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   welcomeTruck: {
     width: "65px",
     height: "65px",
-    borderRadius: "18px",
+    borderRadius:
+      "18px",
     background: "#1E3A56",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
     fontSize: "30px",
     flexShrink: 0,
   },
@@ -2331,7 +3260,8 @@ const styles = {
     gridTemplateColumns:
       "repeat(4, minmax(0, 1fr))",
     gap: "14px",
-    marginBottom: "18px",
+    marginBottom:
+      "18px",
   },
 
   mobileSummaryGrid: {
@@ -2342,11 +3272,14 @@ const styles = {
 
   summaryCard: {
     background: "#102A43",
-    borderRadius: "15px",
+    borderRadius:
+      "15px",
     padding: "17px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     minWidth: 0,
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
     overflow: "hidden",
     transition:
       "transform 0.3s ease, box-shadow 0.3s ease",
@@ -2354,14 +3287,16 @@ const styles = {
 
   summaryIcon: {
     fontSize: "21px",
-    marginBottom: "10px",
+    marginBottom:
+      "10px",
   },
 
   summaryLabel: {
     color: "#9FB3C8",
     fontSize: "10px",
     fontWeight: 700,
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   summaryValue: {
@@ -2369,44 +3304,55 @@ const styles = {
     fontSize: "19px",
     fontWeight: 900,
     marginTop: "5px",
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   largeCard: {
     background: "#102A43",
-    borderRadius: "17px",
+    borderRadius:
+      "17px",
     padding: "20px",
-    border: "1px solid #1E3A56",
-    marginBottom: "18px",
+    border:
+      "1px solid #1E3A56",
+    marginBottom:
+      "18px",
     minWidth: 0,
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
     overflow: "hidden",
   },
 
   sectionHeader: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
+    alignItems:
+      "center",
+    justifyContent:
+      "space-between",
     gap: "12px",
-    marginBottom: "15px",
+    marginBottom:
+      "15px",
   },
 
   mobileSectionHeader: {
-    alignItems: "flex-start",
+    alignItems:
+      "flex-start",
   },
 
   sectionTitle: {
     color: "#ffffff",
     fontSize: "15px",
     fontWeight: 900,
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   sectionSubtitle: {
     color: "#9FB3C8",
     fontSize: "9px",
     marginTop: "4px",
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   greenButton: {
@@ -2414,12 +3360,14 @@ const styles = {
     background:
       "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
     color: "#ffffff",
-    padding: "10px 14px",
+    padding:
+      "10px 14px",
     borderRadius: "9px",
     cursor: "pointer",
     fontSize: "10px",
     fontWeight: 800,
-    whiteSpace: "nowrap",
+    whiteSpace:
+      "nowrap",
     flexShrink: 0,
   },
 
@@ -2428,39 +3376,49 @@ const styles = {
     background:
       "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
     color: "#ffffff",
-    padding: "11px 18px",
+    padding:
+      "11px 18px",
     borderRadius: "9px",
     cursor: "pointer",
     fontSize: "11px",
     fontWeight: 800,
-    maxWidth: "100%",
+    maxWidth:
+      "100%",
   },
 
   emptyState: {
     textAlign: "center",
-    padding: "35px 15px",
-    background: "#173B5A",
-    borderRadius: "14px",
-    boxSizing: "border-box",
+    padding:
+      "35px 15px",
+    background:
+      "#173B5A",
+    borderRadius:
+      "14px",
+    boxSizing:
+      "border-box",
   },
 
   emptyIcon: {
     fontSize: "32px",
-    marginBottom: "9px",
+    marginBottom:
+      "9px",
   },
 
   emptyTitle: {
     color: "#ffffff",
     fontSize: "15px",
     fontWeight: 900,
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   emptyText: {
     color: "#9FB3C8",
     fontSize: "10px",
-    margin: "6px 0 14px",
-    overflowWrap: "anywhere",
+    margin:
+      "6px 0 14px",
+    overflowWrap:
+      "anywhere",
   },
 
   planGrid: {
@@ -2477,20 +3435,26 @@ const styles = {
   },
 
   planCard: {
-    background: "#173B5A",
-    borderRadius: "13px",
+    background:
+      "#173B5A",
+    borderRadius:
+      "13px",
     padding: "15px",
-    border: "1px solid #294B66",
+    border:
+      "1px solid #294B66",
     minWidth: 0,
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
     overflow: "hidden",
   },
 
   planTop: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "10px",
-    alignItems: "flex-start",
+    alignItems:
+      "flex-start",
     minWidth: 0,
   },
 
@@ -2498,7 +3462,8 @@ const styles = {
     color: "#ffffff",
     fontWeight: 900,
     fontSize: "14px",
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   planPrice: {
@@ -2506,13 +3471,16 @@ const styles = {
     fontWeight: 900,
     fontSize: "17px",
     marginTop: "3px",
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   activeBadge: {
-    background: "#29435A",
+    background:
+      "#29435A",
     color: "#8FD694",
-    padding: "5px 8px",
+    padding:
+      "5px 8px",
     borderRadius: "7px",
     fontSize: "8px",
     fontWeight: 900,
@@ -2524,9 +3492,12 @@ const styles = {
     gridTemplateColumns:
       "repeat(3, minmax(0, 1fr))",
     gap: "8px",
-    marginTop: "15px",
-    paddingTop: "12px",
-    borderTop: "1px solid #294B66",
+    marginTop:
+      "15px",
+    paddingTop:
+      "12px",
+    borderTop:
+      "1px solid #294B66",
     minWidth: 0,
   },
 
@@ -2534,15 +3505,18 @@ const styles = {
     display: "block",
     color: "#9FB3C8",
     fontSize: "8px",
-    marginBottom: "3px",
-    overflowWrap: "anywhere",
+    marginBottom:
+      "3px",
+    overflowWrap:
+      "anywhere",
   },
 
   statValue: {
     display: "block",
     color: "#ffffff",
     fontSize: "10px",
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   twoColumnGrid: {
@@ -2550,7 +3524,8 @@ const styles = {
     gridTemplateColumns:
       "repeat(2, minmax(0, 1fr))",
     gap: "18px",
-    marginBottom: "18px",
+    marginBottom:
+      "18px",
     minWidth: 0,
   },
 
@@ -2562,11 +3537,14 @@ const styles = {
 
   sideCard: {
     background: "#102A43",
-    borderRadius: "17px",
+    borderRadius:
+      "17px",
     padding: "20px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     minWidth: 0,
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
     overflow: "hidden",
   },
 
@@ -2576,11 +3554,15 @@ const styles = {
 
   walletRow: {
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
+    justifyContent:
+      "space-between",
+    alignItems:
+      "center",
     gap: "10px",
-    padding: "10px 0",
-    borderBottom: "1px solid #1E3A56",
+    padding:
+      "10px 0",
+    borderBottom:
+      "1px solid #1E3A56",
     color: "#C9D8E6",
     fontSize: "10px",
     minWidth: 0,
@@ -2600,26 +3582,35 @@ const styles = {
   },
 
   teamStats: {
-    marginTop: "15px",
+    marginTop:
+      "15px",
   },
 
   teamStat: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "10px",
-    padding: "8px 0",
-    borderBottom: "1px solid #1E3A56",
+    padding:
+      "8px 0",
+    borderBottom:
+      "1px solid #1E3A56",
     color: "#C9D8E6",
     fontSize: "10px",
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   outlineButton: {
-    marginTop: "15px",
-    border: "1px solid #3E8E5B",
-    background: "transparent",
+    marginTop:
+      "15px",
+    border:
+      "1px solid #3E8E5B",
+    background:
+      "transparent",
     color: "#8FD694",
-    padding: "9px 13px",
+    padding:
+      "9px 13px",
     borderRadius: "8px",
     cursor: "pointer",
     fontSize: "10px",
@@ -2629,31 +3620,41 @@ const styles = {
   referralText: {
     color: "#9FB3C8",
     fontSize: "10px",
-    marginTop: "10px",
-    marginBottom: "10px",
-    overflowWrap: "anywhere",
+    marginTop:
+      "10px",
+    marginBottom:
+      "10px",
+    overflowWrap:
+      "anywhere",
   },
 
   referralCodeBox: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
+    alignItems:
+      "center",
+    justifyContent:
+      "space-between",
     gap: "10px",
-    background: "#173B5A",
-    borderRadius: "9px",
+    background:
+      "#173B5A",
+    borderRadius:
+      "9px",
     padding: "10px",
     color: "#ffffff",
     fontSize: "11px",
     fontWeight: 900,
     minWidth: 0,
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
   },
 
   copyButton: {
     border: "none",
-    background: "#29435A",
+    background:
+      "#29435A",
     color: "#ffffff",
-    padding: "6px 9px",
+    padding:
+      "6px 9px",
     borderRadius: "6px",
     cursor: "pointer",
     fontSize: "9px",
@@ -2662,61 +3663,83 @@ const styles = {
   },
 
   referralLinkBox: {
-    marginTop: "9px",
+    marginTop:
+      "9px",
     padding: "9px",
-    borderRadius: "8px",
-    background: "#173B5A",
+    borderRadius:
+      "8px",
+    background:
+      "#173B5A",
     color: "#9FB3C8",
     fontSize: "8px",
     overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    marginBottom: "12px",
-    boxSizing: "border-box",
+    textOverflow:
+      "ellipsis",
+    whiteSpace:
+      "nowrap",
+    marginBottom:
+      "12px",
+    boxSizing:
+      "border-box",
   },
 
   activityCard: {
-    background: "#102A43",
-    borderRadius: "17px",
+    background:
+      "#102A43",
+    borderRadius:
+      "17px",
     padding: "20px",
-    border: "1px solid #1E3A56",
-    marginBottom: "20px",
+    border:
+      "1px solid #1E3A56",
+    marginBottom:
+      "20px",
     minWidth: 0,
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
     overflow: "hidden",
   },
 
   textButton: {
     border: "none",
-    background: "transparent",
+    background:
+      "transparent",
     color: "#8FD694",
     cursor: "pointer",
     fontSize: "10px",
     fontWeight: 800,
-    whiteSpace: "nowrap",
+    whiteSpace:
+      "nowrap",
   },
 
   transactionEmpty: {
-    textAlign: "center",
+    textAlign:
+      "center",
     color: "#9FB3C8",
     fontSize: "10px",
-    padding: "25px",
-    background: "#173B5A",
-    borderRadius: "12px",
+    padding:
+      "25px",
+    background:
+      "#173B5A",
+    borderRadius:
+      "12px",
   },
 
   transactionList: {
     display: "flex",
-    flexDirection: "column",
+    flexDirection:
+      "column",
     minWidth: 0,
   },
 
   transactionRow: {
     display: "flex",
-    alignItems: "center",
+    alignItems:
+      "center",
     gap: "10px",
-    padding: "11px 0",
-    borderBottom: "1px solid #1E3A56",
+    padding:
+      "11px 0",
+    borderBottom:
+      "1px solid #1E3A56",
     minWidth: 0,
   },
 
@@ -2727,11 +3750,15 @@ const styles = {
   transactionIcon: {
     width: "34px",
     height: "34px",
-    borderRadius: "9px",
-    background: "#173B5A",
+    borderRadius:
+      "9px",
+    background:
+      "#173B5A",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
     flexShrink: 0,
   },
 
@@ -2752,8 +3779,10 @@ const styles = {
     fontSize: "8px",
     marginTop: "2px",
     overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    textOverflow:
+      "ellipsis",
+    whiteSpace:
+      "nowrap",
   },
 
   transactionAmount: {
@@ -2764,61 +3793,81 @@ const styles = {
   },
 
   statusBadge: {
-    padding: "5px 7px",
-    borderRadius: "6px",
+    padding:
+      "5px 7px",
+    borderRadius:
+      "6px",
     fontSize: "7px",
     fontWeight: 900,
     flexShrink: 0,
   },
 
   approvedStatus: {
-    background: "#294B66",
+    background:
+      "#294B66",
     color: "#8FD694",
   },
 
   pendingStatus: {
-    background: "#4C4630",
+    background:
+      "#4C4630",
     color: "#F4D77A",
   },
 
   rejectedStatus: {
-    background: "#573533",
+    background:
+      "#573533",
     color: "#FF9F96",
   },
 
   dashboardSupport: {
-    background: "#102A43",
-    borderRadius: "18px",
+    background:
+      "#102A43",
+    borderRadius:
+      "18px",
     padding: "22px",
-    marginTop: "20px",
-    marginBottom: "20px",
-    border: "1px solid #1E3A56",
+    marginTop:
+      "20px",
+    marginBottom:
+      "20px",
+    border:
+      "1px solid #1E3A56",
     display: "flex",
-    alignItems: "center",
+    alignItems:
+      "center",
     gap: "16px",
     boxShadow:
       "0 8px 24px rgba(16,42,67,.12)",
     minWidth: 0,
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
   },
 
   mobileDashboardSupport: {
-    flexDirection: "column",
-    alignItems: "stretch",
-    textAlign: "center",
+    flexDirection:
+      "column",
+    alignItems:
+      "stretch",
+    textAlign:
+      "center",
   },
 
   dashboardSupportIcon: {
     width: "54px",
     height: "54px",
-    borderRadius: "14px",
-    background: "#1E3A56",
+    borderRadius:
+      "14px",
+    background:
+      "#1E3A56",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
     fontSize: "25px",
     flexShrink: 0,
-    alignSelf: "center",
+    alignSelf:
+      "center",
   },
 
   dashboardSupportContent: {
@@ -2830,25 +3879,29 @@ const styles = {
     color: "#ffffff",
     fontSize: "18px",
     fontWeight: 900,
-    marginBottom: "5px",
+    marginBottom:
+      "5px",
   },
 
   dashboardSupportText: {
     color: "#C9D8E6",
     fontSize: "11px",
     lineHeight: 1.6,
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   dashboardSupportButtons: {
     display: "flex",
-    alignItems: "center",
+    alignItems:
+      "center",
     gap: "8px",
     flexShrink: 0,
   },
 
   mobileSupportButtons: {
-    justifyContent: "center",
+    justifyContent:
+      "center",
     width: "100%",
   },
 
@@ -2857,61 +3910,85 @@ const styles = {
     background:
       "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
     color: "#ffffff",
-    padding: "11px 15px",
-    borderRadius: "9px",
+    padding:
+      "11px 15px",
+    borderRadius:
+      "9px",
     cursor: "pointer",
     fontSize: "11px",
     fontWeight: 800,
-    whiteSpace: "nowrap",
+    whiteSpace:
+      "nowrap",
   },
 
   whatsappButton: {
-    textDecoration: "none",
-    background: "#1E3A56",
+    textDecoration:
+      "none",
+    background:
+      "#1E3A56",
     color: "#ffffff",
-    border: "1px solid #294B66",
-    padding: "10px 14px",
-    borderRadius: "9px",
+    border:
+      "1px solid #294B66",
+    padding:
+      "10px 14px",
+    borderRadius:
+      "9px",
     fontSize: "11px",
     fontWeight: 800,
-    whiteSpace: "nowrap",
+    whiteSpace:
+      "nowrap",
   },
 
   appDownloadCard: {
     background:
       "linear-gradient(135deg, #102A43, #173B5A)",
-    borderRadius: "18px",
+    borderRadius:
+      "18px",
     padding: "22px",
-    marginTop: "20px",
-    marginBottom: "20px",
-    border: "1px solid #294B66",
+    marginTop:
+      "20px",
+    marginBottom:
+      "20px",
+    border:
+      "1px solid #294B66",
     display: "flex",
-    alignItems: "center",
+    alignItems:
+      "center",
     gap: "16px",
     boxShadow:
       "0 8px 24px rgba(16,42,67,.12)",
     minWidth: 0,
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
   },
 
   mobileAppDownloadCard: {
-    flexDirection: "column",
-    alignItems: "stretch",
-    textAlign: "center",
-    padding: "20px 16px",
+    flexDirection:
+      "column",
+    alignItems:
+      "stretch",
+    textAlign:
+      "center",
+    padding:
+      "20px 16px",
   },
 
   appDownloadIcon: {
     width: "58px",
     height: "58px",
-    borderRadius: "15px",
-    background: "#1E3A56",
+    borderRadius:
+      "15px",
+    background:
+      "#1E3A56",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
     fontSize: "27px",
     flexShrink: 0,
-    alignSelf: "center",
+    alignSelf:
+      "center",
   },
 
   appDownloadContent: {
@@ -2923,31 +4000,40 @@ const styles = {
     color: "#ffffff",
     fontSize: "18px",
     fontWeight: 900,
-    marginBottom: "6px",
+    marginBottom:
+      "6px",
   },
 
   appDownloadText: {
     color: "#C9D8E6",
     fontSize: "11px",
     lineHeight: 1.6,
-    overflowWrap: "anywhere",
+    overflowWrap:
+      "anywhere",
   },
 
   appDownloadButton: {
     display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
     gap: "6px",
-    textDecoration: "none",
+    textDecoration:
+      "none",
     background:
       "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
     color: "#ffffff",
-    padding: "12px 18px",
-    borderRadius: "9px",
-    border: "1px solid #4FA66A",
+    padding:
+      "12px 18px",
+    borderRadius:
+      "9px",
+    border:
+      "1px solid #4FA66A",
     fontSize: "10px",
     fontWeight: 900,
-    whiteSpace: "nowrap",
+    whiteSpace:
+      "nowrap",
     cursor: "pointer",
     boxShadow:
       "0 5px 14px rgba(46,107,74,.18)",
@@ -2956,29 +4042,40 @@ const styles = {
 
   loadingScreen: {
     minHeight: "100vh",
-    background: "#eef3f7",
+    background:
+      "#eef3f7",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontFamily: "Arial, sans-serif",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
+    fontFamily:
+      "Arial, sans-serif",
     padding: "20px",
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
   },
 
   loadingCard: {
-    background: "#102A43",
+    background:
+      "#102A43",
     color: "#ffffff",
     padding: "35px",
-    borderRadius: "18px",
-    textAlign: "center",
+    borderRadius:
+      "18px",
+    textAlign:
+      "center",
     width: "280px",
-    maxWidth: "100%",
-    boxSizing: "border-box",
+    maxWidth:
+      "100%",
+    boxSizing:
+      "border-box",
   },
 
   loadingIcon: {
     fontSize: "35px",
-    marginBottom: "10px",
+    marginBottom:
+      "10px",
   },
 
   loadingTitle: {
@@ -2997,47 +4094,65 @@ const styles = {
     inset: 0,
     background:
       "rgba(3, 12, 24, 0.82)",
-    backdropFilter: "blur(7px)",
-    WebkitBackdropFilter: "blur(7px)",
+    backdropFilter:
+      "blur(7px)",
+    WebkitBackdropFilter:
+      "blur(7px)",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
     zIndex: 5000,
     padding: "18px",
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
   },
 
   prizePopupCard: {
     width: "100%",
-    maxWidth: "445px",
-    maxHeight: "92vh",
-    overflowY: "auto",
+    maxWidth:
+      "445px",
+    maxHeight:
+      "92vh",
+    overflowY:
+      "auto",
     background:
       "linear-gradient(145deg, #071d32 0%, #102A43 55%, #081a2d 100%)",
-    borderRadius: "24px",
+    borderRadius:
+      "24px",
     border:
       "1px solid rgba(66, 150, 211, 0.55)",
     padding: "16px",
-    boxSizing: "border-box",
-    position: "relative",
+    boxSizing:
+      "border-box",
+    position:
+      "relative",
     boxShadow:
       "0 25px 70px rgba(0,0,0,.55), 0 0 45px rgba(30,120,190,.12)",
   },
 
   prizePopupTop: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
+    alignItems:
+      "center",
+    justifyContent:
+      "space-between",
     gap: "10px",
-    marginBottom: "12px",
+    marginBottom:
+      "12px",
   },
 
   prizeBrandPill: {
-    display: "inline-flex",
-    alignItems: "center",
+    display:
+      "inline-flex",
+    alignItems:
+      "center",
     gap: "6px",
-    padding: "7px 12px",
-    borderRadius: "999px",
+    padding:
+      "7px 12px",
+    borderRadius:
+      "999px",
     background:
       "linear-gradient(135deg, #173B5A, #1E4C70)",
     border:
@@ -3053,7 +4168,8 @@ const styles = {
   prizeCloseTop: {
     width: "34px",
     height: "34px",
-    borderRadius: "50%",
+    borderRadius:
+      "50%",
     border:
       "1px solid rgba(154, 190, 214, .3)",
     background:
@@ -3063,20 +4179,27 @@ const styles = {
     lineHeight: 1,
     cursor: "pointer",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
   },
 
   prizeHero: {
-    position: "relative",
-    textAlign: "center",
-    borderRadius: "20px",
-    padding: "22px 15px 20px",
+    position:
+      "relative",
+    textAlign:
+      "center",
+    borderRadius:
+      "20px",
+    padding:
+      "22px 15px 20px",
     background:
       "linear-gradient(160deg, rgba(18,58,88,.96), rgba(7,29,49,.98))",
     border:
       "1px solid rgba(68, 142, 193, .42)",
-    overflow: "hidden",
+    overflow:
+      "hidden",
     animation:
       "prizeGlow 3.5s ease-in-out infinite",
   },
@@ -3084,11 +4207,15 @@ const styles = {
   prizeGlowIcon: {
     width: "66px",
     height: "66px",
-    margin: "0 auto 10px",
-    borderRadius: "20px",
+    margin:
+      "0 auto 10px",
+    borderRadius:
+      "20px",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
     fontSize: "35px",
     background:
       "linear-gradient(145deg, #263F5A, #162D45)",
@@ -3102,8 +4229,10 @@ const styles = {
     color: "#8FB4CE",
     fontSize: "9px",
     fontWeight: 900,
-    letterSpacing: "1.5px",
-    marginBottom: "6px",
+    letterSpacing:
+      "1.5px",
+    marginBottom:
+      "6px",
   },
 
   prizeMainTitle: {
@@ -3111,7 +4240,8 @@ const styles = {
     fontSize: "28px",
     lineHeight: 1.1,
     fontWeight: 1000,
-    letterSpacing: ".3px",
+    letterSpacing:
+      ".3px",
     textShadow:
       "0 3px 18px rgba(247,201,72,.2)",
   },
@@ -3126,7 +4256,8 @@ const styles = {
   prizeDivider: {
     width: "70%",
     height: "1px",
-    margin: "16px auto",
+    margin:
+      "16px auto",
     background:
       "linear-gradient(90deg, transparent, rgba(247,201,72,.6), transparent)",
   },
@@ -3139,10 +4270,14 @@ const styles = {
   },
 
   prizeTarget: {
-    display: "inline-block",
-    margin: "7px 0",
-    padding: "7px 15px",
-    borderRadius: "10px",
+    display:
+      "inline-block",
+    margin:
+      "7px 0",
+    padding:
+      "7px 15px",
+    borderRadius:
+      "10px",
     background:
       "linear-gradient(135deg, #193C59, #102A43)",
     border:
@@ -3150,7 +4285,8 @@ const styles = {
     color: "#ffffff",
     fontSize: "20px",
     fontWeight: 1000,
-    letterSpacing: ".5px",
+    letterSpacing:
+      ".5px",
     boxShadow:
       "0 6px 20px rgba(0,0,0,.18)",
   },
@@ -3161,7 +4297,8 @@ const styles = {
     lineHeight: 1,
     fontWeight: 1000,
     marginTop: "7px",
-    letterSpacing: ".5px",
+    letterSpacing:
+      ".5px",
     textShadow:
       "0 4px 25px rgba(247,201,72,.24)",
   },
@@ -3169,20 +4306,24 @@ const styles = {
   prizeBottomGlow: {
     color: "#F7C948",
     fontSize: "20px",
-    marginTop: "12px",
+    marginTop:
+      "12px",
     opacity: 0.8,
   },
 
   channelPrizeCard: {
-    marginTop: "12px",
+    marginTop:
+      "12px",
     padding: "13px",
-    borderRadius: "16px",
+    borderRadius:
+      "16px",
     background:
       "linear-gradient(135deg, rgba(24,58,83,.96), rgba(11,35,55,.98))",
     border:
       "1px solid rgba(79,157,207,.38)",
     display: "flex",
-    alignItems: "center",
+    alignItems:
+      "center",
     gap: "11px",
     boxShadow:
       "0 8px 24px rgba(0,0,0,.16)",
@@ -3192,10 +4333,13 @@ const styles = {
     width: "45px",
     height: "45px",
     flexShrink: 0,
-    borderRadius: "13px",
+    borderRadius:
+      "13px",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
     fontSize: "23px",
     background:
       "linear-gradient(145deg, #274D6C, #173B5A)",
@@ -3212,8 +4356,10 @@ const styles = {
     color: "#ffffff",
     fontSize: "10px",
     fontWeight: 1000,
-    letterSpacing: ".3px",
-    overflowWrap: "anywhere",
+    letterSpacing:
+      ".3px",
+    overflowWrap:
+      "anywhere",
   },
 
   channelSubtitle: {
@@ -3225,24 +4371,32 @@ const styles = {
 
   channelButton: {
     flexShrink: 0,
-    textDecoration: "none",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "9px 11px",
-    borderRadius: "9px",
+    textDecoration:
+      "none",
+    display:
+      "inline-flex",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
+    padding:
+      "9px 11px",
+    borderRadius:
+      "9px",
     background:
       "linear-gradient(135deg, #F7C948, #DDAE32)",
     color: "#102A43",
     fontSize: "8px",
     fontWeight: 1000,
-    whiteSpace: "nowrap",
+    whiteSpace:
+      "nowrap",
     boxShadow:
       "0 5px 16px rgba(247,201,72,.16)",
   },
 
   prizeBottomButtons: {
-    marginTop: "12px",
+    marginTop:
+      "12px",
     display: "flex",
     gap: "8px",
   },
@@ -3255,39 +4409,53 @@ const styles = {
       "linear-gradient(135deg, #173B5A, #102A43)",
     color: "#D8E7F0",
     padding: "12px",
-    borderRadius: "12px",
+    borderRadius:
+      "12px",
     cursor: "pointer",
     fontSize: "10px",
     fontWeight: 900,
-    letterSpacing: ".4px",
+    letterSpacing:
+      ".4px",
   },
 
   modalOverlay: {
-    position: "fixed",
+    position:
+      "fixed",
     inset: 0,
-    background: "rgba(7, 24, 38, 0.72)",
+    background:
+      "rgba(7, 24, 38, 0.72)",
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems:
+      "center",
+    justifyContent:
+      "center",
     zIndex: 6000,
     padding: "20px",
-    boxSizing: "border-box",
+    boxSizing:
+      "border-box",
   },
 
   modalCard: {
     width: "100%",
-    maxWidth: "390px",
-    background: "#102A43",
-    border: "1px solid #1E3A56",
-    borderRadius: "18px",
+    maxWidth:
+      "390px",
+    background:
+      "#102A43",
+    border:
+      "1px solid #1E3A56",
+    borderRadius:
+      "18px",
     padding: "28px",
-    textAlign: "center",
-    boxSizing: "border-box",
+    textAlign:
+      "center",
+    boxSizing:
+      "border-box",
   },
 
   modalIcon: {
     fontSize: "35px",
-    marginBottom: "10px",
+    marginBottom:
+      "10px",
   },
 
   modalTitle: {
@@ -3300,6 +4468,7 @@ const styles = {
     color: "#9FB3C8",
     fontSize: "11px",
     lineHeight: 1.6,
-    margin: "8px 0 18px",
+    margin:
+      "8px 0 18px",
   },
 };
