@@ -108,6 +108,8 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     const loggedIn = localStorage.getItem("transportLoggedIn");
 
     if (loggedIn !== "true") {
@@ -126,90 +128,151 @@ export default function Dashboard() {
       return;
     }
 
-    const displayName = getUserName(storedUser);
+    try {
+      const displayName = getUserName(storedUser);
 
-    const normalizedUser = {
-      ...storedUser,
-      name: displayName,
-    };
+      const normalizedUser = {
+        ...storedUser,
+        name: displayName,
+      };
 
-    saveStorage("transportUser", normalizedUser);
-    setUser(normalizedUser);
+      saveStorage("transportUser", normalizedUser);
+      setUser(normalizedUser);
 
-    const phone = normalizedUser.phone || "unknown";
+      const phone =
+        normalizedUser.phone ||
+        normalizedUser.mobile ||
+        normalizedUser.phoneNumber ||
+        "";
 
-    const storedActivePlans = getStorageArray(
-      "transportActivePlans_" + phone
-    );
+      /*
+        =========================================================
+        ACTIVE PLANS
+        =========================================================
 
-    if (storedActivePlans.length > 0) {
-      const normalizedPlans = storedActivePlans.map((plan) => ({
-        ...plan,
+        IMPORTANT:
+        Only load plans belonging to THIS user's phone.
 
-        weekly: Number(
-          plan.weekly ??
-            plan.weeklyReturn ??
-            plan.daily ??
-            plan.dailyReturn ??
-            0
-        ),
+        We intentionally DO NOT use:
+        transportActivePlan
 
-        durationWeeks: PLAN_DURATION_WEEKS,
-        durationYears: PLAN_DURATION_YEARS,
-        duration: PLAN_DURATION_WEEKS,
-      }));
+        because that is an old global key and can make a new user
+        see another/old user's plan.
+      */
 
-      setActivePlans(normalizedPlans);
+      if (phone) {
+        const userActivePlansKey =
+          "transportActivePlans_" + phone;
 
-      saveStorage(
-        "transportActivePlans_" + phone,
-        normalizedPlans
-      );
-    } else {
-      const oldPlan = getStorageObject("transportActivePlan");
+        const storedActivePlans =
+          getStorageArray(userActivePlansKey);
 
-      if (oldPlan) {
-        const normalizedOldPlan = {
-          ...oldPlan,
+        if (
+          Array.isArray(storedActivePlans) &&
+          storedActivePlans.length > 0
+        ) {
+          const normalizedPlans =
+            storedActivePlans.map((plan) => ({
+              ...plan,
 
-          weekly: Number(
-            oldPlan.weekly ??
-              oldPlan.weeklyReturn ??
-              oldPlan.daily ??
-              oldPlan.dailyReturn ??
-              0
-          ),
+              weekly: Number(
+                plan.weekly ??
+                  plan.weeklyReturn ??
+                  plan.daily ??
+                  plan.dailyReturn ??
+                  0
+              ),
 
-          durationWeeks: PLAN_DURATION_WEEKS,
-          durationYears: PLAN_DURATION_YEARS,
-          duration: PLAN_DURATION_WEEKS,
-        };
+              durationWeeks: PLAN_DURATION_WEEKS,
 
-        setActivePlans([normalizedOldPlan]);
+              durationYears: PLAN_DURATION_YEARS,
+
+              duration: PLAN_DURATION_WEEKS,
+            }));
+
+          setActivePlans(normalizedPlans);
+
+          saveStorage(
+            userActivePlansKey,
+            normalizedPlans
+          );
+        } else {
+          /*
+            No plan belongs to this user.
+            Keep active plans EMPTY.
+          */
+          setActivePlans([]);
+        }
+      } else {
+        setActivePlans([]);
       }
+
+      /*
+        =========================================================
+        REMOVE OLD GLOBAL ACTIVE PLAN
+        =========================================================
+
+        This old key can contain Starter/another user's plan.
+        It must not be used for the new user.
+      */
+
+      localStorage.removeItem("transportActivePlan");
+
+      /*
+        =========================================================
+        WITHDRAWABLE RETURNS
+        =========================================================
+      */
+
+      const storedWithdrawable = Number(
+        localStorage.getItem(
+          "transportWithdrawableReturns_" + phone
+        ) || 0
+      );
+
+      setWithdrawableReturns(
+        Number.isFinite(storedWithdrawable)
+          ? storedWithdrawable
+          : 0
+      );
+
+      /*
+        =========================================================
+        TRANSACTIONS
+        =========================================================
+      */
+
+      setTransactions(
+        getStorageArray(
+          "transportTransactions_" + phone
+        )
+      );
+
+      /*
+        =========================================================
+        TEAM MEMBERS
+        =========================================================
+      */
+
+      setTeamMembers(
+        getStorageArray(
+          "transportTeam_" + phone
+        )
+      );
+
+      setLoading(false);
+    } catch (error) {
+      console.error(
+        "Dashboard data loading error:",
+        error
+      );
+
+      setActivePlans([]);
+      setTransactions([]);
+      setTeamMembers([]);
+      setWithdrawableReturns(0);
+      setLoading(false);
     }
-
-    const storedWithdrawable = Number(
-      localStorage.getItem(
-        "transportWithdrawableReturns_" + phone
-      ) || 0
-    );
-
-    setWithdrawableReturns(storedWithdrawable);
-
-    setTransactions(
-      getStorageArray(
-        "transportTransactions_" + phone
-      )
-    );
-
-    setTeamMembers(
-      getStorageArray(
-        "transportTeam_" + phone
-      )
-    );
-
-    setLoading(false);
   }, []);
 
   const displayName = getUserName(user);
@@ -217,7 +280,7 @@ export default function Dashboard() {
   const totalInvestment = useMemo(() => {
     return activePlans.reduce(
       (total, plan) =>
-        total + Number(plan.price || 0),
+        total + Number(plan.price || plan.amount || 0),
       0
     );
   }, [activePlans]);
@@ -970,7 +1033,11 @@ export default function Dashboard() {
                           </div>
 
                           <div style={styles.planPrice}>
-                            {formatMoney(plan.price)}
+                            {formatMoney(
+                              plan.price ??
+                                plan.amount ??
+                                0
+                            )}
                           </div>
                         </div>
 
@@ -1684,7 +1751,6 @@ const styles = {
     justifyContent: "center",
   },
 
-  /* ===== FIXED MOBILE OVERLAY ===== */
   mobileOverlay: {
     position: "fixed",
     top: "calc(58px + env(safe-area-inset-top, 0px))",
@@ -1710,7 +1776,6 @@ const styles = {
     zIndex: 1000,
   },
 
-  /* ===== FIXED MOBILE SIDEBAR ===== */
   mobileSidebar: {
     width: "270px",
     maxWidth: "82vw",
@@ -2481,7 +2546,6 @@ const styles = {
     whiteSpace: "nowrap",
   },
 
-  /* ===== MOBILE APP DOWNLOAD CARD ===== */
   appDownloadCard: {
     background:
       "linear-gradient(135deg, #102A43, #173B5A)",

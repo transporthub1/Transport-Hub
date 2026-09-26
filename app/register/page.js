@@ -123,13 +123,18 @@ export default function Register() {
     setLoading(true);
 
     try {
+      // Load existing users only for duplicate phone,
+      // referral lookup and referral-code generation.
       const { data: existingUsers, error: usersError } =
         await supabase
           .from("users")
-          .select("*");
+          .select(
+            "id, phone, referral_code, full_name"
+          );
 
       if (usersError) {
         console.log("Users load error:", usersError);
+
         setLoading(false);
         setMessage(
           "Unable to connect to the server. Please try again."
@@ -141,6 +146,7 @@ export default function Register() {
         ? existingUsers
         : [];
 
+      // Check duplicate phone
       const existingUser = users.find(
         (user) =>
           normalizePhone(user.phone) === cleanPhone
@@ -154,11 +160,13 @@ export default function Register() {
         return;
       }
 
+      // Find referral user
       const referrer = findReferrer(
         cleanReferral,
         users
       );
 
+      // Generate unique referral code
       const newReferralCode =
         generateReferralCode(
           cleanPhone,
@@ -166,7 +174,22 @@ export default function Register() {
           users
         );
 
-      const created_at = new Date().toISOString();
+      const created_at =
+        new Date().toISOString();
+
+      /*
+       * IMPORTANT:
+       * New user starts with:
+       *
+       * balance = 0
+       * referral_bonus = 0
+       * total_referral_bonus = 0
+       *
+       * NO PLAN IS CREATED HERE.
+       *
+       * This means a newly registered user will NOT
+       * automatically receive an active plan.
+       */
 
       const newUser = {
         id:
@@ -205,12 +228,15 @@ export default function Register() {
         created_at: created_at,
       };
 
-      const { data: insertedUser, error: insertError } =
-        await supabase
-          .from("users")
-          .insert([newUser])
-          .select()
-          .single();
+      // Insert ONLY the new user into users table
+      const {
+        data: insertedUser,
+        error: insertError,
+      } = await supabase
+        .from("users")
+        .insert([newUser])
+        .select()
+        .single();
 
       if (insertError) {
         console.log(
@@ -228,18 +254,21 @@ export default function Register() {
         return;
       }
 
-      const savedUser = insertedUser || newUser;
+      const savedUser =
+        insertedUser || newUser;
 
+      // Prepare local user session data
       const localUser = {
         ...savedUser,
 
-        fullName: savedUser.full_name,
+        fullName:
+          savedUser.full_name,
 
         referralBonus:
-          savedUser.referral_bonus,
+          savedUser.referral_bonus || 0,
 
         totalReferralBonus:
-          savedUser.total_referral_bonus,
+          savedUser.total_referral_bonus || 0,
 
         referralCode:
           savedUser.referral_code,
@@ -255,6 +284,13 @@ export default function Register() {
 
         createdAt:
           savedUser.created_at,
+
+        // Explicitly make sure there is NO active plan
+        activePlan: null,
+
+        activePlans: [],
+
+        selectedPlan: null,
       };
 
       localStorage.setItem(
@@ -267,26 +303,35 @@ export default function Register() {
         JSON.stringify(localUser)
       );
 
+      // User must login after registration
       localStorage.setItem(
         "transportLoggedIn",
         "false"
       );
 
+      // Save referral code
       localStorage.setItem(
         "transportReferralCode_" +
           cleanPhone,
         newReferralCode
       );
 
+      // Save referral information locally
       if (cleanReferral) {
         const referralData = {
           id: savedUser.id,
+
           fullName: cleanName,
+
           phone: cleanPhone,
+
           referredBy: cleanReferral,
+
           referrerCode: cleanReferral,
+
           referrerPhone:
             savedUser.referrer_phone,
+
           createdAt:
             savedUser.created_at,
         };
@@ -304,10 +349,16 @@ export default function Register() {
               JSON.parse(savedReferrals);
 
             if (Array.isArray(parsedReferrals)) {
-              referrals = parsedReferrals;
+              referrals =
+                parsedReferrals;
             }
           }
         } catch (error) {
+          console.log(
+            "Referral localStorage error:",
+            error
+          );
+
           referrals = [];
         }
 
@@ -318,6 +369,8 @@ export default function Register() {
           JSON.stringify(referrals)
         );
       }
+
+      setLoading(false);
 
       setMessage(
         "Registration successful! Redirecting to login..."
@@ -360,6 +413,9 @@ export default function Register() {
     fontWeight: "600",
   };
 
+  const isSuccess =
+    message.includes("successful");
+
   return (
     <div
       style={{
@@ -369,7 +425,8 @@ export default function Register() {
         alignItems: "center",
         justifyContent: "center",
         padding: "30px 16px",
-        fontFamily: "Arial, sans-serif",
+        fontFamily:
+          "Arial, sans-serif",
       }}
     >
       <div
@@ -381,7 +438,8 @@ export default function Register() {
           padding: "34px",
           boxShadow:
             "0 15px 45px rgba(16,42,67,0.20)",
-          border: "1px solid #1E3A56",
+          border:
+            "1px solid #1E3A56",
         }}
       >
         <div
@@ -402,8 +460,10 @@ export default function Register() {
               alignItems: "center",
               justifyContent: "center",
               fontSize: "32px",
-              margin: "0 auto 15px",
-              border: "1px solid #294B66",
+              margin:
+                "0 auto 15px",
+              border:
+                "1px solid #294B66",
             }}
           >
             🚛
@@ -422,7 +482,8 @@ export default function Register() {
 
           <p
             style={{
-              margin: "8px 0 0",
+              margin:
+                "8px 0 0",
               color: "#9FB3C8",
               fontSize: "14px",
             }}
@@ -431,7 +492,11 @@ export default function Register() {
           </p>
         </div>
 
-        <div style={{ marginBottom: "17px" }}>
+        <div
+          style={{
+            marginBottom: "17px",
+          }}
+        >
           <label style={labelStyle}>
             Full Name
           </label>
@@ -440,14 +505,20 @@ export default function Register() {
             type="text"
             value={fullName}
             onChange={(e) =>
-              setFullName(e.target.value)
+              setFullName(
+                e.target.value
+              )
             }
             placeholder="Enter your full name"
             style={inputStyle}
           />
         </div>
 
-        <div style={{ marginBottom: "17px" }}>
+        <div
+          style={{
+            marginBottom: "17px",
+          }}
+        >
           <label style={labelStyle}>
             Mobile Number
           </label>
@@ -457,14 +528,20 @@ export default function Register() {
             inputMode="numeric"
             value={phone}
             onChange={(e) =>
-              setPhone(e.target.value)
+              setPhone(
+                e.target.value
+              )
             }
             placeholder="Enter mobile number"
             style={inputStyle}
           />
         </div>
 
-        <div style={{ marginBottom: "17px" }}>
+        <div
+          style={{
+            marginBottom: "17px",
+          }}
+        >
           <label style={labelStyle}>
             Password
           </label>
@@ -473,14 +550,20 @@ export default function Register() {
             type="password"
             value={password}
             onChange={(e) =>
-              setPassword(e.target.value)
+              setPassword(
+                e.target.value
+              )
             }
             placeholder="Create password"
             style={inputStyle}
           />
         </div>
 
-        <div style={{ marginBottom: "17px" }}>
+        <div
+          style={{
+            marginBottom: "17px",
+          }}
+        >
           <label style={labelStyle}>
             Confirm Password
           </label>
@@ -489,14 +572,20 @@ export default function Register() {
             type="password"
             value={confirmPassword}
             onChange={(e) =>
-              setConfirmPassword(e.target.value)
+              setConfirmPassword(
+                e.target.value
+              )
             }
             placeholder="Confirm password"
             style={inputStyle}
           />
         </div>
 
-        <div style={{ marginBottom: "22px" }}>
+        <div
+          style={{
+            marginBottom: "22px",
+          }}
+        >
           <label style={labelStyle}>
             Referral Code{" "}
             <span
@@ -513,7 +602,9 @@ export default function Register() {
             type="text"
             value={referralCode}
             onChange={(e) =>
-              setReferralCode(e.target.value)
+              setReferralCode(
+                e.target.value
+              )
             }
             placeholder="Enter referral code"
             style={inputStyle}
@@ -524,20 +615,21 @@ export default function Register() {
           <div
             style={{
               marginBottom: "18px",
-              padding: "12px 14px",
+              padding:
+                "12px 14px",
               borderRadius: "10px",
               background:
-                message.includes("successful")
+                isSuccess
                   ? "#173F31"
                   : "#573533",
               color:
-                message.includes("successful")
+                isSuccess
                   ? "#8FD694"
                   : "#FF9F96",
               fontSize: "14px",
               textAlign: "center",
               border:
-                message.includes("successful")
+                isSuccess
                   ? "1px solid #2E6B4A"
                   : "1px solid #754640",
             }}
@@ -548,25 +640,30 @@ export default function Register() {
 
         <button
           type="button"
-          onClick={handleRegister}
+          onClick={
+            handleRegister
+          }
           disabled={loading}
           style={{
             width: "100%",
             padding: "14px",
             border: "none",
             borderRadius: "11px",
-            background: loading
-              ? "#536B7D"
-              : "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
+            background:
+              loading
+                ? "#536B7D"
+                : "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
             color: "#FFFFFF",
             fontSize: "16px",
             fontWeight: "700",
-            cursor: loading
-              ? "not-allowed"
-              : "pointer",
-            boxShadow: loading
-              ? "none"
-              : "0 6px 18px rgba(46,107,74,0.25)",
+            cursor:
+              loading
+                ? "not-allowed"
+                : "pointer",
+            boxShadow:
+              loading
+                ? "none"
+                : "0 6px 18px rgba(46,107,74,0.25)",
           }}
         >
           {loading
@@ -588,7 +685,8 @@ export default function Register() {
             style={{
               color: "#8FD694",
               fontWeight: "700",
-              textDecoration: "none",
+              textDecoration:
+                "none",
             }}
           >
             Login
