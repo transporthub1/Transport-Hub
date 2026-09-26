@@ -10,6 +10,25 @@ function formatMoney(value) {
   return Number(value || 0).toLocaleString();
 }
 
+function formatDateTime(value) {
+  if (!value) return "Recently";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function getStorageArray(key) {
   try {
     const value = localStorage.getItem(key);
@@ -2133,6 +2152,14 @@ export default function Dashboard() {
                         "💸";
                     }
 
+                    const transactionDate =
+                      item.date ||
+                      item.createdAt ||
+                      item.created_at ||
+                      item.submittedAt ||
+                      item.submitted_at ||
+                      "";
+
                     return (
                       <div
                         style={{
@@ -2177,12 +2204,9 @@ export default function Dashboard() {
                               styles.transactionDate
                             }
                           >
-                            {item.date ||
-                              item.createdAt ||
-                              item.created_at ||
-                              item.submittedAt ||
-                              item.submitted_at ||
-                              "Recently"}
+                            {formatDateTime(
+                              transactionDate
+                            )}
                           </div>
                         </div>
 
@@ -3219,7 +3243,7 @@ const styles = {
     marginTop: "9px",
     padding: "9px",
     borderRadius: "8px",
-    background: "#173B5A",
+    background: "#173B5B",
     color: "#9FB3C8",
     fontSize: "8px",
     overflow: "hidden",
@@ -3264,6 +3288,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     minWidth: 0,
+    width: "100%",
   },
 
   transactionRow: {
@@ -3274,6 +3299,9 @@ const styles = {
     borderBottom:
       "1px solid #1E3A56",
     minWidth: 0,
+    width: "100%",
+    boxSizing: "border-box",
+    overflow: "hidden",
   },
 
   mobileTransactionRow: {
@@ -3301,15 +3329,17 @@ const styles = {
     color: "#ffffff",
     fontSize: "10px",
     fontWeight: 800,
+    overflowWrap: "anywhere",
   },
 
   transactionDate: {
     color: "#9FB3C8",
     fontSize: "8px",
     marginTop: "2px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    lineHeight: 1.4,
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
   },
 
   transactionAmount: {
@@ -3317,6 +3347,7 @@ const styles = {
     fontSize: "10px",
     fontWeight: 900,
     flexShrink: 0,
+    whiteSpace: "nowrap",
   },
 
   statusBadge: {
@@ -3325,6 +3356,7 @@ const styles = {
     fontSize: "7px",
     fontWeight: 900,
     flexShrink: 0,
+    whiteSpace: "nowrap",
   },
 
   approvedStatus: {
