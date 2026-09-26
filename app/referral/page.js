@@ -1,28 +1,193 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export default function Referral() {
   const [user, setUser] = useState(null);
+  const [referralCode, setReferralCode] = useState("");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem("transportLoggedIn");
+    const loadReferralData = async () => {
+      const loggedIn = localStorage.getItem("transportLoggedIn");
 
-    if (loggedIn !== "true") {
-      window.location.href = "/login";
-      return;
-    }
+      if (loggedIn !== "true") {
+        window.location.href = "/login";
+        return;
+      }
 
-    const savedUser = localStorage.getItem("transportUser");
+      const savedUser = localStorage.getItem("transportUser");
 
-    if (savedUser) {
+      if (!savedUser) {
+        window.location.href = "/login";
+        return;
+      }
+
+      let parsedUser;
+
       try {
-        setUser(JSON.parse(savedUser));
+        parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
       } catch (error) {
         console.log("User data error");
+        return;
       }
-    }
+
+      const userPhone =
+        parsedUser?.phone ||
+        parsedUser?.mobile ||
+        "";
+
+      if (!userPhone) {
+        console.log("User phone not found");
+        return;
+      }
+
+      try {
+        /*
+         * Get current user from Supabase
+         */
+        const { data: supabaseUser, error: userError } =
+          await supabase
+            .from("users")
+            .select(
+              "id, full_name, phone, referral_code, referred_by, referrer_code, referrer_phone"
+            )
+            .eq("phone", userPhone)
+            .maybeSingle();
+
+        if (userError) {
+          console.log(
+            "Supabase user fetch error:",
+            userError
+          );
+        }
+
+        /*
+         * Use referral code already stored in Supabase
+         */
+        let code = supabaseUser?.referral_code || "";
+
+        /*
+         * If Supabase does not have a referral code,
+         * use the locally saved code if available.
+         */
+        if (!code) {
+          const storageKey =
+            "transportReferralCode_" +
+            String(userPhone);
+
+          code =
+            parsedUser?.referralCode ||
+            parsedUser?.referral_code ||
+            localStorage.getItem(storageKey) ||
+            "";
+        }
+
+        /*
+         * If there is still no referral code,
+         * create a new unique-looking code.
+         */
+        if (!code) {
+          const phoneDigits = String(userPhone)
+            .replace(/\D/g, "")
+            .slice(-6);
+
+          code =
+            "TH" +
+            (phoneDigits ||
+              Math.floor(
+                100000 + Math.random() * 900000
+              ).toString());
+        }
+
+        /*
+         * Save referral code to Supabase
+         * only if the database does not already have one.
+         */
+        if (
+          supabaseUser &&
+          !supabaseUser.referral_code
+        ) {
+          const { error: updateError } =
+            await supabase
+              .from("users")
+              .update({
+                referral_code: code,
+              })
+              .eq("id", supabaseUser.id);
+
+          if (updateError) {
+            console.log(
+              "Referral code save error:",
+              updateError
+            );
+          }
+        }
+
+        /*
+         * Keep local cache updated as well.
+         */
+        const storageKey =
+          "transportReferralCode_" +
+          String(userPhone);
+
+        localStorage.setItem(storageKey, code);
+
+        /*
+         * Update local user information
+         * without removing existing fields.
+         */
+        const updatedUser = {
+          ...parsedUser,
+          fullName:
+            supabaseUser?.full_name ||
+            parsedUser?.fullName ||
+            parsedUser?.name ||
+            "Fakhar Abbas",
+          phone:
+            supabaseUser?.phone ||
+            parsedUser?.phone ||
+            parsedUser?.mobile ||
+            "",
+          referralCode: code,
+          referral_code: code,
+        };
+
+        localStorage.setItem(
+          "transportUser",
+          JSON.stringify(updatedUser)
+        );
+
+        setUser(updatedUser);
+        setReferralCode(code);
+      } catch (error) {
+        console.log(
+          "Referral data loading error:",
+          error
+        );
+
+        /*
+         * Local fallback if Supabase request fails.
+         */
+        const storageKey =
+          "transportReferralCode_" +
+          String(userPhone);
+
+        const fallbackCode =
+          parsedUser?.referralCode ||
+          parsedUser?.referral_code ||
+          localStorage.getItem(storageKey) ||
+          "";
+
+        if (fallbackCode) {
+          setReferralCode(fallbackCode);
+        }
+      }
+    };
+
+    loadReferralData();
   }, []);
 
   const fullName =
@@ -30,40 +195,9 @@ export default function Referral() {
     user?.name ||
     "Fakhar Abbas";
 
-  const referralCode = useMemo(() => {
-    if (!user) return "";
-
-    const userKey =
-      user.phone ||
-      user.mobile ||
-      user.username ||
-      user.email ||
-      user.name ||
-      "user";
-
-    const storageKey =
-      "transportReferralCode_" + String(userKey);
-
-    let savedCode = localStorage.getItem(storageKey);
-
-    if (!savedCode) {
-      savedCode =
-        "TH" +
-        Math.floor(
-          100000 + Math.random() * 900000
-        ).toString();
-
-      localStorage.setItem(
-        storageKey,
-        savedCode
-      );
-    }
-
-    return savedCode;
-  }, [user]);
-
   const referralLink =
-    typeof window !== "undefined"
+    typeof window !== "undefined" &&
+    referralCode
       ? window.location.origin +
         "/register?ref=" +
         encodeURIComponent(referralCode)
@@ -71,7 +205,12 @@ export default function Referral() {
 
   const copyReferralLink = async () => {
     try {
-      await navigator.clipboard.writeText(referralLink);
+      if (!referralLink) return;
+
+      await navigator.clipboard.writeText(
+        referralLink
+      );
+
       setCopied(true);
 
       setTimeout(() => {
@@ -88,10 +227,14 @@ export default function Referral() {
 
         {/* Header */}
         <header style={styles.header}>
-          <div style={styles.headerIcon}>🔗</div>
+          <div style={styles.headerIcon}>
+            🔗
+          </div>
 
           <div>
-            <h1 style={styles.title}>Referral</h1>
+            <h1 style={styles.title}>
+              Referral
+            </h1>
 
             <p style={styles.subtitle}>
               Invite friends and build your team
@@ -107,7 +250,9 @@ export default function Referral() {
             <div style={styles.accountTop}>
 
               <div style={styles.avatar}>
-                {fullName.charAt(0).toUpperCase()}
+                {fullName
+                  .charAt(0)
+                  .toUpperCase()}
               </div>
 
               <div>
@@ -139,7 +284,8 @@ export default function Referral() {
 
                 <div style={styles.codeBox}>
                   <strong style={styles.code}>
-                    {referralCode}
+                    {referralCode ||
+                      "Loading..."}
                   </strong>
                 </div>
 
@@ -172,11 +318,13 @@ export default function Referral() {
 
             <div style={styles.linkBox}>
               <span style={styles.linkText}>
-                {referralLink}
+                {referralLink ||
+                  "Loading referral link..."}
               </span>
             </div>
 
             <button
+              type="button"
               onClick={copyReferralLink}
               style={{
                 ...styles.copyButton,
@@ -185,7 +333,9 @@ export default function Referral() {
                   : "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
               }}
             >
-              {copied ? "✓ Link Copied" : "📋 Copy Referral Link"}
+              {copied
+                ? "✓ Link Copied"
+                : "📋 Copy Referral Link"}
             </button>
 
           </div>
@@ -212,6 +362,7 @@ export default function Referral() {
 
           {/* Back Button */}
           <button
+            type="button"
             onClick={() => {
               window.location.href = "/";
             }}
@@ -242,13 +393,15 @@ const styles = {
   },
 
   header: {
-    background: "linear-gradient(135deg, #102A43, #173B5A)",
+    background:
+      "linear-gradient(135deg, #102A43, #173B5A)",
     color: "#ffffff",
     padding: "28px 30px",
     display: "flex",
     alignItems: "center",
     gap: "18px",
-    boxShadow: "0 5px 18px rgba(16,42,67,0.20)",
+    boxShadow:
+      "0 5px 18px rgba(16,42,67,0.20)",
     borderBottom: "1px solid #1E3A56",
   },
 
@@ -286,7 +439,8 @@ const styles = {
     borderRadius: "20px",
     padding: "30px",
     border: "1px solid #1E3A56",
-    boxShadow: "0 7px 22px rgba(16,42,67,0.13)",
+    boxShadow:
+      "0 7px 22px rgba(16,42,67,0.13)",
   },
 
   accountTop: {
@@ -299,14 +453,16 @@ const styles = {
     width: "70px",
     height: "70px",
     borderRadius: "20px",
-    background: "linear-gradient(135deg, #173B5A, #1E3A56)",
+    background:
+      "linear-gradient(135deg, #173B5A, #1E3A56)",
     color: "#ffffff",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontSize: "29px",
     fontWeight: "800",
-    boxShadow: "0 6px 15px rgba(0,0,0,0.18)",
+    boxShadow:
+      "0 6px 15px rgba(0,0,0,0.18)",
   },
 
   name: {
@@ -378,7 +534,8 @@ const styles = {
     borderRadius: "20px",
     padding: "30px",
     border: "1px solid #1E3A56",
-    boxShadow: "0 7px 22px rgba(16,42,67,0.13)",
+    boxShadow:
+      "0 7px 22px rgba(16,42,67,0.13)",
   },
 
   linkHeader: {
@@ -437,7 +594,8 @@ const styles = {
     fontWeight: "700",
     fontSize: "14px",
     cursor: "pointer",
-    boxShadow: "0 5px 12px rgba(46,107,74,0.20)",
+    boxShadow:
+      "0 5px 12px rgba(46,107,74,0.20)",
   },
 
   infoCard: {
@@ -450,7 +608,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "15px",
-    boxShadow: "0 6px 18px rgba(16,42,67,0.10)",
+    boxShadow:
+      "0 6px 18px rgba(16,42,67,0.10)",
   },
 
   infoIcon: {
@@ -488,6 +647,7 @@ const styles = {
     fontWeight: "700",
     fontSize: "14px",
     cursor: "pointer",
-    boxShadow: "0 5px 14px rgba(16,42,67,0.12)",
+    boxShadow:
+      "0 5px 14px rgba(16,42,67,0.12)",
   },
 };
