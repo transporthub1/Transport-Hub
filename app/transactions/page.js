@@ -28,14 +28,51 @@ function getTransactionDate(transaction) {
   );
 }
 
+function getTransactionTimestamp(transaction) {
+  const value =
+    getTransactionDate(transaction);
+
+  const time = new Date(value).getTime();
+
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function getTransactionType(transaction) {
+  const type = String(
+    transaction?.type || ""
+  ).toLowerCase();
+
+  if (type.includes("deposit")) {
+    return "deposit";
+  }
+
+  if (type.includes("withdraw")) {
+    return "withdraw";
+  }
+
+  if (type.includes("return")) {
+    return "return";
+  }
+
+  if (type.includes("referral")) {
+    return "referral";
+  }
+
+  return type;
+}
+
 function normalizeTransaction(transaction) {
   const originalType = String(
     transaction?.type || ""
   ).toLowerCase();
 
-  let type = transaction?.type || "Transaction";
+  let type =
+    transaction?.type ||
+    "Transaction";
 
-  if (originalType.includes("deposit")) {
+  if (
+    originalType.includes("deposit")
+  ) {
     type = "Deposit";
   } else if (
     originalType.includes("withdraw")
@@ -45,6 +82,10 @@ function normalizeTransaction(transaction) {
     originalType.includes("return")
   ) {
     type = "Weekly Return";
+  } else if (
+    originalType.includes("referral")
+  ) {
+    type = "Referral Bonus";
   }
 
   return {
@@ -93,33 +134,242 @@ function normalizeTransaction(transaction) {
   };
 }
 
+function sameTransactionByBasicData(
+  first,
+  second
+) {
+  const firstType =
+    getTransactionType(first);
+
+  const secondType =
+    getTransactionType(second);
+
+  if (
+    firstType !==
+    secondType
+  ) {
+    return false;
+  }
+
+  const firstAmount =
+    Number(
+      first?.amount || 0
+    );
+
+  const secondAmount =
+    Number(
+      second?.amount || 0
+    );
+
+  if (
+    firstAmount !==
+    secondAmount
+  ) {
+    return false;
+  }
+
+  const firstPhone =
+    normalizePhone(
+      first?.phone ||
+        first?.userPhone ||
+        first?.mobile ||
+        ""
+    );
+
+  const secondPhone =
+    normalizePhone(
+      second?.phone ||
+        second?.userPhone ||
+        second?.mobile ||
+        ""
+    );
+
+  if (
+    firstPhone &&
+    secondPhone &&
+    firstPhone !==
+      secondPhone
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function isLocalDuplicateOfCentral(
+  localTransaction,
+  centralTransactions
+) {
+  if (
+    !localTransaction ||
+    !Array.isArray(
+      centralTransactions
+    ) ||
+    centralTransactions.length === 0
+  ) {
+    return false;
+  }
+
+  /*
+   * 1. Exact ID match
+   */
+  if (localTransaction.id) {
+    const exactIdMatch =
+      centralTransactions.some(
+        (central) =>
+          String(
+            central?.id || ""
+          ) ===
+          String(
+            localTransaction.id
+          )
+      );
+
+    if (exactIdMatch) {
+      return true;
+    }
+  }
+
+  /*
+   * 2. For withdrawals only:
+   *    If Supabase already has an approved/rejected
+   *    transaction with same user + amount and the
+   *    timestamps are close, the old local Pending
+   *    record is considered the same transaction.
+   *
+   *    This specifically fixes the old duplicate:
+   *    Approved PKR 33,750 + Pending PKR 33,750.
+   */
+  const localType =
+    getTransactionType(
+      localTransaction
+    );
+
+  if (
+    localType ===
+    "withdraw"
+  ) {
+    const localTime =
+      getTransactionTimestamp(
+        localTransaction
+      );
+
+    return centralTransactions.some(
+      (central) => {
+        const centralType =
+          getTransactionType(
+            central
+          );
+
+        if (
+          centralType !==
+          "withdraw"
+        ) {
+          return false;
+        }
+
+        if (
+          !sameTransactionByBasicData(
+            localTransaction,
+            central
+          )
+        ) {
+          return false;
+        }
+
+        const centralStatus =
+          String(
+            central?.status ||
+              ""
+          ).toLowerCase();
+
+        /*
+         * Central processed record has priority.
+         */
+        if (
+          centralStatus !==
+            "approved" &&
+          centralStatus !==
+            "rejected" &&
+          centralStatus !==
+            "completed"
+        ) {
+          return false;
+        }
+
+        const centralTime =
+          getTransactionTimestamp(
+            central
+          );
+
+        /*
+         * Same transaction is normally created
+         * around the same time. Allow 10 minutes
+         * to cover timezone/date formatting differences.
+         */
+        if (
+          localTime > 0 &&
+          centralTime > 0
+        ) {
+          return (
+            Math.abs(
+              localTime -
+                centralTime
+            ) <=
+            10 *
+              60 *
+              1000
+          );
+        }
+
+        return true;
+      }
+    );
+  }
+
+  return false;
+}
+
 export default function Transactions() {
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [transactions, setTransactions] =
+    useState([]);
+
+  const [loading, setLoading] =
+    useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadTransactions = async () => {
-      const loggedIn = localStorage.getItem(
-        "transportLoggedIn"
-      );
+      const loggedIn =
+        localStorage.getItem(
+          "transportLoggedIn"
+        );
 
-      if (loggedIn !== "true") {
-        window.location.replace("/login");
+      if (
+        loggedIn !==
+        "true"
+      ) {
+        window.location.replace(
+          "/login"
+        );
         return;
       }
 
-      const savedUser = localStorage.getItem(
-        "transportUser"
-      );
+      const savedUser =
+        localStorage.getItem(
+          "transportUser"
+        );
 
       let user = null;
 
       try {
-        user = savedUser
-          ? JSON.parse(savedUser)
-          : null;
+        user =
+          savedUser
+            ? JSON.parse(
+                savedUser
+              )
+            : null;
       } catch (error) {
         console.log(
           "Could not load user"
@@ -133,14 +383,17 @@ export default function Transactions() {
         "";
 
       const phone =
-        normalizePhone(rawPhone);
+        normalizePhone(
+          rawPhone
+        );
 
       /*
        * --------------------------------------------------
        * LOAD TRANSACTIONS FROM SUPABASE
        * --------------------------------------------------
        */
-      let supabaseTransactions = [];
+      let supabaseTransactions =
+        [];
 
       if (phone) {
         try {
@@ -148,15 +401,21 @@ export default function Transactions() {
             data,
             error,
           } = await supabase
-            .from("transactions")
+            .from(
+              "transactions"
+            )
             .select("*")
             .eq(
               "user_phone",
               phone
             )
-            .order("created_at", {
-              ascending: false,
-            });
+            .order(
+              "created_at",
+              {
+                ascending:
+                  false,
+              }
+            );
 
           if (error) {
             console.log(
@@ -183,14 +442,12 @@ export default function Transactions() {
        * --------------------------------------------------
        * LOAD OLD LOCAL TRANSACTIONS
        * --------------------------------------------------
-       *
-       * LocalStorage remains as compatibility fallback
-       * so existing older records do not disappear.
-       * --------------------------------------------------
        */
-      let localTransactions = [];
+      let localTransactions =
+        [];
 
-      let savedTransactions = null;
+      let savedTransactions =
+        null;
 
       if (rawPhone) {
         savedTransactions =
@@ -200,7 +457,10 @@ export default function Transactions() {
           );
       }
 
-      if (!savedTransactions && phone) {
+      if (
+        !savedTransactions &&
+        phone
+      ) {
         savedTransactions =
           localStorage.getItem(
             "transportTransactions_" +
@@ -208,14 +468,18 @@ export default function Transactions() {
           );
       }
 
-      if (!savedTransactions) {
+      if (
+        !savedTransactions
+      ) {
         savedTransactions =
           localStorage.getItem(
             "transportTransactions"
           );
       }
 
-      if (savedTransactions) {
+      if (
+        savedTransactions
+      ) {
         try {
           const parsedTransactions =
             JSON.parse(
@@ -233,8 +497,12 @@ export default function Transactions() {
                   normalizeTransaction
                 )
                 .filter(
-                  (transaction) => {
-                    if (!phone) {
+                  (
+                    transaction
+                  ) => {
+                    if (
+                      !phone
+                    ) {
                       return true;
                     }
 
@@ -247,9 +515,8 @@ export default function Transactions() {
                       );
 
                     /*
-                     * Old local records may not have phone.
-                     * Keep them for compatibility when phone
-                     * information does not exist.
+                     * Old local records may not have
+                     * phone information.
                      */
                     if (
                       !transactionPhone
@@ -273,14 +540,30 @@ export default function Transactions() {
 
       /*
        * --------------------------------------------------
-       * MERGE SUPABASE + LOCAL
+       * REMOVE LOCAL DUPLICATES ALREADY PRESENT CENTRALLY
        * --------------------------------------------------
        *
        * Supabase is the central source.
-       * Duplicate transaction IDs are removed.
+       * Old local duplicates are hidden when a matching
+       * processed transaction exists centrally.
        * --------------------------------------------------
        */
-      const mergedMap = new Map();
+      const filteredLocalTransactions =
+        localTransactions.filter(
+          (localTransaction) =>
+            !isLocalDuplicateOfCentral(
+              localTransaction,
+              supabaseTransactions
+            )
+        );
+
+      /*
+       * --------------------------------------------------
+       * MERGE SUPABASE + REMAINING LOCAL
+       * --------------------------------------------------
+       */
+      const mergedMap =
+        new Map();
 
       supabaseTransactions.forEach(
         (transaction) => {
@@ -299,7 +582,7 @@ export default function Transactions() {
         }
       );
 
-      localTransactions.forEach(
+      filteredLocalTransactions.forEach(
         (transaction) => {
           const key =
             String(
@@ -309,7 +592,9 @@ export default function Transactions() {
 
           if (key) {
             if (
-              !mergedMap.has(key)
+              !mergedMap.has(
+                key
+              )
             ) {
               mergedMap.set(
                 key,
@@ -318,18 +603,20 @@ export default function Transactions() {
             }
           } else {
             const fallbackKey =
-              JSON.stringify({
-                type:
-                  transaction?.type ||
-                  "",
-                amount:
+              [
+                getTransactionType(
+                  transaction
+                ),
+                Number(
                   transaction?.amount ||
-                  0,
-                date:
-                  getTransactionDate(
-                    transaction
-                  ),
-              });
+                    0
+                ),
+                getTransactionTimestamp(
+                  transaction
+                ),
+              ].join(
+                "|"
+              );
 
             if (
               !mergedMap.has(
@@ -351,88 +638,37 @@ export default function Transactions() {
         );
 
       /*
-       * Newest transactions first.
+       * Newest first.
        */
       finalTransactions.sort(
-        (a, b) => {
-          const dateA =
-            new Date(
-              getTransactionDate(
-                a
-              )
-            ).getTime();
-
-          const dateB =
-            new Date(
-              getTransactionDate(
-                b
-              )
-            ).getTime();
-
-          return dateB - dateA;
-        }
+        (a, b) =>
+          getTransactionTimestamp(
+            b
+          ) -
+          getTransactionTimestamp(
+            a
+          )
       );
 
       /*
-       * Save the central records into local cache too.
-       * This does not replace Supabase; it is only a
-       * compatibility cache.
+       * --------------------------------------------------
+       * UPDATE LOCAL CACHE
+       * --------------------------------------------------
+       *
+       * Keep only the final de-duplicated list locally.
+       * --------------------------------------------------
        */
       if (
         phone &&
-        supabaseTransactions.length >
+        finalTransactions.length >
           0
       ) {
         try {
-          const localKey =
-            "transportTransactions_" +
-            phone;
-
-          const existingLocal =
-            localTransactions;
-
-          const centralMap =
-            new Map();
-
-          supabaseTransactions.forEach(
-            (transaction) => {
-              if (transaction?.id) {
-                centralMap.set(
-                  String(
-                    transaction.id
-                  ),
-                  transaction
-                );
-              }
-            }
-          );
-
-          existingLocal.forEach(
-            (transaction) => {
-              if (
-                transaction?.id &&
-                !centralMap.has(
-                  String(
-                    transaction.id
-                  )
-                )
-              ) {
-                centralMap.set(
-                  String(
-                    transaction.id
-                  ),
-                  transaction
-                );
-              }
-            }
-          );
-
           localStorage.setItem(
-            localKey,
+            "transportTransactions_" +
+              phone,
             JSON.stringify(
-              Array.from(
-                centralMap.values()
-              )
+              finalTransactions
             )
           );
         } catch (error) {
@@ -452,13 +688,16 @@ export default function Transactions() {
         finalTransactions
       );
 
-      setLoading(false);
+      setLoading(
+        false
+      );
     };
 
     loadTransactions();
 
     return () => {
-      cancelled = true;
+      cancelled =
+        true;
     };
   }, []);
 
@@ -466,14 +705,22 @@ export default function Transactions() {
     return (
       <div
         style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#eef3f7",
-          color: "#102A43",
-          fontFamily: "Arial, sans-serif",
-          fontSize: "18px",
+          minHeight:
+            "100vh",
+          display:
+            "flex",
+          alignItems:
+            "center",
+          justifyContent:
+            "center",
+          background:
+            "#eef3f7",
+          color:
+            "#102A43",
+          fontFamily:
+            "Arial, sans-serif",
+          fontSize:
+            "18px",
         }}
       >
         Loading...
@@ -484,19 +731,28 @@ export default function Transactions() {
   return (
     <div
       style={{
-        minHeight: "100vh",
-        background: "#eef3f7",
-        padding: "35px 20px 60px",
-        boxSizing: "border-box",
-        fontFamily: "Arial, sans-serif",
-        color: "#ffffff",
+        minHeight:
+          "100vh",
+        background:
+          "#eef3f7",
+        padding:
+          "35px 20px 60px",
+        boxSizing:
+          "border-box",
+        fontFamily:
+          "Arial, sans-serif",
+        color:
+          "#ffffff",
       }}
     >
       <div
         style={{
-          width: "100%",
-          maxWidth: "800px",
-          margin: "0 auto",
+          width:
+            "100%",
+          maxWidth:
+            "800px",
+          margin:
+            "0 auto",
         }}
       >
 
@@ -506,29 +762,46 @@ export default function Transactions() {
           style={{
             background:
               "linear-gradient(135deg, #102A43 0%, #173B5A 100%)",
-            borderRadius: "22px",
-            padding: "28px 30px",
-            color: "#ffffff",
+            borderRadius:
+              "22px",
+            padding:
+              "28px 30px",
+            color:
+              "#ffffff",
             boxShadow:
               "0 12px 30px rgba(16, 42, 67, 0.20)",
-            marginBottom: "22px",
-            display: "flex",
-            alignItems: "center",
-            gap: "18px",
-            border: "1px solid #1E3A56",
+            marginBottom:
+              "22px",
+            display:
+              "flex",
+            alignItems:
+              "center",
+            gap:
+              "18px",
+            border:
+              "1px solid #1E3A56",
           }}
         >
           <div
             style={{
-              width: "62px",
-              height: "62px",
-              borderRadius: "18px",
-              background: "#1E3A56",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "31px",
-              flexShrink: 0,
+              width:
+                "62px",
+              height:
+                "62px",
+              borderRadius:
+                "18px",
+              background:
+                "#1E3A56",
+              display:
+                "flex",
+              alignItems:
+                "center",
+              justifyContent:
+                "center",
+              fontSize:
+                "31px",
+              flexShrink:
+                0,
             }}
           >
             📊
@@ -537,10 +810,14 @@ export default function Transactions() {
           <div>
             <h1
               style={{
-                margin: 0,
-                fontSize: "30px",
-                fontWeight: "800",
-                letterSpacing: "-0.5px",
+                margin:
+                  0,
+                fontSize:
+                  "30px",
+                fontWeight:
+                  "800",
+                letterSpacing:
+                  "-0.5px",
               }}
             >
               Transaction History
@@ -548,9 +825,12 @@ export default function Transactions() {
 
             <p
               style={{
-                margin: "7px 0 0",
-                fontSize: "15px",
-                color: "#C9D8E6",
+                margin:
+                  "7px 0 0",
+                fontSize:
+                  "15px",
+                color:
+                  "#C9D8E6",
               }}
             >
               View your deposits and withdrawals
@@ -560,16 +840,23 @@ export default function Transactions() {
 
         {/* TRANSACTIONS */}
 
-        {transactions.length > 0 ? (
+        {transactions.length >
+        0 ? (
           <div
             style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "15px",
+              display:
+                "flex",
+              flexDirection:
+                "column",
+              gap:
+                "15px",
             }}
           >
             {transactions.map(
-              (transaction, index) => {
+              (
+                transaction,
+                index
+              ) => {
                 const normalized =
                   normalizeTransaction(
                     transaction
@@ -585,49 +872,81 @@ export default function Transactions() {
                   originalType.toLowerCase();
 
                 const isDeposit =
-                  type.includes("deposit");
+                  type.includes(
+                    "deposit"
+                  );
 
                 const isWithdrawal =
-                  type.includes("withdraw");
+                  type.includes(
+                    "withdraw"
+                  );
 
                 const isReturn =
-                  type.includes("return");
+                  type.includes(
+                    "return"
+                  );
 
                 let colors = {
-                  border: "#80651d",
-                  iconBackground: "#29435A",
-                  icon: "📋",
-                  title: "#ffffff",
-                  amount: "#8FD694",
+                  border:
+                    "#80651d",
+                  iconBackground:
+                    "#29435A",
+                  icon:
+                    "📋",
+                  title:
+                    "#ffffff",
+                  amount:
+                    "#8FD694",
                 };
 
-                if (isDeposit) {
+                if (
+                  isDeposit
+                ) {
                   colors = {
-                    border: "#2E6B4A",
-                    iconBackground: "#24543E",
-                    icon: "💰",
-                    title: "#ffffff",
-                    amount: "#8FD694",
+                    border:
+                      "#2E6B4A",
+                    iconBackground:
+                      "#24543E",
+                    icon:
+                      "💰",
+                    title:
+                      "#ffffff",
+                    amount:
+                      "#8FD694",
                   };
                 }
 
-                if (isWithdrawal) {
+                if (
+                  isWithdrawal
+                ) {
                   colors = {
-                    border: "#75433F",
-                    iconBackground: "#573533",
-                    icon: "💸",
-                    title: "#ffffff",
-                    amount: "#FF9F96",
+                    border:
+                      "#75433F",
+                    iconBackground:
+                      "#573533",
+                    icon:
+                      "💸",
+                    title:
+                      "#ffffff",
+                    amount:
+                      "#FF9F96",
                   };
                 }
 
-                if (isReturn) {
+                if (
+                  isReturn
+                ) {
                   colors = {
-                    border: "#315D7C",
-                    iconBackground: "#254A66",
-                    icon: "📈",
-                    title: "#ffffff",
-                    amount: "#8FD694",
+                    border:
+                      "#315D7C",
+                    iconBackground:
+                      "#254A66",
+                    icon:
+                      "📈",
+                    title:
+                      "#ffffff",
+                    amount:
+                      "#8FD694",
                   };
                 }
 
@@ -649,6 +968,7 @@ export default function Transactions() {
                 ) {
                   statusBackground =
                     "#24543E";
+
                   statusColor =
                     "#8FD694";
                 }
@@ -659,6 +979,7 @@ export default function Transactions() {
                 ) {
                   statusBackground =
                     "#573533";
+
                   statusColor =
                     "#FF9F96";
                 }
@@ -669,6 +990,7 @@ export default function Transactions() {
                 ) {
                   statusBackground =
                     "#24543E";
+
                   statusColor =
                     "#8FD694";
                 }
@@ -695,12 +1017,15 @@ export default function Transactions() {
                       index
                     }
                     style={{
-                      background: "#102A43",
+                      background:
+                        "#102A43",
                       border:
                         "1px solid " +
                         colors.border,
-                      borderRadius: "18px",
-                      padding: "20px",
+                      borderRadius:
+                        "18px",
+                      padding:
+                        "20px",
                       boxShadow:
                         "0 8px 22px rgba(16, 42, 67, 0.16)",
                     }}
@@ -710,64 +1035,89 @@ export default function Transactions() {
 
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
+                        display:
+                          "flex",
+                        alignItems:
+                          "center",
                         justifyContent:
                           "space-between",
-                        gap: "12px",
-                        marginBottom: "17px",
+                        gap:
+                          "12px",
+                        marginBottom:
+                          "17px",
                       }}
                     >
 
                       <div
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "12px",
+                          display:
+                            "flex",
+                          alignItems:
+                            "center",
+                          gap:
+                            "12px",
                         }}
                       >
                         <div
                           style={{
-                            width: "46px",
-                            height: "46px",
-                            borderRadius: "13px",
+                            width:
+                              "46px",
+                            height:
+                              "46px",
+                            borderRadius:
+                              "13px",
                             background:
                               colors.iconBackground,
-                            display: "flex",
-                            alignItems: "center",
+                            display:
+                              "flex",
+                            alignItems:
+                              "center",
                             justifyContent:
                               "center",
-                            fontSize: "22px",
-                            flexShrink: 0,
+                            fontSize:
+                              "22px",
+                            flexShrink:
+                              0,
                           }}
                         >
-                          {colors.icon}
+                          {
+                            colors.icon
+                          }
                         </div>
 
                         <div>
                           <strong
                             style={{
-                              display: "block",
-                              fontSize: "17px",
+                              display:
+                                "block",
+                              fontSize:
+                                "17px",
                               color:
                                 colors.title,
                               textTransform:
                                 "capitalize",
                             }}
                           >
-                            {displayType}
+                            {
+                              displayType
+                            }
                           </strong>
 
                           <span
                             style={{
-                              display: "block",
-                              marginTop: "3px",
-                              fontSize: "12px",
-                              color: "#9FB3C8",
+                              display:
+                                "block",
+                              marginTop:
+                                "3px",
+                              fontSize:
+                                "12px",
+                              color:
+                                "#9FB3C8",
                             }}
                           >
                             Transaction #
-                            {index + 1}
+                            {index +
+                              1}
                           </span>
                         </div>
                       </div>
@@ -776,27 +1126,34 @@ export default function Transactions() {
 
                       <span
                         style={{
-                          display: "inline-flex",
+                          display:
+                            "inline-flex",
                           alignItems:
                             "center",
                           justifyContent:
                             "center",
-                          padding: "7px 12px",
-                          borderRadius: "20px",
+                          padding:
+                            "7px 12px",
+                          borderRadius:
+                            "20px",
                           background:
                             statusBackground,
                           color:
                             statusColor,
-                          fontSize: "12px",
-                          fontWeight: "700",
+                          fontSize:
+                            "12px",
+                          fontWeight:
+                            "700",
                           whiteSpace:
                             "nowrap",
                           border:
                             "1px solid rgba(255,255,255,0.08)",
                         }}
                       >
-                        {normalized.status ||
-                          "Completed"}
+                        {
+                          normalized.status ||
+                          "Completed"
+                        }
                       </span>
 
                     </div>
@@ -805,10 +1162,12 @@ export default function Transactions() {
 
                     <div
                       style={{
-                        display: "grid",
+                        display:
+                          "grid",
                         gridTemplateColumns:
                           "repeat(2, minmax(0, 1fr))",
-                        gap: "11px",
+                        gap:
+                          "11px",
                       }}
                     >
 
@@ -910,7 +1269,9 @@ export default function Transactions() {
                               "1.4",
                           }}
                         >
-                          {displayDate}
+                          {
+                            displayDate
+                          }
                         </strong>
                       </div>
 
@@ -961,8 +1322,10 @@ export default function Transactions() {
                                 "#8FD694",
                             }}
                           >
-                            {normalized.returnType ||
-                              "Weekly"}
+                            {
+                              normalized.returnType ||
+                              "Weekly"
+                            }
                           </strong>
                         </div>
                       )}
@@ -1014,7 +1377,9 @@ export default function Transactions() {
                                 "#ffffff",
                             }}
                           >
-                            {normalized.planName}
+                            {
+                              normalized.planName
+                            }
                           </strong>
                         </div>
                       )}
@@ -1068,7 +1433,9 @@ export default function Transactions() {
                                 "1.4",
                             }}
                           >
-                            {normalized.description}
+                            {
+                              normalized.description
+                            }
                           </strong>
                         </div>
                       )}
@@ -1086,27 +1453,40 @@ export default function Transactions() {
 
           <div
             style={{
-              background: "#102A43",
+              background:
+                "#102A43",
               border:
                 "1px solid #1E3A56",
-              borderRadius: "18px",
-              padding: "40px 25px",
-              textAlign: "center",
+              borderRadius:
+                "18px",
+              padding:
+                "40px 25px",
+              textAlign:
+                "center",
               boxShadow:
                 "0 8px 22px rgba(16, 42, 67, 0.16)",
             }}
           >
             <div
               style={{
-                width: "68px",
-                height: "68px",
-                borderRadius: "18px",
-                background: "#1E3A56",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px",
-                fontSize: "31px",
+                width:
+                  "68px",
+                height:
+                  "68px",
+                borderRadius:
+                  "18px",
+                background:
+                  "#1E3A56",
+                display:
+                  "flex",
+                alignItems:
+                  "center",
+                justifyContent:
+                  "center",
+                margin:
+                  "0 auto 16px",
+                fontSize:
+                  "31px",
               }}
             >
               📭
@@ -1114,9 +1494,12 @@ export default function Transactions() {
 
             <h2
               style={{
-                margin: "0 0 8px",
-                fontSize: "20px",
-                color: "#ffffff",
+                margin:
+                  "0 0 8px",
+                fontSize:
+                  "20px",
+                color:
+                  "#ffffff",
               }}
             >
               No Transactions Yet
@@ -1124,8 +1507,10 @@ export default function Transactions() {
 
             <span
               style={{
-                fontSize: "14px",
-                color: "#9FB3C8",
+                fontSize:
+                  "14px",
+                color:
+                  "#9FB3C8",
               }}
             >
               Your deposits and withdrawals
@@ -1138,20 +1523,30 @@ export default function Transactions() {
 
         <button
           onClick={() => {
-            window.location.href = "/";
+            window.location.href =
+              "/";
           }}
           style={{
-            width: "100%",
-            minHeight: "50px",
-            marginTop: "18px",
+            width:
+              "100%",
+            minHeight:
+              "50px",
+            marginTop:
+              "18px",
             border:
               "1px solid #1E3A56",
-            borderRadius: "12px",
-            background: "#102A43",
-            color: "#ffffff",
-            fontSize: "14px",
-            fontWeight: "700",
-            cursor: "pointer",
+            borderRadius:
+              "12px",
+            background:
+              "#102A43",
+            color:
+              "#ffffff",
+            fontSize:
+              "14px",
+            fontWeight:
+              "700",
+            cursor:
+              "pointer",
             boxShadow:
               "0 5px 14px rgba(16, 42, 67, 0.14)",
           }}
