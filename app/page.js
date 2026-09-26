@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "./lib/supabase";
 
 const PLAN_DURATION_WEEKS = 260;
 const PLAN_DURATION_YEARS = 5;
@@ -44,6 +45,20 @@ function getStorageObject(key) {
 
 function saveStorage(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function normalizePhone(value) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "";
+  }
+
+  return String(value)
+    .replace(/\s+/g, "")
+    .replace(/-/g, "")
+    .trim();
 }
 
 function getUserName(user) {
@@ -110,169 +125,481 @@ export default function Dashboard() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const loggedIn = localStorage.getItem("transportLoggedIn");
+    let cancelled = false;
 
-    if (loggedIn !== "true") {
-      window.location.href = "/login";
-      return;
-    }
+    const loadDashboardData = async () => {
+      const loggedIn = localStorage.getItem("transportLoggedIn");
 
-    let storedUser = getStorageObject("transportUser");
-
-    if (!storedUser) {
-      storedUser = getStorageObject("transportCurrentUser");
-    }
-
-    if (!storedUser) {
-      window.location.href = "/login";
-      return;
-    }
-
-    try {
-      const displayName = getUserName(storedUser);
-
-      const normalizedUser = {
-        ...storedUser,
-        name: displayName,
-      };
-
-      saveStorage("transportUser", normalizedUser);
-      setUser(normalizedUser);
-
-      const phone =
-        normalizedUser.phone ||
-        normalizedUser.mobile ||
-        normalizedUser.phoneNumber ||
-        "";
-
-      /*
-        =========================================================
-        ACTIVE PLANS
-        =========================================================
-
-        IMPORTANT:
-        Only load plans belonging to THIS user's phone.
-
-        We intentionally DO NOT use:
-        transportActivePlan
-
-        because that is an old global key and can make a new user
-        see another/old user's plan.
-      */
-
-      if (phone) {
-        const userActivePlansKey =
-          "transportActivePlans_" + phone;
-
-        const storedActivePlans =
-          getStorageArray(userActivePlansKey);
-
-        if (
-          Array.isArray(storedActivePlans) &&
-          storedActivePlans.length > 0
-        ) {
-          const normalizedPlans =
-            storedActivePlans.map((plan) => ({
-              ...plan,
-
-              weekly: Number(
-                plan.weekly ??
-                  plan.weeklyReturn ??
-                  plan.daily ??
-                  plan.dailyReturn ??
-                  0
-              ),
-
-              durationWeeks: PLAN_DURATION_WEEKS,
-
-              durationYears: PLAN_DURATION_YEARS,
-
-              duration: PLAN_DURATION_WEEKS,
-            }));
-
-          setActivePlans(normalizedPlans);
-
-          saveStorage(
-            userActivePlansKey,
-            normalizedPlans
-          );
-        } else {
-          /*
-            No plan belongs to this user.
-            Keep active plans EMPTY.
-          */
-          setActivePlans([]);
-        }
-      } else {
-        setActivePlans([]);
+      if (loggedIn !== "true") {
+        window.location.href = "/login";
+        return;
       }
 
-      /*
-        =========================================================
-        REMOVE OLD GLOBAL ACTIVE PLAN
-        =========================================================
+      let storedUser = getStorageObject("transportUser");
 
-        This old key can contain Starter/another user's plan.
-        It must not be used for the new user.
-      */
+      if (!storedUser) {
+        storedUser = getStorageObject("transportCurrentUser");
+      }
 
-      localStorage.removeItem("transportActivePlan");
+      if (!storedUser) {
+        window.location.href = "/login";
+        return;
+      }
 
-      /*
-        =========================================================
-        WITHDRAWABLE RETURNS
-        =========================================================
-      */
+      try {
+        const displayName = getUserName(storedUser);
 
-      const storedWithdrawable = Number(
-        localStorage.getItem(
-          "transportWithdrawableReturns_" + phone
-        ) || 0
-      );
+        const normalizedUser = {
+          ...storedUser,
+          name: displayName,
+        };
 
-      setWithdrawableReturns(
-        Number.isFinite(storedWithdrawable)
-          ? storedWithdrawable
-          : 0
-      );
+        saveStorage("transportUser", normalizedUser);
+        setUser(normalizedUser);
 
-      /*
-        =========================================================
-        TRANSACTIONS
-        =========================================================
-      */
+        const rawPhone =
+          normalizedUser.phone ||
+          normalizedUser.mobile ||
+          normalizedUser.phoneNumber ||
+          "";
 
-      setTransactions(
-        getStorageArray(
-          "transportTransactions_" + phone
-        )
-      );
+        const phone =
+          normalizePhone(rawPhone);
 
-      /*
-        =========================================================
-        TEAM MEMBERS
-        =========================================================
-      */
+        /*
+          =========================================================
+          ACTIVE PLANS
+          =========================================================
 
-      setTeamMembers(
-        getStorageArray(
-          "transportTeam_" + phone
-        )
-      );
+          NEW SYSTEM:
+          Supabase active_plans is now the MAIN source.
 
-      setLoading(false);
-    } catch (error) {
-      console.error(
-        "Dashboard data loading error:",
-        error
-      );
+          Existing localStorage remains as compatibility/fallback
+          so the old system is not broken.
+        */
 
-      setActivePlans([]);
-      setTransactions([]);
-      setTeamMembers([]);
-      setWithdrawableReturns(0);
-      setLoading(false);
-    }
+        if (phone) {
+          const userActivePlansKey =
+            "transportActivePlans_" + phone;
+
+          const rawUserActivePlansKey =
+            "transportActivePlans_" +
+            String(rawPhone || "").trim();
+
+          let loadedPlans = [];
+
+          /*
+            -------------------------------------------------------
+            1. LOAD THIS USER'S ACTIVE PLANS FROM SUPABASE
+            -------------------------------------------------------
+          */
+
+          try {
+            const {
+              data: supabasePlans,
+              error: supabasePlansError,
+            } = await supabase
+              .from("active_plans")
+              .select("*")
+              .eq("user_phone", phone)
+              .order("created_at", {
+                ascending: false,
+              });
+
+            if (supabasePlansError) {
+              console.error(
+                "Could not load active plans from Supabase:",
+                supabasePlansError
+              );
+            } else if (
+              Array.isArray(supabasePlans) &&
+              supabasePlans.length > 0
+            ) {
+              loadedPlans =
+                supabasePlans
+                  .filter(
+                    (row) =>
+                      String(
+                        row.status || "Active"
+                      ).toLowerCase() ===
+                      "active"
+                  )
+                  .map((row) => {
+                    const planData =
+                      row.plan &&
+                      typeof row.plan === "object"
+                        ? row.plan
+                        : {};
+
+                    const amount =
+                      Number(
+                        planData.amount ??
+                          planData.price ??
+                          0
+                      );
+
+                    const weekly =
+                      Number(
+                        planData.weekly ??
+                          planData.weeklyReturn ??
+                          planData.daily ??
+                          planData.dailyReturn ??
+                          0
+                      );
+
+                    return {
+                      ...planData,
+
+                      id:
+                        planData.id ||
+                        row.id ||
+                        "",
+
+                      depositRequestId:
+                        planData.depositRequestId ||
+                        row.deposit_request_id ||
+                        "",
+
+                      userPhone:
+                        planData.userPhone ||
+                        row.user_phone ||
+                        phone,
+
+                      name:
+                        planData.name ||
+                        "Transport Plan",
+
+                      price:
+                        amount,
+
+                      amount:
+                        amount,
+
+                      weekly:
+                        weekly,
+
+                      daily:
+                        weekly,
+
+                      durationWeeks:
+                        Number(
+                          planData.durationWeeks ??
+                            PLAN_DURATION_WEEKS
+                        ),
+
+                      durationYears:
+                        Number(
+                          planData.durationYears ??
+                            PLAN_DURATION_YEARS
+                        ),
+
+                      duration:
+                        Number(
+                          planData.duration ??
+                            planData.durationWeeks ??
+                            PLAN_DURATION_WEEKS
+                        ),
+
+                      totalReturn:
+                        Number(
+                          planData.totalReturn ??
+                            weekly *
+                              PLAN_DURATION_WEEKS
+                        ),
+
+                      activatedAt:
+                        planData.activatedAt ||
+                        row.activated_at ||
+                        "",
+
+                      approvedAt:
+                        planData.approvedAt ||
+                        row.approved_at ||
+                        "",
+
+                      lastReturnAt:
+                        planData.lastReturnAt ||
+                        row.last_return_at ||
+                        "",
+
+                      nextReturnAt:
+                        planData.nextReturnAt ||
+                        row.next_return_at ||
+                        "",
+
+                      returnsPaid:
+                        Number(
+                          row.returns_paid ??
+                            planData.returnsPaid ??
+                            0
+                        ),
+
+                      earnedReturns:
+                        Number(
+                          row.earned_returns ??
+                            planData.earnedReturns ??
+                            0
+                        ),
+
+                      totalEarned:
+                        Number(
+                          row.total_earned ??
+                            planData.totalEarned ??
+                            0
+                        ),
+
+                      remainingWeeks:
+                        Number(
+                          row.remaining_weeks ??
+                            planData.remainingWeeks ??
+                            PLAN_DURATION_WEEKS
+                        ),
+
+                      status:
+                        row.status ||
+                        planData.status ||
+                        "Active",
+                    };
+                  });
+
+              /*
+                Save the Supabase result to the existing local key
+                as a compatibility copy.
+              */
+              saveStorage(
+                userActivePlansKey,
+                loadedPlans
+              );
+
+              if (
+                rawUserActivePlansKey !==
+                userActivePlansKey
+              ) {
+                saveStorage(
+                  rawUserActivePlansKey,
+                  loadedPlans
+                );
+              }
+            }
+          } catch (supabaseError) {
+            console.error(
+              "Active plans Supabase loading error:",
+              supabaseError
+            );
+          }
+
+          /*
+            -------------------------------------------------------
+            2. LOCALSTORAGE FALLBACK
+            -------------------------------------------------------
+
+            If Supabase has no active plan, use the existing
+            localStorage plan for compatibility.
+          */
+
+          if (loadedPlans.length === 0) {
+            loadedPlans =
+              getStorageArray(
+                userActivePlansKey
+              );
+
+            if (
+              loadedPlans.length === 0 &&
+              rawUserActivePlansKey !==
+                userActivePlansKey
+            ) {
+              loadedPlans =
+                getStorageArray(
+                  rawUserActivePlansKey
+                );
+            }
+          }
+
+          /*
+            -------------------------------------------------------
+            3. NORMALIZE PLANS
+            -------------------------------------------------------
+          */
+
+          if (
+            Array.isArray(loadedPlans) &&
+            loadedPlans.length > 0
+          ) {
+            const normalizedPlans =
+              loadedPlans.map((plan) => ({
+                ...plan,
+
+                weekly: Number(
+                  plan.weekly ??
+                    plan.weeklyReturn ??
+                    plan.daily ??
+                    plan.dailyReturn ??
+                    0
+                ),
+
+                daily: Number(
+                  plan.daily ??
+                    plan.weekly ??
+                    plan.dailyReturn ??
+                    plan.weeklyReturn ??
+                    0
+                ),
+
+                price: Number(
+                  plan.price ??
+                    plan.amount ??
+                    0
+                ),
+
+                amount: Number(
+                  plan.amount ??
+                    plan.price ??
+                    0
+                ),
+
+                durationWeeks:
+                  PLAN_DURATION_WEEKS,
+
+                durationYears:
+                  PLAN_DURATION_YEARS,
+
+                duration:
+                  PLAN_DURATION_WEEKS,
+
+                totalReturn: Number(
+                  plan.totalReturn ??
+                    getWeeklyReturn(plan) *
+                      PLAN_DURATION_WEEKS
+                ),
+
+                returnsPaid: Number(
+                  plan.returnsPaid ??
+                    0
+                ),
+
+                earnedReturns: Number(
+                  plan.earnedReturns ??
+                    plan.totalEarned ??
+                    0
+                ),
+
+                totalEarned: Number(
+                  plan.totalEarned ??
+                    plan.earnedReturns ??
+                    0
+                ),
+
+                remainingWeeks: Number(
+                  plan.remainingWeeks ??
+                    PLAN_DURATION_WEEKS
+                ),
+
+                status:
+                  plan.status ||
+                  "Active",
+              }));
+
+            if (!cancelled) {
+              setActivePlans(
+                normalizedPlans
+              );
+            }
+
+            saveStorage(
+              userActivePlansKey,
+              normalizedPlans
+            );
+          } else {
+            if (!cancelled) {
+              setActivePlans([]);
+            }
+          }
+        } else {
+          if (!cancelled) {
+            setActivePlans([]);
+          }
+        }
+
+        /*
+          =========================================================
+          REMOVE OLD GLOBAL ACTIVE PLAN
+          =========================================================
+        */
+
+        localStorage.removeItem("transportActivePlan");
+
+        /*
+          =========================================================
+          WITHDRAWABLE RETURNS
+          =========================================================
+        */
+
+        const storedWithdrawable = Number(
+          localStorage.getItem(
+            "transportWithdrawableReturns_" + phone
+          ) || 0
+        );
+
+        if (!cancelled) {
+          setWithdrawableReturns(
+            Number.isFinite(storedWithdrawable)
+              ? storedWithdrawable
+              : 0
+          );
+        }
+
+        /*
+          =========================================================
+          TRANSACTIONS
+          =========================================================
+        */
+
+        if (!cancelled) {
+          setTransactions(
+            getStorageArray(
+              "transportTransactions_" + phone
+            )
+          );
+        }
+
+        /*
+          =========================================================
+          TEAM MEMBERS
+          =========================================================
+        */
+
+        if (!cancelled) {
+          setTeamMembers(
+            getStorageArray(
+              "transportTeam_" + phone
+            )
+          );
+        }
+
+        if (!cancelled) {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error(
+          "Dashboard data loading error:",
+          error
+        );
+
+        if (!cancelled) {
+          setActivePlans([]);
+          setTransactions([]);
+          setTeamMembers([]);
+          setWithdrawableReturns(0);
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDashboardData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const displayName = getUserName(user);
@@ -1020,7 +1347,11 @@ export default function Dashboard() {
                         animationDelay:
                           index * 0.35 + "s",
                       }}
-                      key={index}
+                      key={
+                        plan.id ||
+                        plan.depositRequestId ||
+                        index
+                      }
                     >
                       <div style={styles.planTop}>
                         <div
@@ -1034,8 +1365,8 @@ export default function Dashboard() {
 
                           <div style={styles.planPrice}>
                             {formatMoney(
-                              plan.price ??
-                                plan.amount ??
+                              plan.price ?? 
+                                plan.amount ?? 
                                 0
                             )}
                           </div>
