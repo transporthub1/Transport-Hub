@@ -50,7 +50,7 @@ export default function Admin() {
   const loadAllData = async () => {
     await loadUsers();
     await loadDepositRequests();
-    loadWithdrawRequests();
+    await loadWithdrawRequests();
     setLoading(false);
   };
 
@@ -608,73 +608,250 @@ export default function Admin() {
    * ----------------------------------------------------
    * WITHDRAW REQUESTS
    * ----------------------------------------------------
+   *
+   * Withdrawals now load from Supabase first.
+   * LocalStorage remains as compatibility fallback.
+   * ----------------------------------------------------
    */
-  const loadWithdrawRequests = () => {
-    let requests = [];
+  const loadWithdrawRequests = async () => {
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("withdraw_requests")
+        .select("*")
+        .order("created_at", {
+          ascending: false,
+        });
 
-    const savedRequests =
-      localStorage.getItem(
-        "transportWithdrawRequests"
+      if (error) {
+        console.log(
+          "Could not load Supabase withdrawal requests:",
+          error.message
+        );
+
+        loadWithdrawRequestsFromLocalStorage();
+        return;
+      }
+
+      const mappedRequests = (
+        Array.isArray(data)
+          ? data
+          : []
+      ).map((row) => {
+        const userData =
+          row.user_data &&
+          typeof row.user_data ===
+            "object"
+            ? row.user_data
+            : {};
+
+        return {
+          ...userData,
+
+          ...row,
+
+          id:
+            row.id ||
+            "withdraw-" +
+              Date.now(),
+
+          user:
+            userData,
+
+          phone:
+            normalizePhone(
+              row.user_phone ||
+              userData.phone ||
+              userData.mobile ||
+              ""
+            ),
+
+          fullName:
+            row.full_name ||
+            userData.fullName ||
+            userData.full_name ||
+            userData.name ||
+            "User",
+
+          bankName:
+            row.bank_name ||
+            userData.bankName ||
+            "",
+
+          accountNumber:
+            row.account_number ||
+            userData.accountNumber ||
+            "",
+
+          amount:
+            Number(
+              row.amount ||
+                userData.amount ||
+                0
+            ),
+
+          returnType:
+            row.return_type ||
+            userData.returnType ||
+            "Weekly",
+
+          withdrawableBalance:
+            Number(
+              row.withdrawable_balance ||
+                userData.withdrawableBalance ||
+                0
+            ),
+
+          availableBalanceAtRequest:
+            Number(
+              row.available_balance_at_request ||
+                userData.availableBalanceAtRequest ||
+                0
+            ),
+
+          status:
+            row.status ||
+            "Pending",
+
+          submittedAt:
+            row.submitted_at ||
+            userData.submittedAt ||
+            row.created_at ||
+            "",
+
+          createdAt:
+            row.created_at ||
+            userData.createdAt ||
+            "",
+
+          updatedAt:
+            row.updated_at ||
+            userData.updatedAt ||
+            "",
+        };
+      });
+
+      setWithdrawRequests(
+        mappedRequests
       );
 
-    if (savedRequests) {
-      try {
-        const parsed =
-          JSON.parse(
-            savedRequests
-          );
+      localStorage.setItem(
+        "transportWithdrawRequests",
+        JSON.stringify(
+          mappedRequests
+        )
+      );
 
-        if (Array.isArray(parsed)) {
-          requests = parsed;
-        }
-      } catch (error) {
-        console.log(
-          "Could not load withdrawal requests"
+      if (mappedRequests.length > 0) {
+        localStorage.setItem(
+          "transportWithdrawRequest",
+          JSON.stringify(
+            mappedRequests[0]
+          )
         );
       }
-    }
+    } catch (error) {
+      console.log(
+        "Supabase withdrawal loading error:",
+        error
+      );
 
-    if (requests.length === 0) {
-      const oldRequest =
+      loadWithdrawRequestsFromLocalStorage();
+    }
+  };
+
+  const loadWithdrawRequestsFromLocalStorage =
+    () => {
+      let requests = [];
+
+      const savedRequests =
         localStorage.getItem(
-          "transportWithdrawRequest"
+          "transportWithdrawRequests"
         );
 
-      if (oldRequest) {
+      if (savedRequests) {
         try {
           const parsed =
-            JSON.parse(oldRequest);
-
-          if (parsed) {
-            requests = [
-              {
-                ...parsed,
-                id:
-                  parsed.id ||
-                  "withdraw-" +
-                    Date.now(),
-              },
-            ];
-
-            localStorage.setItem(
-              "transportWithdrawRequests",
-              JSON.stringify(
-                requests
-              )
+            JSON.parse(
+              savedRequests
             );
+
+          if (Array.isArray(parsed)) {
+            requests = parsed;
           }
         } catch (error) {
           console.log(
-            "Could not migrate old withdrawal request"
+            "Could not load withdrawal requests"
           );
         }
       }
-    }
 
-    setWithdrawRequests(
-      requests
-    );
-  };
+      if (requests.length === 0) {
+        const oldRequest =
+          localStorage.getItem(
+            "transportWithdrawRequest"
+          );
+
+        if (oldRequest) {
+          try {
+            const parsed =
+              JSON.parse(oldRequest);
+
+            if (parsed) {
+              requests = [
+                {
+                  ...parsed,
+
+                  id:
+                    parsed.id ||
+                    "withdraw-" +
+                      Date.now(),
+
+                  phone:
+                    normalizePhone(
+                      parsed.phone ||
+                        parsed.mobile ||
+                        parsed.mobileNumber ||
+                        ""
+                    ),
+
+                  amount:
+                    Number(
+                      parsed.amount ||
+                        0
+                    ),
+
+                  returnType:
+                    parsed.returnType ||
+                    "Weekly",
+
+                  status:
+                    parsed.status ||
+                    "Pending",
+                },
+              ];
+
+              localStorage.setItem(
+                "transportWithdrawRequests",
+                JSON.stringify(
+                  requests
+                )
+              );
+            }
+          } catch (error) {
+            console.log(
+              "Could not migrate old withdrawal request"
+            );
+          }
+        }
+      }
+
+      setWithdrawRequests(
+        requests
+      );
+    };
 
   /*
    * ----------------------------------------------------
@@ -739,6 +916,83 @@ export default function Admin() {
     }
   };
 
+  /*
+   * Update an existing local transaction status.
+   * Used for Pending -> Approved / Rejected.
+   */
+  const updateSavedTransactionStatus = (
+    transactionId,
+    phone,
+    newStatus
+  ) => {
+    if (!transactionId || !phone) {
+      return false;
+    }
+
+    const normalizedPhone =
+      normalizePhone(phone);
+
+    const transactionsKey =
+      "transportTransactions_" +
+      normalizedPhone;
+
+    let transactions = [];
+
+    const savedTransactions =
+      localStorage.getItem(
+        transactionsKey
+      );
+
+    if (savedTransactions) {
+      try {
+        const parsed =
+          JSON.parse(
+            savedTransactions
+          );
+
+        if (Array.isArray(parsed)) {
+          transactions = parsed;
+        }
+      } catch {
+        transactions = [];
+      }
+    }
+
+    let found = false;
+
+    const updatedTransactions =
+      transactions.map(
+        (item) => {
+          if (
+            item.id ===
+            transactionId
+          ) {
+            found = true;
+
+            return {
+              ...item,
+              status: newStatus,
+              updatedAt:
+                new Date().toISOString(),
+            };
+          }
+
+          return item;
+        }
+      );
+
+    if (found) {
+      localStorage.setItem(
+        transactionsKey,
+        JSON.stringify(
+          updatedTransactions
+        )
+      );
+    }
+
+    return found;
+  };
+
   const saveDepositRequests = (
     requests
   ) => {
@@ -764,10 +1018,12 @@ export default function Admin() {
       localStorage.setItem(
         "transportWithdrawRequest",
         JSON.stringify(
-          requests[
-            requests.length - 1
-          ]
+          requests[0]
         )
+      );
+    } else {
+      localStorage.removeItem(
+        "transportWithdrawRequest"
       );
     }
 
@@ -854,12 +1110,14 @@ export default function Admin() {
 
         plan: {
           ...newPlan,
+
           amount:
             Number(
               newPlan.amount ??
                 newPlan.price ??
                 0
             ),
+
           price:
             Number(
               newPlan.price ??
@@ -954,9 +1212,6 @@ export default function Admin() {
    *
    * Every newly approved plan receives its first weekly
    * return immediately.
-   *
-   * This function adds that return to the central
-   * users.withdrawable_returns column.
    */
   const addWithdrawableReturnsToSupabase =
     async (
@@ -1069,18 +1324,12 @@ export default function Admin() {
               newReturns
           );
 
-        /*
-         * Also keep the existing local compatibility key.
-         */
         localStorage.setItem(
           "transportWithdrawableReturns_" +
             normalizedPhone,
           String(finalValue)
         );
 
-        /*
-         * Keep local users copy updated too.
-         */
         try {
           const savedUsers =
             localStorage.getItem(
@@ -1362,8 +1611,13 @@ export default function Admin() {
 
       chain.push({
         level: level,
-        user: referrer,
-        phone: referrerPhone,
+
+        user:
+          referrer,
+
+        phone:
+          referrerPhone,
+
         percent:
           REFERRAL_LEVELS[
             level - 1
@@ -1381,9 +1635,6 @@ export default function Admin() {
    * ----------------------------------------------------
    * UPDATE USER BALANCE + REFERRAL BONUS
    * ----------------------------------------------------
-   *
-   * Balance, referral bonus and withdrawable returns
-   * are now all kept centrally in Supabase.
    */
   const updateUserBalance = async (
     phone,
@@ -1545,9 +1796,6 @@ export default function Admin() {
             newTotalReferralBonus,
         };
 
-      /*
-       * Mirror central data to local users.
-       */
       let localUsers = [];
 
       try {
@@ -2173,11 +2421,6 @@ export default function Admin() {
       return;
     }
 
-    /*
-     * ------------------------------------------------
-     * UPDATE DEPOSIT STATUS IN SUPABASE
-     * ------------------------------------------------
-     */
     if (request.id) {
       const {
         error: supabaseUpdateError,
@@ -2370,17 +2613,9 @@ export default function Admin() {
       return;
     }
 
-    /*
-     * ------------------------------------------------
-     * APPROVAL DATA
-     * ------------------------------------------------
-     */
     const approvedAt =
       new Date().toISOString();
 
-    /*
-     * Existing local returns compatibility
-     */
     const returnsKey =
       "transportWithdrawableReturns_" +
       phone;
@@ -2408,11 +2643,6 @@ export default function Admin() {
       )
     );
 
-    /*
-     * ------------------------------------------------
-     * CENTRAL SUPABASE WITHDRAWABLE RETURN
-     * ------------------------------------------------
-     */
     let weeklyReturnSavedToSupabase =
       true;
 
@@ -2439,11 +2669,6 @@ export default function Admin() {
             1000
       ).toISOString();
 
-    /*
-     * ------------------------------------------------
-     * ACTIVE PLAN
-     * ------------------------------------------------
-     */
     const activePlan = {
       id:
         "active-plan-" +
@@ -2520,11 +2745,6 @@ export default function Admin() {
         phone
       );
 
-    /*
-     * ------------------------------------------------
-     * APPROVED DEPOSIT TRANSACTION
-     * ------------------------------------------------
-     */
     saveTransaction(
       {
         id:
@@ -2577,11 +2797,6 @@ export default function Admin() {
       phone
     );
 
-    /*
-     * ------------------------------------------------
-     * FIRST WEEKLY RETURN TRANSACTION
-     * ------------------------------------------------
-     */
     if (
       weeklyReturn > 0
     ) {
@@ -2619,11 +2834,6 @@ export default function Admin() {
       );
     }
 
-    /*
-     * ------------------------------------------------
-     * REFERRAL BONUS
-     * ------------------------------------------------
-     */
     let referralResult = {
       credited: false,
       totalBonus: 0,
@@ -2705,8 +2915,21 @@ export default function Admin() {
    * ----------------------------------------------------
    * WITHDRAW STATUS
    * ----------------------------------------------------
+   *
+   * APPROVAL:
+   * - Reads central users.withdrawable_returns
+   * - Verifies enough return balance exists
+   * - Deducts withdrawal amount centrally
+   * - Updates withdraw_requests in Supabase
+   * - Updates local transaction status
+   *
+   * REJECTION:
+   * - Does NOT deduct withdrawable_returns
+   * - Only changes withdrawal request status
+   * - Updates local transaction to Rejected
+   * ----------------------------------------------------
    */
-  const updateWithdrawStatus = (
+  const updateWithdrawStatus = async (
     requestId,
     newStatus
   ) => {
@@ -2729,31 +2952,18 @@ export default function Admin() {
       return;
     }
 
-    if (
-      newStatus ===
-        "Approved" &&
-      request.status ===
-        "Approved"
-    ) {
-      setMessage(
-        "This withdrawal has already been approved."
-      );
-
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
+    const currentStatus =
+      String(
+        request.status ||
+          "Pending"
+      ).toLowerCase();
 
     if (
-      newStatus ===
-        "Rejected" &&
-      request.status ===
-        "Rejected"
+      currentStatus !==
+      "pending"
     ) {
       setMessage(
-        "This withdrawal has already been rejected."
+        "This withdrawal has already been processed."
       );
 
       setMessageType(
@@ -2768,6 +2978,7 @@ export default function Admin() {
         request.phone ||
           request.mobile ||
           request.mobileNumber ||
+          request.user?.phone ||
           ""
       );
 
@@ -2783,36 +2994,19 @@ export default function Admin() {
       return;
     }
 
-    const returnsKey =
-      "transportWithdrawableReturns_" +
-      phone;
-
-    const savedReturns =
-      localStorage.getItem(
-        returnsKey
-      );
-
-    const availableReturns =
-      savedReturns !== null
-        ? Number(
-            savedReturns
-          ) || 0
-        : 0;
-
     const withdrawAmount =
       Number(
         request.amount || 0
       );
 
     if (
-      newStatus ===
-        "Approved" &&
-      withdrawAmount >
-        availableReturns
+      !Number.isFinite(
+        withdrawAmount
+      ) ||
+      withdrawAmount <= 0
     ) {
       setMessage(
-        "Insufficient earned returns. Available: PKR " +
-          availableReturns.toLocaleString()
+        "Invalid withdrawal amount."
       );
 
       setMessageType(
@@ -2822,120 +3016,599 @@ export default function Admin() {
       return;
     }
 
+    /*
+     * --------------------------------------------------
+     * APPROVAL
+     * --------------------------------------------------
+     */
     if (
       newStatus ===
       "Approved"
     ) {
-      const newBalance =
-        availableReturns -
-        withdrawAmount;
+      try {
+        /*
+         * STEP 1:
+         * Read the latest central withdrawable balance.
+         */
+        const {
+          data: currentUser,
+          error: userReadError,
+        } = await supabase
+          .from("users")
+          .select(
+            "id, phone, withdrawable_returns"
+          )
+          .eq(
+            "phone",
+            phone
+          )
+          .maybeSingle();
 
-      localStorage.setItem(
-        returnsKey,
-        String(
-          newBalance
-        )
-      );
+        if (userReadError) {
+          console.error(
+            "Could not read withdrawal balance:",
+            userReadError
+          );
 
-      saveTransaction(
-        {
-          id:
-            "withdraw-" +
-            request.id,
+          setMessage(
+            "Supabase Error: " +
+              userReadError.message
+          );
 
-          type:
-            "Withdrawal",
+          setMessageType(
+            "error"
+          );
 
-          amount:
-            withdrawAmount,
+          return;
+        }
+
+        if (!currentUser) {
+          setMessage(
+            "User was not found in Supabase."
+          );
+
+          setMessageType(
+            "error"
+          );
+
+          return;
+        }
+
+        const currentReturns =
+          Number(
+            currentUser.withdrawable_returns ||
+              0
+          );
+
+        /*
+         * Pending withdrawals are only reserved.
+         * The central balance is deducted only here,
+         * after Admin approval.
+         */
+        if (
+          withdrawAmount >
+          currentReturns
+        ) {
+          setMessage(
+            "Insufficient earned returns. Available in Supabase: PKR " +
+              currentReturns.toLocaleString()
+          );
+
+          setMessageType(
+            "error"
+          );
+
+          return;
+        }
+
+        const newReturns =
+          currentReturns -
+          withdrawAmount;
+
+        /*
+         * STEP 2:
+         * Deduct centrally from users table.
+         */
+        const {
+          data: updatedUser,
+          error: userUpdateError,
+        } = await supabase
+          .from("users")
+          .update({
+            withdrawable_returns:
+              newReturns,
+          })
+          .eq(
+            "id",
+            currentUser.id
+          )
+          .select(
+            "id, phone, withdrawable_returns"
+          )
+          .maybeSingle();
+
+        if (userUpdateError) {
+          console.error(
+            "Could not deduct withdrawal from Supabase:",
+            userUpdateError
+          );
+
+          setMessage(
+            "Supabase Error while deducting withdrawal: " +
+              userUpdateError.message
+          );
+
+          setMessageType(
+            "error"
+          );
+
+          return;
+        }
+
+        const finalReturns =
+          Number(
+            updatedUser?.withdrawable_returns ??
+              newReturns
+          );
+
+        /*
+         * STEP 3:
+         * Update withdrawal request status in Supabase.
+         */
+        const {
+          error: requestUpdateError,
+        } = await supabase
+          .from("withdraw_requests")
+          .update({
+            status:
+              "Approved",
+
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            requestId
+          );
+
+        if (requestUpdateError) {
+          /*
+           * Compensation:
+           * If the request status could not be updated,
+           * restore the deducted balance.
+           */
+          console.error(
+            "Withdrawal request status update failed. Restoring balance:",
+            requestUpdateError
+          );
+
+          const {
+            error: restoreError,
+          } = await supabase
+            .from("users")
+            .update({
+              withdrawable_returns:
+                currentReturns,
+            })
+            .eq(
+              "id",
+              currentUser.id
+            );
+
+          if (restoreError) {
+            console.error(
+              "CRITICAL: Could not restore withdrawal balance:",
+              restoreError
+            );
+          }
+
+          setMessage(
+            "Withdrawal approval failed: " +
+              requestUpdateError.message
+          );
+
+          setMessageType(
+            "error"
+          );
+
+          await loadUsers();
+          await loadWithdrawRequests();
+
+          return;
+        }
+
+        /*
+         * STEP 4:
+         * Mirror the new central balance locally.
+         */
+        localStorage.setItem(
+          "transportWithdrawableReturns_" +
+            phone,
+          String(finalReturns)
+        );
+
+        try {
+          const savedUsers =
+            localStorage.getItem(
+              "transportUsers"
+            );
+
+          if (savedUsers) {
+            const parsed =
+              JSON.parse(
+                savedUsers
+              );
+
+            if (
+              Array.isArray(parsed)
+            ) {
+              const updatedLocalUsers =
+                parsed.map(
+                  (user) => {
+                    const userPhone =
+                      normalizePhone(
+                        user.phone ||
+                          user.mobile ||
+                          user.mobileNumber ||
+                          user.phoneNumber
+                      );
+
+                    if (
+                      userPhone ===
+                      phone
+                    ) {
+                      return {
+                        ...user,
+
+                        withdrawableReturns:
+                          finalReturns,
+
+                        withdrawable_returns:
+                          finalReturns,
+                      };
+                    }
+
+                    return user;
+                  }
+                );
+
+              localStorage.setItem(
+                "transportUsers",
+                JSON.stringify(
+                  updatedLocalUsers
+                )
+              );
+            }
+          }
+        } catch (error) {
+          console.error(
+            "Could not update local users after withdrawal approval:",
+            error
+          );
+        }
+
+        /*
+         * STEP 5:
+         * Update existing Pending withdrawal transaction.
+         */
+        const withdrawalTransactionId =
+          "withdraw-" +
+          request.id;
+
+        const updatedExistingTransaction =
+          updateSavedTransactionStatus(
+            withdrawalTransactionId,
+            phone,
+            "Approved"
+          );
+
+        /*
+         * If no pending transaction was found,
+         * create the approved transaction.
+         */
+        if (
+          !updatedExistingTransaction
+        ) {
+          saveTransaction(
+            {
+              id:
+                withdrawalTransactionId,
+
+              type:
+                "Withdrawal",
+
+              amount:
+                withdrawAmount,
+
+              status:
+                "Approved",
+
+              phone:
+                phone,
+
+              transactionId:
+                request.transactionId ||
+                request.txId ||
+                request.transectionId ||
+                request.transactionID ||
+                "",
+
+              number:
+                request.number ||
+                request.withdrawNumber ||
+                request.mobileNumber ||
+                request.withdrawPhone ||
+                "",
+
+              screenshot:
+                request.screenshot ||
+                request.paymentScreenshot ||
+                request.receipt ||
+                "",
+
+              date:
+                request.submittedAt
+                  ? new Date(
+                      request.submittedAt
+                    ).toLocaleString()
+                  : new Date().toLocaleString(),
+            },
+            phone
+          );
+        }
+
+        /*
+         * STEP 6:
+         * Update request locally too.
+         */
+        const updatedRequest = {
+          ...request,
 
           status:
             "Approved",
 
-          phone:
-            phone,
+          updatedAt:
+            new Date().toISOString(),
 
-          transactionId:
-            request.transactionId ||
-            request.txId ||
-            request.transectionId ||
-            request.transactionID ||
-            "",
+          withdrawableBalance:
+            finalReturns,
+        };
 
-          number:
-            request.number ||
-            request.withdrawNumber ||
-            request.mobileNumber ||
-            request.withdrawPhone ||
-            "",
+        const updatedRequests =
+          withdrawRequests.map(
+            (item) =>
+              item.id ===
+              requestId
+                ? updatedRequest
+                : item
+          );
 
-          screenshot:
-            request.screenshot ||
-            request.paymentScreenshot ||
-            request.receipt ||
-            "",
+        saveWithdrawRequests(
+          updatedRequests
+        );
 
-          date:
-            request.submittedAt
-              ? new Date(
-                  request.submittedAt
-                ).toLocaleString()
-              : new Date().toLocaleString(),
-        },
-        phone
-      );
+        /*
+         * STEP 7:
+         * Refresh central data.
+         */
+        await loadUsers();
+        await loadWithdrawRequests();
+
+        setMessage(
+          "Withdrawal of PKR " +
+            withdrawAmount.toLocaleString() +
+            " for " +
+            (
+              request.fullName ||
+              "user"
+            ) +
+            " approved successfully. PKR " +
+            withdrawAmount.toLocaleString() +
+            " has been deducted from withdrawable returns. Remaining withdrawable returns: PKR " +
+            finalReturns.toLocaleString() +
+            "."
+        );
+
+        setMessageType(
+          "success"
+        );
+
+        return;
+      } catch (error) {
+        console.error(
+          "Withdrawal approval error:",
+          error
+        );
+
+        setMessage(
+          "Something went wrong while approving the withdrawal."
+        );
+
+        setMessageType(
+          "error"
+        );
+
+        return;
+      }
     }
 
-    const updatedRequest = {
-      ...request,
-
-      status:
-        newStatus,
-
-      updatedAt:
-        new Date().toISOString(),
-    };
-
-    const updatedRequests =
-      withdrawRequests.map(
-        (item) =>
-          item.id ===
-          requestId
-            ? updatedRequest
-            : item
-      );
-
-    saveWithdrawRequests(
-      updatedRequests
-    );
-
+    /*
+     * --------------------------------------------------
+     * REJECTION
+     * --------------------------------------------------
+     */
     if (
       newStatus ===
-      "Approved"
+      "Rejected"
     ) {
-      setMessage(
-        "Withdrawal of PKR " +
-          withdrawAmount.toLocaleString() +
-          " for " +
-          (
-            request.fullName ||
-            "user"
-          ) +
-          " approved successfully."
-      );
+      try {
+        /*
+         * Do NOT deduct withdrawable_returns.
+         */
+        const {
+          error: requestUpdateError,
+        } = await supabase
+          .from("withdraw_requests")
+          .update({
+            status:
+              "Rejected",
 
-      setMessageType(
-        "success"
-      );
-    } else {
-      setMessage(
-        "Withdrawal request rejected."
-      );
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            requestId
+          );
 
-      setMessageType(
-        "success"
-      );
+        if (requestUpdateError) {
+          console.error(
+            "Supabase withdrawal rejection error:",
+            requestUpdateError
+          );
+
+          setMessage(
+            "Supabase Error: " +
+              requestUpdateError.message
+          );
+
+          setMessageType(
+            "error"
+          );
+
+          return;
+        }
+
+        /*
+         * Update local transaction.
+         */
+        const withdrawalTransactionId =
+          "withdraw-" +
+          request.id;
+
+        const updatedExistingTransaction =
+          updateSavedTransactionStatus(
+            withdrawalTransactionId,
+            phone,
+            "Rejected"
+          );
+
+        if (
+          !updatedExistingTransaction
+        ) {
+          saveTransaction(
+            {
+              id:
+                withdrawalTransactionId,
+
+              type:
+                "Withdrawal",
+
+              amount:
+                withdrawAmount,
+
+              status:
+                "Rejected",
+
+              phone:
+                phone,
+
+              transactionId:
+                request.transactionId ||
+                request.txId ||
+                request.transectionId ||
+                request.transactionID ||
+                "",
+
+              number:
+                request.number ||
+                request.withdrawNumber ||
+                request.mobileNumber ||
+                request.withdrawPhone ||
+                "",
+
+              screenshot:
+                request.screenshot ||
+                request.paymentScreenshot ||
+                request.receipt ||
+                "",
+
+              date:
+                request.submittedAt
+                  ? new Date(
+                      request.submittedAt
+                    ).toLocaleString()
+                  : new Date().toLocaleString(),
+            },
+            phone
+          );
+        }
+
+        /*
+         * Update local withdrawal request.
+         */
+        const updatedRequest = {
+          ...request,
+
+          status:
+            "Rejected",
+
+          updatedAt:
+            new Date().toISOString(),
+        };
+
+        const updatedRequests =
+          withdrawRequests.map(
+            (item) =>
+              item.id ===
+              requestId
+                ? updatedRequest
+                : item
+          );
+
+        saveWithdrawRequests(
+          updatedRequests
+        );
+
+        await loadWithdrawRequests();
+        await loadUsers();
+
+        setMessage(
+          "Withdrawal request of PKR " +
+            withdrawAmount.toLocaleString() +
+            " rejected. No amount was deducted from the user's withdrawable returns."
+        );
+
+        setMessageType(
+          "success"
+        );
+
+        return;
+      } catch (error) {
+        console.error(
+          "Withdrawal rejection error:",
+          error
+        );
+
+        setMessage(
+          "Something went wrong while rejecting the withdrawal."
+        );
+
+        setMessageType(
+          "error"
+        );
+
+        return;
+      }
     }
+
+    setMessage(
+      "Invalid withdrawal status."
+    );
+
+    setMessageType(
+      "error"
+    );
   };
 
   /*
@@ -2986,16 +3659,22 @@ export default function Admin() {
     const pendingWithdrawals =
       withdrawRequests.filter(
         (item) =>
-          item.status ===
-          "Pending"
+          String(
+            item.status ||
+              "Pending"
+          ).toLowerCase() ===
+          "pending"
       ).length;
 
     const approvedWithdrawals =
       withdrawRequests
         .filter(
           (item) =>
-            item.status ===
-            "Approved"
+            String(
+              item.status ||
+                ""
+            ).toLowerCase() ===
+            "approved"
         )
         .reduce(
           (sum, item) =>
@@ -4450,6 +5129,36 @@ export default function Admin() {
                                     />
 
                                     <Detail
+                                      label="Return Type"
+                                      value={
+                                        request.returnType ||
+                                        "Weekly"
+                                      }
+                                    />
+
+                                    <Detail
+                                      label="Available at Request"
+                                      value={
+                                        "PKR " +
+                                        Number(
+                                          request.availableBalanceAtRequest ||
+                                            0
+                                        ).toLocaleString()
+                                      }
+                                    />
+
+                                    <Detail
+                                      label="Withdrawable at Request"
+                                      value={
+                                        "PKR " +
+                                        Number(
+                                          request.withdrawableBalance ||
+                                            0
+                                        ).toLocaleString()
+                                      }
+                                    />
+
+                                    <Detail
                                       label="Transaction ID"
                                       value={
                                         request.transactionId ||
@@ -4563,8 +5272,11 @@ export default function Admin() {
                                     </div>
                                   )}
 
-                                  {request.status ===
-                                    "Pending" && (
+                                  {String(
+                                    request.status ||
+                                      "Pending"
+                                  ).toLowerCase() ===
+                                    "pending" && (
                                     <div
                                       style={{
                                         display:
@@ -4603,8 +5315,11 @@ export default function Admin() {
                                     </div>
                                   )}
 
-                                  {request.status ===
-                                    "Approved" && (
+                                  {String(
+                                    request.status ||
+                                      ""
+                                  ).toLowerCase() ===
+                                    "approved" && (
                                     <div
                                       style={{
                                         marginTop:
@@ -4617,12 +5332,15 @@ export default function Admin() {
                                           "700",
                                       }}
                                     >
-                                      ✅ Withdrawal Approved
+                                      ✅ Withdrawal Approved • Amount Deducted from Withdrawable Returns
                                     </div>
                                   )}
 
-                                  {request.status ===
-                                    "Rejected" && (
+                                  {String(
+                                    request.status ||
+                                      ""
+                                  ).toLowerCase() ===
+                                    "rejected" && (
                                     <div
                                       style={{
                                         marginTop:
@@ -4635,7 +5353,7 @@ export default function Admin() {
                                           "700",
                                       }}
                                     >
-                                      ❌ Withdrawal Rejected
+                                      ❌ Withdrawal Rejected • No Balance Deducted
                                     </div>
                                   )}
                                 </div>
