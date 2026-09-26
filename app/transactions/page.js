@@ -32,9 +32,12 @@ function getTransactionTimestamp(transaction) {
   const value =
     getTransactionDate(transaction);
 
-  const time = new Date(value).getTime();
+  const time =
+    new Date(value).getTime();
 
-  return Number.isNaN(time) ? 0 : time;
+  return Number.isNaN(time)
+    ? 0
+    : time;
 }
 
 function getTransactionType(transaction) {
@@ -62,9 +65,10 @@ function getTransactionType(transaction) {
 }
 
 function normalizeTransaction(transaction) {
-  const originalType = String(
-    transaction?.type || ""
-  ).toLowerCase();
+  const originalType =
+    String(
+      transaction?.type || ""
+    ).toLowerCase();
 
   let type =
     transaction?.type ||
@@ -134,68 +138,6 @@ function normalizeTransaction(transaction) {
   };
 }
 
-function sameTransactionByBasicData(
-  first,
-  second
-) {
-  const firstType =
-    getTransactionType(first);
-
-  const secondType =
-    getTransactionType(second);
-
-  if (
-    firstType !==
-    secondType
-  ) {
-    return false;
-  }
-
-  const firstAmount =
-    Number(
-      first?.amount || 0
-    );
-
-  const secondAmount =
-    Number(
-      second?.amount || 0
-    );
-
-  if (
-    firstAmount !==
-    secondAmount
-  ) {
-    return false;
-  }
-
-  const firstPhone =
-    normalizePhone(
-      first?.phone ||
-        first?.userPhone ||
-        first?.mobile ||
-        ""
-    );
-
-  const secondPhone =
-    normalizePhone(
-      second?.phone ||
-        second?.userPhone ||
-        second?.mobile ||
-        ""
-    );
-
-  if (
-    firstPhone &&
-    secondPhone &&
-    firstPhone !==
-      secondPhone
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
 function isLocalDuplicateOfCentral(
   localTransaction,
   centralTransactions
@@ -211,7 +153,7 @@ function isLocalDuplicateOfCentral(
   }
 
   /*
-   * 1. Exact ID match
+   * Exact ID match.
    */
   if (localTransaction.id) {
     const exactIdMatch =
@@ -231,14 +173,10 @@ function isLocalDuplicateOfCentral(
   }
 
   /*
-   * 2. For withdrawals only:
-   *    If Supabase already has an approved/rejected
-   *    transaction with same user + amount and the
-   *    timestamps are close, the old local Pending
-   *    record is considered the same transaction.
-   *
-   *    This specifically fixes the old duplicate:
-   *    Approved PKR 33,750 + Pending PKR 33,750.
+   * Old local withdrawal duplicates:
+   * If the local record is Pending and Supabase
+   * already has the same user's processed withdrawal
+   * with the same amount, hide the local duplicate.
    */
   const localType =
     getTransactionType(
@@ -246,88 +184,100 @@ function isLocalDuplicateOfCentral(
     );
 
   if (
-    localType ===
+    localType !==
     "withdraw"
   ) {
-    const localTime =
-      getTransactionTimestamp(
-        localTransaction
-      );
-
-    return centralTransactions.some(
-      (central) => {
-        const centralType =
-          getTransactionType(
-            central
-          );
-
-        if (
-          centralType !==
-          "withdraw"
-        ) {
-          return false;
-        }
-
-        if (
-          !sameTransactionByBasicData(
-            localTransaction,
-            central
-          )
-        ) {
-          return false;
-        }
-
-        const centralStatus =
-          String(
-            central?.status ||
-              ""
-          ).toLowerCase();
-
-        /*
-         * Central processed record has priority.
-         */
-        if (
-          centralStatus !==
-            "approved" &&
-          centralStatus !==
-            "rejected" &&
-          centralStatus !==
-            "completed"
-        ) {
-          return false;
-        }
-
-        const centralTime =
-          getTransactionTimestamp(
-            central
-          );
-
-        /*
-         * Same transaction is normally created
-         * around the same time. Allow 10 minutes
-         * to cover timezone/date formatting differences.
-         */
-        if (
-          localTime > 0 &&
-          centralTime > 0
-        ) {
-          return (
-            Math.abs(
-              localTime -
-                centralTime
-            ) <=
-            10 *
-              60 *
-              1000
-          );
-        }
-
-        return true;
-      }
-    );
+    return false;
   }
 
-  return false;
+  const localStatus =
+    String(
+      localTransaction?.status ||
+        ""
+    ).toLowerCase();
+
+  if (
+    localStatus !==
+    "pending"
+  ) {
+    return false;
+  }
+
+  const localPhone =
+    normalizePhone(
+      localTransaction?.phone ||
+        localTransaction?.userPhone ||
+        localTransaction?.mobile ||
+        ""
+    );
+
+  const localAmount =
+    Number(
+      localTransaction?.amount ||
+        0
+    );
+
+  return centralTransactions.some(
+    (central) => {
+      const centralType =
+        getTransactionType(
+          central
+        );
+
+      if (
+        centralType !==
+        "withdraw"
+      ) {
+        return false;
+      }
+
+      const centralStatus =
+        String(
+          central?.status ||
+            ""
+        ).toLowerCase();
+
+      if (
+        centralStatus !==
+          "approved" &&
+        centralStatus !==
+          "rejected" &&
+        centralStatus !==
+          "completed"
+      ) {
+        return false;
+      }
+
+      const centralPhone =
+        normalizePhone(
+          central?.user_phone ||
+            central?.phone ||
+            central?.userPhone ||
+            central?.mobile ||
+            ""
+        );
+
+      const centralAmount =
+        Number(
+          central?.amount ||
+            0
+        );
+
+      if (
+        localPhone &&
+        centralPhone &&
+        localPhone !==
+          centralPhone
+      ) {
+        return false;
+      }
+
+      return (
+        localAmount ===
+        centralAmount
+      );
+    }
+  );
 }
 
 export default function Transactions() {
@@ -514,10 +464,6 @@ export default function Transactions() {
                           ""
                       );
 
-                    /*
-                     * Old local records may not have
-                     * phone information.
-                     */
                     if (
                       !transactionPhone
                     ) {
@@ -540,12 +486,7 @@ export default function Transactions() {
 
       /*
        * --------------------------------------------------
-       * REMOVE LOCAL DUPLICATES ALREADY PRESENT CENTRALLY
-       * --------------------------------------------------
-       *
-       * Supabase is the central source.
-       * Old local duplicates are hidden when a matching
-       * processed transaction exists centrally.
+       * REMOVE OLD LOCAL DUPLICATES
        * --------------------------------------------------
        */
       const filteredLocalTransactions =
@@ -559,7 +500,7 @@ export default function Transactions() {
 
       /*
        * --------------------------------------------------
-       * MERGE SUPABASE + REMAINING LOCAL
+       * MERGE SUPABASE + LOCAL
        * --------------------------------------------------
        */
       const mergedMap =
@@ -654,14 +595,9 @@ export default function Transactions() {
        * --------------------------------------------------
        * UPDATE LOCAL CACHE
        * --------------------------------------------------
-       *
-       * Keep only the final de-duplicated list locally.
-       * --------------------------------------------------
        */
       if (
-        phone &&
-        finalTransactions.length >
-          0
+        phone
       ) {
         try {
           localStorage.setItem(
