@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-export default function DepositHistory() {
+export default function DepositHistoryPage() {
   const [deposits, setDeposits] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -10,580 +10,608 @@ export default function DepositHistory() {
     const loggedIn = localStorage.getItem("transportLoggedIn");
 
     if (loggedIn !== "true") {
-      window.location.replace("/login");
+      window.location.href = "/login";
       return;
     }
 
-    const savedUser = localStorage.getItem("transportUser");
+    const userData = localStorage.getItem("transportUser");
 
-    if (!savedUser) {
+    if (!userData) {
       setLoading(false);
       return;
     }
-
-    let user = null;
 
     try {
-      user = JSON.parse(savedUser);
-    } catch (error) {
-      console.log("Could not load user");
-      setLoading(false);
-      return;
-    }
+      const user = JSON.parse(userData);
 
-    const phone =
-      user?.phone ||
-      user?.mobile ||
-      user?.phoneNumber ||
-      user?.username ||
-      "";
+      const phone =
+        user.phone ||
+        user.mobile ||
+        user.phoneNumber ||
+        user.username;
 
-    let userDeposits = [];
-
-    /* CURRENT USER DEPOSIT HISTORY */
-
-    if (phone) {
-      const savedUserDeposits = localStorage.getItem(
-        "transportDepositRequests_" + phone
-      );
-
-      if (savedUserDeposits) {
-        try {
-          const parsedDeposits = JSON.parse(savedUserDeposits);
-
-          if (Array.isArray(parsedDeposits)) {
-            userDeposits = parsedDeposits;
-          }
-        } catch (error) {
-          console.log("Could not load user deposit history");
-        }
+      if (!phone) {
+        setLoading(false);
+        return;
       }
-    }
 
-    /* COMPATIBILITY WITH OLD SINGLE DEPOSIT DATA */
+      // Current user's deposit requests
+      const userKey = `transportDepositRequests_${phone}`;
+      const oldUserKey = `transportDepositRequest_${phone}`;
 
-    if (userDeposits.length === 0 && phone) {
-      const oldUserDeposit = localStorage.getItem(
-        "transportDepositRequest_" + phone
-      );
+      let userDeposits = [];
+      let oldUserDeposit = null;
 
-      if (oldUserDeposit) {
-        try {
-          const deposit = JSON.parse(oldUserDeposit);
+      try {
+        const savedUserDeposits = localStorage.getItem(userKey);
 
-          if (deposit) {
-            userDeposits = [deposit];
+        if (savedUserDeposits) {
+          const parsed = JSON.parse(savedUserDeposits);
+
+          if (Array.isArray(parsed)) {
+            userDeposits = parsed;
           }
-        } catch (error) {
-          console.log("Could not load old deposit history");
         }
+      } catch (error) {
+        console.error("Error reading user deposit history:", error);
       }
-    }
 
-    /* GLOBAL DEPOSIT HISTORY FALLBACK */
+      try {
+        const savedOldDeposit = localStorage.getItem(oldUserKey);
 
-    if (userDeposits.length === 0) {
-      const globalDeposits = localStorage.getItem(
-        "transportDepositRequests"
-      );
+        if (savedOldDeposit) {
+          const parsed = JSON.parse(savedOldDeposit);
 
-      if (globalDeposits) {
-        try {
-          const parsedDeposits = JSON.parse(globalDeposits);
+          if (parsed) {
+            oldUserDeposit = parsed;
+          }
+        }
+      } catch (error) {
+        console.error("Error reading old deposit history:", error);
+      }
 
-          if (Array.isArray(parsedDeposits)) {
-            userDeposits = parsedDeposits.filter((deposit) => {
+      // IMPORTANT:
+      // Admin approval updates the GLOBAL deposit list.
+      // So we read the global list and use its status as the
+      // latest/authoritative status.
+      let globalDeposits = [];
+
+      try {
+        const savedGlobalDeposits = localStorage.getItem(
+          "transportDepositRequests"
+        );
+
+        if (savedGlobalDeposits) {
+          const parsed = JSON.parse(savedGlobalDeposits);
+
+          if (Array.isArray(parsed)) {
+            globalDeposits = parsed.filter((deposit) => {
               const depositPhone =
-                deposit?.userPhone ||
-                deposit?.phone ||
-                deposit?.mobile ||
-                deposit?.user?.phone ||
-                "";
+                deposit.userPhone ||
+                deposit.phone ||
+                deposit.mobile ||
+                deposit.user?.phone;
 
-              if (!depositPhone || !phone) {
-                return false;
-              }
-
-              return String(depositPhone) === String(phone);
+              return String(depositPhone || "") === String(phone);
             });
           }
-        } catch (error) {
-          console.log("Could not load global deposit history");
         }
+      } catch (error) {
+        console.error("Error reading global deposit history:", error);
       }
+
+      /*
+       * Merge user-specific + global records.
+       *
+       * If the same request exists in both places,
+       * the GLOBAL record wins because Admin updates
+       * the global record from Pending -> Approved/Rejected.
+       */
+      const mergedMap = new Map();
+
+      // First add old/user-specific records
+      userDeposits.forEach((deposit, index) => {
+        const key =
+          deposit.id ||
+          deposit.requestId ||
+          `${deposit.amount || deposit.price || 0}-${deposit.submittedAt || deposit.createdAt || deposit.date || index}`;
+
+        mergedMap.set(String(key), deposit);
+      });
+
+      // Add old single-record format if it exists
+      if (oldUserDeposit) {
+        const key =
+          oldUserDeposit.id ||
+          oldUserDeposit.requestId ||
+          `old-${oldUserDeposit.amount || oldUserDeposit.price || 0}-${oldUserDeposit.submittedAt || oldUserDeposit.createdAt || oldUserDeposit.date || "deposit"}`;
+
+        mergedMap.set(String(key), oldUserDeposit);
+      }
+
+      // Global records overwrite matching records.
+      // This brings the latest Admin status.
+      globalDeposits.forEach((deposit, index) => {
+        const key =
+          deposit.id ||
+          deposit.requestId ||
+          `${deposit.amount || deposit.price || 0}-${deposit.submittedAt || deposit.createdAt || deposit.date || index}`;
+
+        mergedMap.set(String(key), deposit);
+      });
+
+      const finalDeposits = Array.from(mergedMap.values());
+
+      // Sort newest first
+      finalDeposits.sort((a, b) => {
+        const dateA = new Date(
+          a.submittedAt ||
+            a.createdAt ||
+            a.updatedAt ||
+            a.date ||
+            0
+        ).getTime();
+
+        const dateB = new Date(
+          b.submittedAt ||
+            b.createdAt ||
+            b.updatedAt ||
+            b.date ||
+            0
+        ).getTime();
+
+        return dateB - dateA;
+      });
+
+      setDeposits(finalDeposits);
+    } catch (error) {
+      console.error("Error loading deposit history:", error);
     }
 
-    /* SORT NEWEST FIRST */
-
-    userDeposits.sort((a, b) => {
-      const dateA = new Date(
-        a?.submittedAt ||
-          a?.createdAt ||
-          a?.date ||
-          0
-      ).getTime();
-
-      const dateB = new Date(
-        b?.submittedAt ||
-          b?.createdAt ||
-          b?.date ||
-          0
-      ).getTime();
-
-      return dateB - dateA;
-    });
-
-    setDeposits(userDeposits);
     setLoading(false);
   }, []);
 
+  const getStatusStyle = (status) => {
+    const normalizedStatus = String(status || "Pending").toLowerCase();
+
+    if (normalizedStatus === "approved") {
+      return {
+        background: "#dcfce7",
+        color: "#166534",
+        border: "1px solid #86efac",
+      };
+    }
+
+    if (normalizedStatus === "rejected") {
+      return {
+        background: "#fee2e2",
+        color: "#991b1b",
+        border: "1px solid #fca5a5",
+      };
+    }
+
+    return {
+      background: "#fef3c7",
+      color: "#92400e",
+      border: "1px solid #fcd34d",
+    };
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "—";
+
+    try {
+      const date = new Date(value);
+
+      if (Number.isNaN(date.getTime())) {
+        return String(value);
+      }
+
+      return date.toLocaleString();
+    } catch {
+      return String(value);
+    }
+  };
+
   if (loading) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#eef3f7",
-          color: "#102A43",
-          fontFamily: "Arial, sans-serif",
-          fontSize: "18px",
-        }}
-      >
-        Loading...
+      <div style={styles.page}>
+        <div style={styles.loadingCard}>Loading deposit history...</div>
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#eef3f7",
-        padding: "35px 20px 60px",
-        boxSizing: "border-box",
-        fontFamily: "Arial, sans-serif",
-        color: "#ffffff",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "800px",
-          margin: "0 auto",
-        }}
-      >
-
-        {/* HEADER */}
-
-        <div
-          style={{
-            background:
-              "linear-gradient(135deg, #102A43 0%, #173B5A 100%)",
-            borderRadius: "22px",
-            padding: "28px 30px",
-            color: "#ffffff",
-            boxShadow:
-              "0 12px 30px rgba(16, 42, 67, 0.20)",
-            marginBottom: "22px",
-            display: "flex",
-            alignItems: "center",
-            gap: "18px",
-            border: "1px solid #1E3A56",
-          }}
-        >
-          <div
-            style={{
-              width: "62px",
-              height: "62px",
-              borderRadius: "18px",
-              background: "#1E3A56",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "31px",
-              flexShrink: 0,
-            }}
-          >
-            📋
-          </div>
-
+    <div style={styles.page}>
+      <div style={styles.container}>
+        <div style={styles.header}>
           <div>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: "30px",
-                fontWeight: "800",
-                letterSpacing: "-0.5px",
-              }}
-            >
-              Deposit History
-            </h1>
-
-            <p
-              style={{
-                margin: "7px 0 0",
-                fontSize: "15px",
-                color: "#C9D8E6",
-              }}
-            >
-              View your deposit requests
+            <h1 style={styles.title}>Deposit History</h1>
+            <p style={styles.subtitle}>
+              View your deposit requests and their current status.
             </p>
           </div>
         </div>
 
-        {/* DEPOSIT HISTORY */}
+        {deposits.length === 0 ? (
+          <div style={styles.emptyCard}>
+            <div style={styles.emptyIcon}>💰</div>
 
-        {deposits.length > 0 ? (
-          <div>
-            {deposits.map((deposit, index) => (
-              <div
-                key={deposit?.id || index}
-                style={{
-                  background: "#102A43",
-                  border: "1px solid #1E3A56",
-                  borderRadius: "18px",
-                  padding: "23px",
-                  marginBottom: "18px",
-                  boxShadow:
-                    "0 8px 22px rgba(16, 42, 67, 0.16)",
-                }}
-              >
-
-                {/* DEPOSIT TITLE */}
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "15px",
-                    marginBottom: "20px",
-                    paddingBottom: "15px",
-                    borderBottom: "1px solid #29435A",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "42px",
-                        height: "42px",
-                        borderRadius: "12px",
-                        background: "#1E3A56",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "21px",
-                      }}
-                    >
-                      💰
-                    </div>
-
-                    <div>
-                      <strong
-                        style={{
-                          display: "block",
-                          fontSize: "17px",
-                          color: "#ffffff",
-                        }}
-                      >
-                        Deposit
-                      </strong>
-
-                      <span
-                        style={{
-                          display: "block",
-                          marginTop: "3px",
-                          fontSize: "12px",
-                          color: "#9FB3C8",
-                        }}
-                      >
-                        Deposit Request
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* STATUS */}
-
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      padding: "7px 12px",
-                      borderRadius: "20px",
-                      background:
-                        deposit.status === "Approved"
-                          ? "#24543E"
-                          : deposit.status === "Rejected"
-                          ? "#573533"
-                          : "#29435A",
-                      color:
-                        deposit.status === "Approved"
-                          ? "#8FD694"
-                          : deposit.status === "Rejected"
-                          ? "#FF9F96"
-                          : "#F4D77A",
-                      fontSize: "12px",
-                      fontWeight: "700",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {deposit.status || "Pending"}
-                  </span>
-                </div>
-
-                {/* DETAILS */}
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(2, minmax(0, 1fr))",
-                    gap: "12px",
-                  }}
-                >
-
-                  {/* PLAN */}
-
-                  <div
-                    style={{
-                      background: "#173B5A",
-                      border: "1px solid #294B66",
-                      borderRadius: "12px",
-                      padding: "14px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: "11px",
-                        color: "#9FB3C8",
-                        marginBottom: "6px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.4px",
-                      }}
-                    >
-                      Plan
-                    </span>
-
-                    <strong
-                      style={{
-                        display: "block",
-                        fontSize: "14px",
-                        color: "#ffffff",
-                        lineHeight: "1.4",
-                      }}
-                    >
-                      {deposit.planName ||
-                        deposit.plan?.name ||
-                        "N/A"}
-                    </strong>
-                  </div>
-
-                  {/* AMOUNT */}
-
-                  <div
-                    style={{
-                      background: "#173B5A",
-                      border: "1px solid #294B66",
-                      borderRadius: "12px",
-                      padding: "14px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: "11px",
-                        color: "#9FB3C8",
-                        marginBottom: "6px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.4px",
-                      }}
-                    >
-                      Amount
-                    </span>
-
-                    <strong
-                      style={{
-                        display: "block",
-                        fontSize: "16px",
-                        color: "#8FD694",
-                      }}
-                    >
-                      PKR{" "}
-                      {Number(
-                        deposit.amount ||
-                          deposit.plan?.amount ||
-                          0
-                      ).toLocaleString()}
-                    </strong>
-                  </div>
-
-                  {/* BANK */}
-
-                  <div
-                    style={{
-                      background: "#173B5A",
-                      border: "1px solid #294B66",
-                      borderRadius: "12px",
-                      padding: "14px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: "11px",
-                        color: "#9FB3C8",
-                        marginBottom: "6px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.4px",
-                      }}
-                    >
-                      Bank
-                    </span>
-
-                    <strong
-                      style={{
-                        display: "block",
-                        fontSize: "14px",
-                        color: "#ffffff",
-                      }}
-                    >
-                      {deposit.bankName ||
-                        deposit.paymentMethod ||
-                        "N/A"}
-                    </strong>
-                  </div>
-
-                  {/* DATE */}
-
-                  <div
-                    style={{
-                      background: "#173B5A",
-                      border: "1px solid #294B66",
-                      borderRadius: "12px",
-                      padding: "14px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: "11px",
-                        color: "#9FB3C8",
-                        marginBottom: "6px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.4px",
-                      }}
-                    >
-                      Submitted
-                    </span>
-
-                    <strong
-                      style={{
-                        display: "block",
-                        fontSize: "13px",
-                        color: "#ffffff",
-                        lineHeight: "1.4",
-                      }}
-                    >
-                      {deposit.submittedAt ||
-                      deposit.createdAt
-                        ? new Date(
-                            deposit.submittedAt ||
-                              deposit.createdAt
-                          ).toLocaleString()
-                        : "N/A"}
-                    </strong>
-                  </div>
-
-                </div>
-
-              </div>
-            ))}
-          </div>
-        ) : (
-          /* NO HISTORY */
-
-          <div
-            style={{
-              background: "#102A43",
-              border: "1px solid #1E3A56",
-              borderRadius: "18px",
-              padding: "35px 25px",
-              marginBottom: "18px",
-              textAlign: "center",
-              boxShadow:
-                "0 8px 22px rgba(16, 42, 67, 0.16)",
-            }}
-          >
-            <div
-              style={{
-                width: "65px",
-                height: "65px",
-                borderRadius: "18px",
-                background: "#1E3A56",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 15px",
-                fontSize: "30px",
-              }}
-            >
-              📭
-            </div>
-
-            <h2
-              style={{
-                margin: "0 0 8px",
-                fontSize: "20px",
-                color: "#ffffff",
-              }}
-            >
+            <h2 style={styles.emptyTitle}>
               No Deposit History
             </h2>
 
-            <span
-              style={{
-                fontSize: "14px",
-                color: "#9FB3C8",
-              }}
-            >
-              Your deposit requests will appear here.
-            </span>
+            <p style={styles.emptyText}>
+              Your deposit requests will appear here after you
+              submit a deposit.
+            </p>
+          </div>
+        ) : (
+          <div style={styles.list}>
+            {deposits.map((deposit, index) => {
+              const status = deposit.status || "Pending";
+
+              const planName =
+                deposit.plan?.name ||
+                deposit.planName ||
+                deposit.name ||
+                "Transport Plan";
+
+              const amount =
+                deposit.amount ??
+                deposit.price ??
+                deposit.plan?.amount ??
+                deposit.plan?.price ??
+                0;
+
+              const paymentMethod =
+                deposit.paymentMethod ||
+                deposit.method ||
+                deposit.paymentType ||
+                "—";
+
+              const bankName =
+                deposit.bankName ||
+                deposit.bank ||
+                "";
+
+              return (
+                <div
+                  key={
+                    deposit.id ||
+                    deposit.requestId ||
+                    `deposit-${index}`
+                  }
+                  style={styles.card}
+                >
+                  <div style={styles.cardTop}>
+                    <div>
+                      <div style={styles.planLabel}>
+                        TRANSPORT PLAN
+                      </div>
+
+                      <h2 style={styles.planName}>
+                        {planName}
+                      </h2>
+                    </div>
+
+                    <div
+                      style={{
+                        ...styles.status,
+                        ...getStatusStyle(status),
+                      }}
+                    >
+                      {status}
+                    </div>
+                  </div>
+
+                  <div style={styles.divider} />
+
+                  <div style={styles.infoGrid}>
+                    <div style={styles.infoBox}>
+                      <span style={styles.infoLabel}>
+                        Amount
+                      </span>
+
+                      <strong style={styles.amount}>
+                        PKR{" "}
+                        {Number(amount || 0).toLocaleString()}
+                      </strong>
+                    </div>
+
+                    <div style={styles.infoBox}>
+                      <span style={styles.infoLabel}>
+                        Payment Method
+                      </span>
+
+                      <strong style={styles.infoValue}>
+                        {paymentMethod}
+                      </strong>
+                    </div>
+
+                    {bankName ? (
+                      <div style={styles.infoBox}>
+                        <span style={styles.infoLabel}>
+                          Bank
+                        </span>
+
+                        <strong style={styles.infoValue}>
+                          {bankName}
+                        </strong>
+                      </div>
+                    ) : null}
+
+                    <div style={styles.infoBox}>
+                      <span style={styles.infoLabel}>
+                        Submitted
+                      </span>
+
+                      <strong style={styles.infoValue}>
+                        {formatDate(
+                          deposit.submittedAt ||
+                            deposit.createdAt ||
+                            deposit.date
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {deposit.transactionId ? (
+                    <div style={styles.transactionBox}>
+                      <span style={styles.transactionLabel}>
+                        Transaction ID
+                      </span>
+
+                      <strong style={styles.transactionId}>
+                        {deposit.transactionId}
+                      </strong>
+                    </div>
+                  ) : null}
+
+                  {status.toLowerCase() === "approved" ? (
+                    <div style={styles.approvedMessage}>
+                      ✅ Deposit approved successfully.
+                    </div>
+                  ) : null}
+
+                  {status.toLowerCase() === "rejected" ? (
+                    <div style={styles.rejectedMessage}>
+                      ❌ This deposit request was rejected.
+                    </div>
+                  ) : null}
+
+                  {status.toLowerCase() === "pending" ? (
+                    <div style={styles.pendingMessage}>
+                      ⏳ Your deposit is currently under review.
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
-
-        {/* BACK BUTTON */}
-
-        <button
-          onClick={() => {
-            window.location.href = "/";
-          }}
-          style={{
-            width: "100%",
-            minHeight: "50px",
-            border: "1px solid #1E3A56",
-            borderRadius: "12px",
-            background: "#102A43",
-            color: "#ffffff",
-            fontSize: "14px",
-            fontWeight: "700",
-            cursor: "pointer",
-            boxShadow:
-              "0 5px 14px rgba(16, 42, 67, 0.14)",
-          }}
-        >
-          ← Back to Dashboard
-        </button>
-
       </div>
     </div>
   );
 }
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background: "#f3f7f1",
+    padding: "24px",
+    boxSizing: "border-box",
+    color: "#173b2b",
+    fontFamily: "Arial, sans-serif",
+  },
+
+  container: {
+    width: "100%",
+    maxWidth: "1100px",
+    margin: "0 auto",
+  },
+
+  header: {
+    background: "#102A43",
+    borderRadius: "16px",
+    padding: "22px 24px",
+    marginBottom: "20px",
+    boxShadow: "0 8px 25px rgba(16,42,67,.12)",
+  },
+
+  title: {
+    margin: 0,
+    color: "#ffffff",
+    fontSize: "25px",
+    fontWeight: 900,
+  },
+
+  subtitle: {
+    margin: "7px 0 0",
+    color: "#d9e8f5",
+    fontSize: "13px",
+  },
+
+  list: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "16px",
+  },
+
+  card: {
+    background: "#ffffff",
+    border: "1px solid #dce8df",
+    borderRadius: "16px",
+    padding: "20px",
+    boxShadow: "0 7px 22px rgba(23,59,43,.08)",
+  },
+
+  cardTop: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: "15px",
+  },
+
+  planLabel: {
+    color: "#5d7a6a",
+    fontSize: "10px",
+    fontWeight: 900,
+    letterSpacing: "1px",
+    marginBottom: "5px",
+  },
+
+  planName: {
+    margin: 0,
+    color: "#173b2b",
+    fontSize: "20px",
+    fontWeight: 900,
+  },
+
+  status: {
+    padding: "7px 12px",
+    borderRadius: "999px",
+    fontSize: "11px",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+  },
+
+  divider: {
+    height: "1px",
+    background: "#e6eee8",
+    margin: "16px 0",
+  },
+
+  infoGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: "12px",
+  },
+
+  infoBox: {
+    background: "#f6faf7",
+    border: "1px solid #e1ece4",
+    borderRadius: "10px",
+    padding: "12px",
+  },
+
+  infoLabel: {
+    display: "block",
+    color: "#718879",
+    fontSize: "10px",
+    fontWeight: 800,
+    marginBottom: "5px",
+    textTransform: "uppercase",
+  },
+
+  infoValue: {
+    display: "block",
+    color: "#173b2b",
+    fontSize: "13px",
+    fontWeight: 800,
+    wordBreak: "break-word",
+  },
+
+  amount: {
+    display: "block",
+    color: "#2e6b4a",
+    fontSize: "17px",
+    fontWeight: 900,
+  },
+
+  transactionBox: {
+    marginTop: "12px",
+    background: "#eef7f0",
+    border: "1px solid #d4e8d8",
+    borderRadius: "10px",
+    padding: "12px",
+  },
+
+  transactionLabel: {
+    display: "block",
+    color: "#718879",
+    fontSize: "10px",
+    fontWeight: 800,
+    marginBottom: "5px",
+    textTransform: "uppercase",
+  },
+
+  transactionId: {
+    color: "#173b2b",
+    fontSize: "13px",
+    wordBreak: "break-all",
+  },
+
+  approvedMessage: {
+    marginTop: "12px",
+    padding: "10px 12px",
+    borderRadius: "9px",
+    background: "#ecfdf3",
+    border: "1px solid #bbf7d0",
+    color: "#166534",
+    fontSize: "12px",
+    fontWeight: 800,
+  },
+
+  rejectedMessage: {
+    marginTop: "12px",
+    padding: "10px 12px",
+    borderRadius: "9px",
+    background: "#fff1f2",
+    border: "1px solid #fecdd3",
+    color: "#9f1239",
+    fontSize: "12px",
+    fontWeight: 800,
+  },
+
+  pendingMessage: {
+    marginTop: "12px",
+    padding: "10px 12px",
+    borderRadius: "9px",
+    background: "#fffbeb",
+    border: "1px solid #fde68a",
+    color: "#92400e",
+    fontSize: "12px",
+    fontWeight: 800,
+  },
+
+  emptyCard: {
+    background: "#ffffff",
+    border: "1px solid #dce8df",
+    borderRadius: "16px",
+    padding: "45px 20px",
+    textAlign: "center",
+    boxShadow: "0 7px 22px rgba(23,59,43,.08)",
+  },
+
+  emptyIcon: {
+    fontSize: "38px",
+    marginBottom: "10px",
+  },
+
+  emptyTitle: {
+    margin: 0,
+    color: "#173b2b",
+    fontSize: "19px",
+    fontWeight: 900,
+  },
+
+  emptyText: {
+    margin: "8px auto 0",
+    maxWidth: "450px",
+    color: "#718879",
+    fontSize: "13px",
+    lineHeight: 1.6,
+  },
+
+  loadingCard: {
+    background: "#ffffff",
+    borderRadius: "16px",
+    padding: "30px",
+    textAlign: "center",
+    color: "#173b2b",
+    fontWeight: 800,
+    boxShadow: "0 7px 22px rgba(23,59,43,.08)",
+  },
+};

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 const NAVY = "#102A43";
 const NAVY_2 = "#173B5A";
@@ -14,10 +15,6 @@ const PAGE_BG = "#eef3f7";
 
 const DURATION_YEARS = 5;
 const DURATION_WEEKS = 260;
-
-/* =========================
-   REFERRAL BONUS LEVELS
-========================= */
 
 const REFERRAL_LEVELS = [
   { level: 1, percent: 10 },
@@ -49,293 +46,12 @@ export default function Admin() {
     loadAllData();
   }, []);
 
-  const loadAllData = () => {
-    loadUsers();
+  const loadAllData = async () => {
+    await loadUsers();
     loadDepositRequests();
     loadWithdrawRequests();
     setLoading(false);
   };
-
-  /* =========================
-     LOAD USERS
-  ========================= */
-
-  const loadUsers = () => {
-    const savedUsers = localStorage.getItem(
-      "transportUsers"
-    );
-
-    if (!savedUsers) {
-      setUsers([]);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(savedUsers);
-
-      if (Array.isArray(parsed)) {
-        setUsers(parsed);
-      } else {
-        setUsers([]);
-      }
-    } catch (error) {
-      console.log("Could not load users");
-      setUsers([]);
-    }
-  };
-
-  /* =========================
-     LOAD DEPOSITS
-  ========================= */
-
-  const loadDepositRequests = () => {
-    let requests = [];
-
-    const savedRequests = localStorage.getItem(
-      "transportDepositRequests"
-    );
-
-    if (savedRequests) {
-      try {
-        const parsed = JSON.parse(savedRequests);
-
-        if (Array.isArray(parsed)) {
-          requests = parsed;
-        }
-      } catch (error) {
-        console.log("Could not load deposit requests");
-      }
-    }
-
-    if (requests.length === 0) {
-      const oldRequest = localStorage.getItem(
-        "transportDepositRequest"
-      );
-
-      if (oldRequest) {
-        try {
-          const parsed = JSON.parse(oldRequest);
-
-          if (parsed) {
-            const migrated = {
-              ...parsed,
-              id:
-                parsed.id ||
-                "deposit-" + Date.now(),
-            };
-
-            requests = [migrated];
-
-            localStorage.setItem(
-              "transportDepositRequests",
-              JSON.stringify(requests)
-            );
-          }
-        } catch (error) {
-          console.log(
-            "Could not migrate old deposit request"
-          );
-        }
-      }
-    }
-
-    setDepositRequests(requests);
-  };
-
-  /* =========================
-     LOAD WITHDRAWALS
-  ========================= */
-
-  const loadWithdrawRequests = () => {
-    let requests = [];
-
-    const savedRequests = localStorage.getItem(
-      "transportWithdrawRequests"
-    );
-
-    if (savedRequests) {
-      try {
-        const parsed = JSON.parse(savedRequests);
-
-        if (Array.isArray(parsed)) {
-          requests = parsed;
-        }
-      } catch (error) {
-        console.log(
-          "Could not load withdrawal requests"
-        );
-      }
-    }
-
-    if (requests.length === 0) {
-      const oldRequest = localStorage.getItem(
-        "transportWithdrawRequest"
-      );
-
-      if (oldRequest) {
-        try {
-          const parsed = JSON.parse(oldRequest);
-
-          if (parsed) {
-            requests = [
-              {
-                ...parsed,
-                id:
-                  parsed.id ||
-                  "withdraw-" + Date.now(),
-              },
-            ];
-
-            localStorage.setItem(
-              "transportWithdrawRequests",
-              JSON.stringify(requests)
-            );
-          }
-        } catch (error) {
-          console.log(
-            "Could not migrate old withdrawal request"
-          );
-        }
-      }
-    }
-
-    setWithdrawRequests(requests);
-  };
-
-  /* =========================
-     SAVE TRANSACTION
-  ========================= */
-
-  const saveTransaction = (
-    transaction,
-    phone
-  ) => {
-    if (!phone) {
-      return;
-    }
-
-    const transactionsKey =
-      "transportTransactions_" + phone;
-
-    let transactions = [];
-
-    const savedTransactions =
-      localStorage.getItem(transactionsKey);
-
-    if (savedTransactions) {
-      try {
-        const parsed =
-          JSON.parse(savedTransactions);
-
-        if (Array.isArray(parsed)) {
-          transactions = parsed;
-        }
-      } catch (error) {
-        transactions = [];
-      }
-    }
-
-    const alreadyExists = transactions.some(
-      (item) => item.id === transaction.id
-    );
-
-    if (!alreadyExists) {
-      transactions.unshift(transaction);
-
-      localStorage.setItem(
-        transactionsKey,
-        JSON.stringify(transactions)
-      );
-    }
-  };
-
-  /* =========================
-     SAVE DEPOSIT LIST
-  ========================= */
-
-  const saveDepositRequests = (requests) => {
-    localStorage.setItem(
-      "transportDepositRequests",
-      JSON.stringify(requests)
-    );
-
-    setDepositRequests(requests);
-  };
-
-  /* =========================
-     SAVE WITHDRAW LIST
-  ========================= */
-
-  const saveWithdrawRequests = (requests) => {
-    localStorage.setItem(
-      "transportWithdrawRequests",
-      JSON.stringify(requests)
-    );
-
-    if (requests.length > 0) {
-      localStorage.setItem(
-        "transportWithdrawRequest",
-        JSON.stringify(
-          requests[requests.length - 1]
-        )
-      );
-    }
-
-    setWithdrawRequests(requests);
-  };
-
-  /* =========================
-     ADD ACTIVE PLAN
-  ========================= */
-
-  const updateActivePlans = (
-    newPlan,
-    phone
-  ) => {
-    if (!phone) {
-      return;
-    }
-
-    const plansKey =
-      "transportActivePlans_" + phone;
-
-    let plans = [];
-
-    const savedPlans =
-      localStorage.getItem(plansKey);
-
-    if (savedPlans) {
-      try {
-        const parsed =
-          JSON.parse(savedPlans);
-
-        if (Array.isArray(parsed)) {
-          plans = parsed;
-        }
-      } catch (error) {
-        plans = [];
-      }
-    }
-
-    const alreadyActive = plans.some(
-      (plan) =>
-        plan.depositRequestId ===
-        newPlan.depositRequestId
-    );
-
-    if (!alreadyActive) {
-      plans.push(newPlan);
-    }
-
-    localStorage.setItem(
-      plansKey,
-      JSON.stringify(plans)
-    );
-  };
-
-  /* =========================
-     PHONE NORMALIZER
-  ========================= */
 
   const normalizePhone = (value) => {
     if (
@@ -351,11 +67,479 @@ export default function Admin() {
       .trim();
   };
 
-  /* =========================
-     FIND USER BY PHONE
-  ========================= */
+  /*
+   * OLD LOCAL USERS -> SUPABASE
+   *
+   * This reads the old browser localStorage users
+   * and copies their account information into the
+   * Supabase users table.
+   *
+   * Existing Supabase users are skipped by phone number.
+   */
+  const migrateUsersToSupabase = async (
+    oldUsers
+  ) => {
+    if (
+      !Array.isArray(oldUsers) ||
+      oldUsers.length === 0
+    ) {
+      return {
+        migrated: 0,
+        skipped: 0,
+        failed: 0,
+      };
+    }
 
-  const findUserByPhone = (phone) => {
+    let migrated = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const oldUser of oldUsers) {
+      const phone = normalizePhone(
+        oldUser.phone ||
+          oldUser.mobile ||
+          oldUser.mobileNumber ||
+          oldUser.phoneNumber
+      );
+
+      if (!phone) {
+        failed++;
+        continue;
+      }
+
+      try {
+        const { data: existingUser, error: findError } =
+          await supabase
+            .from("users")
+            .select("id, phone")
+            .eq("phone", phone)
+            .maybeSingle();
+
+        if (findError) {
+          console.log(
+            "Could not check Supabase user:",
+            findError.message
+          );
+
+          failed++;
+          continue;
+        }
+
+        if (existingUser) {
+          skipped++;
+          continue;
+        }
+
+        const newId =
+          oldUser.id ||
+          "user-" +
+            Date.now() +
+            "-" +
+            Math.random()
+              .toString(36)
+              .slice(2, 8);
+
+        const userRow = {
+          id: newId,
+          full_name:
+            oldUser.fullName ||
+            oldUser.full_name ||
+            oldUser.name ||
+            oldUser.username ||
+            "",
+          phone: phone,
+          password:
+            oldUser.password ||
+            "",
+          balance:
+            Number(
+              oldUser.balance || 0
+            ),
+          referral_bonus:
+            Number(
+              oldUser.referralBonus ??
+                oldUser.referral_bonus ??
+                0
+            ),
+          total_referral_bonus:
+            Number(
+              oldUser.totalReferralBonus ??
+                oldUser.total_referral_bonus ??
+                0
+            ),
+          referral_code:
+            oldUser.referralCode ||
+            oldUser.referral_code ||
+            oldUser.referral ||
+            "",
+          referred_by:
+            oldUser.referredBy ??
+            oldUser.referred_by ??
+            null,
+          referrer_code:
+            oldUser.referrerCode ??
+            oldUser.referrer_code ??
+            null,
+          referrer_phone:
+            oldUser.referrerPhone ??
+            oldUser.referrer_phone ??
+            null,
+          created_at:
+            oldUser.createdAt ||
+            oldUser.created_at ||
+            new Date().toISOString(),
+        };
+
+        const { error: insertError } =
+          await supabase
+            .from("users")
+            .insert([userRow]);
+
+        if (insertError) {
+          console.log(
+            "Could not migrate user:",
+            phone,
+            insertError.message
+          );
+
+          failed++;
+          continue;
+        }
+
+        migrated++;
+      } catch (error) {
+        console.log(
+          "Migration error:",
+          error
+        );
+
+        failed++;
+      }
+    }
+
+    return {
+      migrated,
+      skipped,
+      failed,
+    };
+  };
+
+  const loadUsers = async () => {
+    const savedUsers = localStorage.getItem(
+      "transportUsers"
+    );
+
+    if (!savedUsers) {
+      setUsers([]);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(
+        savedUsers
+      );
+
+      if (!Array.isArray(parsed)) {
+        setUsers([]);
+        return;
+      }
+
+      setUsers(parsed);
+
+      const migrationResult =
+        await migrateUsersToSupabase(
+          parsed
+        );
+
+      if (
+        migrationResult.migrated > 0
+      ) {
+        setMessage(
+          migrationResult.migrated +
+            " old user account(s) migrated to Supabase successfully."
+        );
+      }
+    } catch (error) {
+      console.log(
+        "Could not load users",
+        error
+      );
+      setUsers([]);
+    }
+  };
+
+  const loadDepositRequests = () => {
+    let requests = [];
+
+    const savedRequests = localStorage.getItem(
+      "transportDepositRequests"
+    );
+
+    if (savedRequests) {
+      try {
+        const parsed = JSON.parse(
+          savedRequests
+        );
+
+        if (Array.isArray(parsed)) {
+          requests = parsed;
+        }
+      } catch (error) {
+        console.log(
+          "Could not load deposit requests"
+        );
+      }
+    }
+
+    if (requests.length === 0) {
+      const oldRequest =
+        localStorage.getItem(
+          "transportDepositRequest"
+        );
+
+      if (oldRequest) {
+        try {
+          const parsed =
+            JSON.parse(oldRequest);
+
+          if (parsed) {
+            const migrated = {
+              ...parsed,
+              id:
+                parsed.id ||
+                "deposit-" +
+                  Date.now(),
+            };
+
+            requests = [migrated];
+
+            localStorage.setItem(
+              "transportDepositRequests",
+              JSON.stringify(
+                requests
+              )
+            );
+          }
+        } catch (error) {
+          console.log(
+            "Could not migrate old deposit request"
+          );
+        }
+      }
+    }
+
+    setDepositRequests(requests);
+  };
+
+  const loadWithdrawRequests = () => {
+    let requests = [];
+
+    const savedRequests =
+      localStorage.getItem(
+        "transportWithdrawRequests"
+      );
+
+    if (savedRequests) {
+      try {
+        const parsed =
+          JSON.parse(savedRequests);
+
+        if (Array.isArray(parsed)) {
+          requests = parsed;
+        }
+      } catch (error) {
+        console.log(
+          "Could not load withdrawal requests"
+        );
+      }
+    }
+
+    if (requests.length === 0) {
+      const oldRequest =
+        localStorage.getItem(
+          "transportWithdrawRequest"
+        );
+
+      if (oldRequest) {
+        try {
+          const parsed =
+            JSON.parse(oldRequest);
+
+          if (parsed) {
+            requests = [
+              {
+                ...parsed,
+                id:
+                  parsed.id ||
+                  "withdraw-" +
+                    Date.now(),
+              },
+            ];
+
+            localStorage.setItem(
+              "transportWithdrawRequests",
+              JSON.stringify(
+                requests
+              )
+            );
+          }
+        } catch (error) {
+          console.log(
+            "Could not migrate old withdrawal request"
+          );
+        }
+      }
+    }
+
+    setWithdrawRequests(requests);
+  };
+
+  const saveTransaction = (
+    transaction,
+    phone
+  ) => {
+    if (!phone) {
+      return;
+    }
+
+    const transactionsKey =
+      "transportTransactions_" +
+      phone;
+
+    let transactions = [];
+
+    const savedTransactions =
+      localStorage.getItem(
+        transactionsKey
+      );
+
+    if (savedTransactions) {
+      try {
+        const parsed =
+          JSON.parse(
+            savedTransactions
+          );
+
+        if (Array.isArray(parsed)) {
+          transactions = parsed;
+        }
+      } catch (error) {
+        transactions = [];
+      }
+    }
+
+    const alreadyExists =
+      transactions.some(
+        (item) =>
+          item.id ===
+          transaction.id
+      );
+
+    if (!alreadyExists) {
+      transactions.unshift(
+        transaction
+      );
+
+      localStorage.setItem(
+        transactionsKey,
+        JSON.stringify(
+          transactions
+        )
+      );
+    }
+  };
+
+  const saveDepositRequests = (
+    requests
+  ) => {
+    localStorage.setItem(
+      "transportDepositRequests",
+      JSON.stringify(requests)
+    );
+
+    setDepositRequests(
+      requests
+    );
+  };
+
+  const saveWithdrawRequests = (
+    requests
+  ) => {
+    localStorage.setItem(
+      "transportWithdrawRequests",
+      JSON.stringify(requests)
+    );
+
+    if (requests.length > 0) {
+      localStorage.setItem(
+        "transportWithdrawRequest",
+        JSON.stringify(
+          requests[
+            requests.length - 1
+          ]
+        )
+      );
+    }
+
+    setWithdrawRequests(
+      requests
+    );
+  };
+
+  const updateActivePlans = (
+    newPlan,
+    phone
+  ) => {
+    if (!phone) {
+      return;
+    }
+
+    const plansKey =
+      "transportActivePlans_" +
+      phone;
+
+    let plans = [];
+
+    const savedPlans =
+      localStorage.getItem(
+        plansKey
+      );
+
+    if (savedPlans) {
+      try {
+        const parsed =
+          JSON.parse(
+            savedPlans
+          );
+
+        if (Array.isArray(parsed)) {
+          plans = parsed;
+        }
+      } catch (error) {
+        plans = [];
+      }
+    }
+
+    const alreadyActive =
+      plans.some(
+        (plan) =>
+          plan.depositRequestId ===
+          newPlan.depositRequestId
+      );
+
+    if (!alreadyActive) {
+      plans.push(newPlan);
+    }
+
+    localStorage.setItem(
+      plansKey,
+      JSON.stringify(plans)
+    );
+  };
+
+  const findUserByPhone = (
+    phone
+  ) => {
     const normalized =
       normalizePhone(phone);
 
@@ -374,17 +558,16 @@ export default function Admin() {
           );
 
         return (
-          userPhone === normalized
+          userPhone ===
+          normalized
         );
       }) || null
     );
   };
 
-  /* =========================
-     GET USER PHONE
-  ========================= */
-
-  const getUserPhone = (user) => {
+  const getUserPhone = (
+    user
+  ) => {
     if (!user) {
       return "";
     }
@@ -397,11 +580,9 @@ export default function Admin() {
     );
   };
 
-  /* =========================
-     GET REFERRER VALUE
-  ========================= */
-
-  const getReferrerValue = (user) => {
+  const getReferrerValue = (
+    user
+  ) => {
     if (!user) {
       return "";
     }
@@ -431,11 +612,9 @@ export default function Admin() {
     );
   };
 
-  /* =========================
-     FIND REFERRER
-  ========================= */
-
-  const findReferrer = (user) => {
+  const findReferrer = (
+    user
+  ) => {
     if (!user) {
       return null;
     }
@@ -485,10 +664,6 @@ export default function Admin() {
     return byCode || null;
   };
 
-  /* =========================
-     GET REFERRAL CHAIN
-  ========================= */
-
   const getReferralChain = (
     startingUser
   ) => {
@@ -500,7 +675,8 @@ export default function Admin() {
 
     for (
       let level = 1;
-      level <= REFERRAL_LEVELS.length;
+      level <=
+      REFERRAL_LEVELS.length;
       level++
     ) {
       if (!currentUser) {
@@ -508,7 +684,9 @@ export default function Admin() {
       }
 
       const currentPhone =
-        getUserPhone(currentUser);
+        getUserPhone(
+          currentUser
+        );
 
       if (
         !currentPhone ||
@@ -517,17 +695,22 @@ export default function Admin() {
         break;
       }
 
-      visited[currentPhone] = true;
+      visited[currentPhone] =
+        true;
 
       const referrer =
-        findReferrer(currentUser);
+        findReferrer(
+          currentUser
+        );
 
       if (!referrer) {
         break;
       }
 
       const referrerPhone =
-        getUserPhone(referrer);
+        getUserPhone(
+          referrer
+        );
 
       if (
         !referrerPhone ||
@@ -546,15 +729,12 @@ export default function Admin() {
           ].percent,
       });
 
-      currentUser = referrer;
+      currentUser =
+        referrer;
     }
 
     return chain;
   };
-
-  /* =========================
-     UPDATE USER BALANCE
-  ========================= */
 
   const updateUserBalance = (
     phone,
@@ -584,7 +764,9 @@ export default function Admin() {
 
     try {
       const parsed =
-        JSON.parse(savedUsers);
+        JSON.parse(
+          savedUsers
+        );
 
       if (Array.isArray(parsed)) {
         allUsers = parsed;
@@ -653,7 +835,8 @@ export default function Admin() {
         );
 
       const currentWithdrawable =
-        savedWithdrawable !== null
+        savedWithdrawable !==
+        null
           ? Number(
               savedWithdrawable
             ) || 0
@@ -673,10 +856,6 @@ export default function Admin() {
 
     return updatedUser;
   };
-
-  /* =========================
-     UPDATE TEAM MEMBER BONUS
-  ========================= */
 
   const updateTeamMemberBonus = (
     referrerPhone,
@@ -709,7 +888,9 @@ export default function Admin() {
 
     try {
       const parsed =
-        JSON.parse(savedTeam);
+        JSON.parse(
+          savedTeam
+        );
 
       if (Array.isArray(parsed)) {
         team = parsed;
@@ -786,15 +967,14 @@ export default function Admin() {
     }
   };
 
-  /* =========================
-     CHECK DUPLICATE REFERRAL
-  ========================= */
-
   const referralBonusAlreadyCredited = (
     request,
     referrerPhone
   ) => {
-    if (!request || !referrerPhone) {
+    if (
+      !request ||
+      !referrerPhone
+    ) {
       return false;
     }
 
@@ -827,18 +1007,14 @@ export default function Admin() {
       return transactions.some(
         (item) =>
           item.id &&
-          String(item.id).indexOf(
-            marker
-          ) === 0
+          String(
+            item.id
+          ).indexOf(marker) === 0
       );
     } catch (error) {
       return false;
     }
   };
-
-  /* =========================
-     CREDIT REFERRAL BONUSES
-  ========================= */
 
   const creditReferralBonuses = (
     request,
@@ -879,7 +1055,9 @@ export default function Admin() {
         item.phone;
 
       const percent =
-        Number(item.percent || 0);
+        Number(
+          item.percent || 0
+        );
 
       if (
         !referrerPhone ||
@@ -1001,17 +1179,15 @@ export default function Admin() {
     };
   };
 
-  /* =========================
-     UPDATE DEPOSIT STATUS
-  ========================= */
-
   const updateDepositStatus = (
     requestId,
     newStatus
   ) => {
     const request =
       depositRequests.find(
-        (item) => item.id === requestId
+        (item) =>
+          item.id ===
+          requestId
       );
 
     if (!request) {
@@ -1022,8 +1198,10 @@ export default function Admin() {
     }
 
     if (
-      newStatus === "Approved" &&
-      request.status === "Approved"
+      newStatus ===
+        "Approved" &&
+      request.status ===
+        "Approved"
     ) {
       setMessage(
         "This deposit has already been approved."
@@ -1032,8 +1210,10 @@ export default function Admin() {
     }
 
     if (
-      newStatus === "Rejected" &&
-      request.status === "Rejected"
+      newStatus ===
+        "Rejected" &&
+      request.status ===
+        "Rejected"
     ) {
       setMessage(
         "This deposit has already been rejected."
@@ -1050,7 +1230,8 @@ export default function Admin() {
       "";
 
     if (
-      newStatus === "Approved" &&
+      newStatus ===
+        "Approved" &&
       !phone
     ) {
       setMessage(
@@ -1070,19 +1251,19 @@ export default function Admin() {
     const planAmount =
       Number(
         requestPlan.amount ||
-        request.amount ||
-        request.depositAmount ||
-        0
+          request.amount ||
+          request.depositAmount ||
+          0
       );
 
     const weeklyReturn =
       Number(
         requestPlan.weekly ||
-        request.weeklyReturn ||
-        request.dailyReturn ||
-        requestPlan.daily ||
-        request.daily ||
-        0
+          request.weeklyReturn ||
+          request.dailyReturn ||
+          requestPlan.daily ||
+          request.daily ||
+          0
       );
 
     const totalReturn =
@@ -1139,7 +1320,8 @@ export default function Admin() {
     const updatedRequests =
       depositRequests.map(
         (item) =>
-          item.id === requestId
+          item.id ===
+          requestId
             ? updatedRequest
             : item
       );
@@ -1149,7 +1331,8 @@ export default function Admin() {
     );
 
     if (
-      newStatus === "Rejected"
+      newStatus ===
+      "Rejected"
     ) {
       setMessage(
         planName +
@@ -1173,7 +1356,9 @@ export default function Admin() {
 
     const currentWithdrawableReturns =
       savedReturns !== null
-        ? Number(savedReturns) || 0
+        ? Number(
+            savedReturns
+          ) || 0
         : 0;
 
     const newWithdrawableReturns =
@@ -1254,7 +1439,8 @@ export default function Admin() {
         weeklyReturn,
 
       remainingWeeks:
-        DURATION_WEEKS - 1,
+        DURATION_WEEKS -
+        1,
 
       status:
         "Active",
@@ -1317,7 +1503,9 @@ export default function Admin() {
       phone
     );
 
-    if (weeklyReturn > 0) {
+    if (
+      weeklyReturn > 0
+    ) {
       saveTransaction(
         {
           id:
@@ -1359,7 +1547,9 @@ export default function Admin() {
     };
 
     const referredUser =
-      findUserByPhone(phone);
+      findUserByPhone(
+        phone
+      );
 
     if (
       referredUser &&
@@ -1373,7 +1563,8 @@ export default function Admin() {
         );
     }
 
-    let referralMessage = "";
+    let referralMessage =
+      "";
 
     if (
       referralResult.credited
@@ -1405,17 +1596,15 @@ export default function Admin() {
     loadUsers();
   };
 
-  /* =========================
-     UPDATE WITHDRAW STATUS
-  ========================= */
-
   const updateWithdrawStatus = (
     requestId,
     newStatus
   ) => {
     const request =
       withdrawRequests.find(
-        (item) => item.id === requestId
+        (item) =>
+          item.id ===
+          requestId
       );
 
     if (!request) {
@@ -1426,8 +1615,10 @@ export default function Admin() {
     }
 
     if (
-      newStatus === "Approved" &&
-      request.status === "Approved"
+      newStatus ===
+        "Approved" &&
+      request.status ===
+        "Approved"
     ) {
       setMessage(
         "This withdrawal has already been approved."
@@ -1436,8 +1627,10 @@ export default function Admin() {
     }
 
     if (
-      newStatus === "Rejected" &&
-      request.status === "Rejected"
+      newStatus ===
+        "Rejected" &&
+      request.status ===
+        "Rejected"
     ) {
       setMessage(
         "This withdrawal has already been rejected."
@@ -1469,15 +1662,21 @@ export default function Admin() {
 
     const availableReturns =
       savedReturns !== null
-        ? Number(savedReturns) || 0
+        ? Number(
+            savedReturns
+          ) || 0
         : 0;
 
     const withdrawAmount =
-      Number(request.amount || 0);
+      Number(
+        request.amount || 0
+      );
 
     if (
-      newStatus === "Approved" &&
-      withdrawAmount > availableReturns
+      newStatus ===
+        "Approved" &&
+      withdrawAmount >
+        availableReturns
     ) {
       setMessage(
         "Insufficient earned returns. Available: PKR " +
@@ -1486,7 +1685,10 @@ export default function Admin() {
       return;
     }
 
-    if (newStatus === "Approved") {
+    if (
+      newStatus ===
+      "Approved"
+    ) {
       const newBalance =
         availableReturns -
         withdrawAmount;
@@ -1558,7 +1760,8 @@ export default function Admin() {
     const updatedRequests =
       withdrawRequests.map(
         (item) =>
-          item.id === requestId
+          item.id ===
+          requestId
             ? updatedRequest
             : item
       );
@@ -1567,13 +1770,18 @@ export default function Admin() {
       updatedRequests
     );
 
-    if (newStatus === "Approved") {
+    if (
+      newStatus ===
+      "Approved"
+    ) {
       setMessage(
         "Withdrawal of PKR " +
           withdrawAmount.toLocaleString() +
           " for " +
-          (request.fullName ||
-            "user") +
+          (
+            request.fullName ||
+            "user"
+          ) +
           " approved successfully."
       );
     } else {
@@ -1583,10 +1791,6 @@ export default function Admin() {
     }
   };
 
-  /* =========================
-     DASHBOARD STATISTICS
-  ========================= */
-
   const stats = useMemo(() => {
     const totalDeposits =
       depositRequests.reduce(
@@ -1594,9 +1798,9 @@ export default function Admin() {
           sum +
           Number(
             item.amount ||
-            item.depositAmount ||
-            item.plan?.amount ||
-            0
+              item.depositAmount ||
+              item.plan?.amount ||
+              0
           ),
         0
       );
@@ -1605,16 +1809,17 @@ export default function Admin() {
       depositRequests
         .filter(
           (item) =>
-            item.status === "Approved"
+            item.status ===
+            "Approved"
         )
         .reduce(
           (sum, item) =>
             sum +
             Number(
               item.amount ||
-              item.depositAmount ||
-              item.plan?.amount ||
-              0
+                item.depositAmount ||
+                item.plan?.amount ||
+                0
             ),
           0
         );
@@ -1622,30 +1827,36 @@ export default function Admin() {
     const pendingDeposits =
       depositRequests.filter(
         (item) =>
-          item.status === "Pending"
+          item.status ===
+          "Pending"
       ).length;
 
     const pendingWithdrawals =
       withdrawRequests.filter(
         (item) =>
-          item.status === "Pending"
+          item.status ===
+          "Pending"
       ).length;
 
     const approvedWithdrawals =
       withdrawRequests
         .filter(
           (item) =>
-            item.status === "Approved"
+            item.status ===
+            "Approved"
         )
         .reduce(
           (sum, item) =>
             sum +
-            Number(item.amount || 0),
+            Number(
+              item.amount || 0
+            ),
           0
         );
 
     return {
-      users: users.length,
+      users:
+        users.length,
       totalDeposits,
       approvedDeposits,
       pendingDeposits,
@@ -1661,10 +1872,6 @@ export default function Admin() {
     depositRequests,
     withdrawRequests,
   ]);
-
-  /* =========================
-     GROUP ALL USER REQUESTS
-  ========================= */
 
   const groupedUsers = useMemo(() => {
     const groups = {};
@@ -1710,7 +1917,8 @@ export default function Admin() {
         );
 
         if (
-          groups[phone].fullName ===
+          groups[phone]
+            .fullName ===
             "User" &&
           (
             request.fullName ||
@@ -1727,7 +1935,8 @@ export default function Admin() {
         }
 
         if (
-          groups[phone].bankName ===
+          groups[phone]
+            .bankName ===
             "N/A" &&
           request.bankName
         ) {
@@ -1784,7 +1993,8 @@ export default function Admin() {
         );
 
         if (
-          groups[phone].fullName ===
+          groups[phone]
+            .fullName ===
             "User" &&
           (
             request.fullName ||
@@ -1797,7 +2007,8 @@ export default function Admin() {
         }
 
         if (
-          groups[phone].bankName ===
+          groups[phone]
+            .bankName ===
             "N/A" &&
           request.bankName
         ) {
@@ -1817,30 +2028,36 @@ export default function Admin() {
       }
     );
 
-    return Object.values(groups);
+    return Object.values(
+      groups
+    );
   }, [
     depositRequests,
     withdrawRequests,
   ]);
 
-  /* =========================
-     LOADING
-  ========================= */
-
   if (loading) {
     return (
       <div
         style={{
-          minHeight: "100vh",
-          background: PAGE_BG,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: NAVY,
+          minHeight:
+            "100vh",
+          background:
+            PAGE_BG,
+          display:
+            "flex",
+          alignItems:
+            "center",
+          justifyContent:
+            "center",
+          color:
+            NAVY,
           fontFamily:
             "Arial, sans-serif",
-          fontSize: "18px",
-          fontWeight: "700",
+          fontSize:
+            "18px",
+          fontWeight:
+            "700",
         }}
       >
         Loading Admin Panel...
@@ -1851,64 +2068,82 @@ export default function Admin() {
   return (
     <div
       style={{
-        minHeight: "100vh",
-        background: PAGE_BG,
-        color: "#ffffff",
+        minHeight:
+          "100vh",
+        background:
+          PAGE_BG,
+        color:
+          "#ffffff",
         fontFamily:
           "Arial, sans-serif",
-        padding: "25px",
-        boxSizing: "border-box",
+        padding:
+          "25px",
+        boxSizing:
+          "border-box",
       }}
     >
       <div
         style={{
-          maxWidth: "1250px",
-          margin: "0 auto",
+          maxWidth:
+            "1250px",
+          margin:
+            "0 auto",
         }}
       >
-        {/* =========================
-            HEADER
-        ========================= */}
-
         <div
           style={{
             background:
               "linear-gradient(135deg, #102A43 0%, #173B5A 100%)",
-            borderRadius: "22px",
+            borderRadius:
+              "22px",
             padding:
               "25px 28px",
             boxShadow:
               "0 14px 35px rgba(16, 42, 67, 0.18)",
-            marginBottom: "20px",
-            display: "flex",
-            alignItems: "center",
+            marginBottom:
+              "20px",
+            display:
+              "flex",
+            alignItems:
+              "center",
             justifyContent:
               "space-between",
-            gap: "20px",
-            flexWrap: "wrap",
+            gap:
+              "20px",
+            flexWrap:
+              "wrap",
           }}
         >
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "16px",
+              display:
+                "flex",
+              alignItems:
+                "center",
+              gap:
+                "16px",
             }}
           >
             <div
               style={{
-                width: "60px",
-                height: "60px",
-                borderRadius: "18px",
+                width:
+                  "60px",
+                height:
+                  "60px",
+                borderRadius:
+                  "18px",
                 background:
                   "rgba(255,255,255,0.10)",
                 border:
                   "1px solid rgba(255,255,255,0.12)",
-                display: "flex",
-                alignItems: "center",
+                display:
+                  "flex",
+                alignItems:
+                  "center",
                 justifyContent:
                   "center",
-                fontSize: "29px",
+                fontSize:
+                  "29px",
               }}
             >
               🛠️
@@ -1917,9 +2152,12 @@ export default function Admin() {
             <div>
               <h1
                 style={{
-                  margin: 0,
-                  fontSize: "29px",
-                  fontWeight: "800",
+                  margin:
+                    0,
+                  fontSize:
+                    "29px",
+                  fontWeight:
+                    "800",
                 }}
               >
                 Admin Panel
@@ -1929,8 +2167,10 @@ export default function Admin() {
                 style={{
                   margin:
                     "6px 0 0",
-                  color: LIGHT,
-                  fontSize: "14px",
+                  color:
+                    LIGHT,
+                  fontSize:
+                    "14px",
                 }}
               >
                 Manage Transport Hub
@@ -1949,36 +2189,42 @@ export default function Admin() {
                 "1px solid #36536D",
               background:
                 "#173B5A",
-              color: "#ffffff",
-              borderRadius: "11px",
+              color:
+                "#ffffff",
+              borderRadius:
+                "11px",
               padding:
                 "11px 17px",
-              fontSize: "13px",
-              fontWeight: "700",
-              cursor: "pointer",
+              fontSize:
+                "13px",
+              fontWeight:
+                "700",
+              cursor:
+                "pointer",
             }}
           >
             ← Dashboard
           </button>
         </div>
 
-        {/* =========================
-            STAT CARDS
-        ========================= */}
-
         <div
           style={{
-            display: "grid",
+            display:
+              "grid",
             gridTemplateColumns:
               "repeat(auto-fit, minmax(190px, 1fr))",
-            gap: "14px",
-            marginBottom: "20px",
+            gap:
+              "14px",
+            marginBottom:
+              "20px",
           }}
         >
           <StatCard
             icon="👥"
             title="Total Users"
-            value={stats.users}
+            value={
+              stats.users
+            }
           />
 
           <StatCard
@@ -1993,13 +2239,17 @@ export default function Admin() {
           <StatCard
             icon="⏳"
             title="Pending Deposits"
-            value={stats.pendingDeposits}
+            value={
+              stats.pendingDeposits
+            }
           />
 
           <StatCard
             icon="💸"
             title="Pending Withdrawals"
-            value={stats.pendingWithdrawals}
+            value={
+              stats.pendingWithdrawals
+            }
           />
 
           <StatCard
@@ -2012,22 +2262,25 @@ export default function Admin() {
           />
         </div>
 
-        {/* =========================
-            TABS
-        ========================= */}
-
         <div
           style={{
-            background: NAVY,
+            background:
+              NAVY,
             border:
               "1px solid " +
               BORDER,
-            borderRadius: "16px",
-            padding: "8px",
-            display: "flex",
-            gap: "7px",
-            marginBottom: "20px",
-            overflowX: "auto",
+            borderRadius:
+              "16px",
+            padding:
+              "8px",
+            display:
+              "flex",
+            gap:
+              "7px",
+            marginBottom:
+              "20px",
+            overflowX:
+              "auto",
           }}
         >
           <TabButton
@@ -2057,9 +2310,10 @@ export default function Admin() {
           >
             💳 Transactions
 
-            {(stats.pendingDeposits +
-              stats.pendingWithdrawals) >
-              0 && (
+            {(
+              stats.pendingDeposits +
+              stats.pendingWithdrawals
+            ) > 0 && (
               <Badge>
                 {stats.pendingDeposits +
                   stats.pendingWithdrawals}
@@ -2082,10 +2336,6 @@ export default function Admin() {
           </TabButton>
         </div>
 
-        {/* =========================
-            MESSAGE
-        ========================= */}
-
         {message && (
           <div
             style={{
@@ -2093,13 +2343,18 @@ export default function Admin() {
                 "rgba(143, 214, 148, 0.10)",
               border:
                 "1px solid rgba(143, 214, 148, 0.25)",
-              color: GREEN,
-              borderRadius: "13px",
+              color:
+                GREEN,
+              borderRadius:
+                "13px",
               padding:
                 "13px 15px",
-              marginBottom: "18px",
-              fontSize: "14px",
-              fontWeight: "600",
+              marginBottom:
+                "18px",
+              fontSize:
+                "14px",
+              fontWeight:
+                "600",
             }}
           >
             ✅ {message}
@@ -2109,13 +2364,18 @@ export default function Admin() {
                 setMessage("")
               }
               style={{
-                float: "right",
-                border: "none",
+                float:
+                  "right",
+                border:
+                  "none",
                 background:
                   "transparent",
-                color: GREEN,
-                cursor: "pointer",
-                fontSize: "16px",
+                color:
+                  GREEN,
+                cursor:
+                  "pointer",
+                fontSize:
+                  "16px",
               }}
             >
               ×
@@ -2123,18 +2383,16 @@ export default function Admin() {
           </div>
         )}
 
-        {/* =========================
-            OVERVIEW
-        ========================= */}
-
         {activeTab ===
           "overview" && (
           <div
             style={{
-              display: "grid",
+              display:
+                "grid",
               gridTemplateColumns:
                 "repeat(auto-fit, minmax(280px, 1fr))",
-              gap: "18px",
+              gap:
+                "18px",
             }}
           >
             <AdminCard
@@ -2205,10 +2463,6 @@ export default function Admin() {
               }
             />
 
-            {/* =========================
-                SUPPORT CHAT CARD
-            ========================= */}
-
             <AdminCard
               icon="💬"
               title="Support Chats"
@@ -2221,10 +2475,6 @@ export default function Admin() {
             />
           </div>
         )}
-
-        {/* =========================
-            COMBINED USER TRANSACTIONS
-        ========================= */}
 
         {activeTab ===
           "transactions" && (
@@ -2239,8 +2489,10 @@ export default function Admin() {
             0 ? (
               <div
                 style={{
-                  display: "grid",
-                  gap: "18px",
+                  display:
+                    "grid",
+                  gap:
+                    "18px",
                 }}
               >
                 {groupedUsers.map(
@@ -2271,7 +2523,8 @@ export default function Admin() {
                             "center",
                           justifyContent:
                             "space-between",
-                          gap: "15px",
+                          gap:
+                            "15px",
                           marginBottom:
                             "18px",
                           flexWrap:
@@ -2284,7 +2537,8 @@ export default function Admin() {
                               "flex",
                             alignItems:
                               "center",
-                            gap: "13px",
+                            gap:
+                              "13px",
                           }}
                         >
                           <div
@@ -2316,14 +2570,17 @@ export default function Admin() {
                           <div>
                             <h2
                               style={{
-                                margin: 0,
+                                margin:
+                                  0,
                                 color:
                                   "#ffffff",
                                 fontSize:
                                   "20px",
                               }}
                             >
-                              {user.fullName}
+                              {
+                                user.fullName
+                              }
                             </h2>
 
                             <p
@@ -2337,7 +2594,9 @@ export default function Admin() {
                               }}
                             >
                               📱{" "}
-                              {user.phone}
+                              {
+                                user.phone
+                              }
                             </p>
                           </div>
                         </div>
@@ -2438,8 +2697,6 @@ export default function Admin() {
                         />
                       </DetailsGrid>
 
-                      {/* DEPOSITS */}
-
                       {user.deposits
                         .length >
                         0 && (
@@ -2517,18 +2774,18 @@ export default function Admin() {
                                 const displayAmount =
                                   Number(
                                     requestPlan.amount ||
-                                    request.amount ||
-                                    request.depositAmount ||
-                                    0
+                                      request.amount ||
+                                      request.depositAmount ||
+                                      0
                                   );
 
                                 const displayWeekly =
                                   Number(
                                     requestPlan.weekly ||
-                                    request.weeklyReturn ||
-                                    request.dailyReturn ||
-                                    requestPlan.daily ||
-                                    0
+                                      request.weeklyReturn ||
+                                      request.dailyReturn ||
+                                      requestPlan.daily ||
+                                      0
                                   );
 
                                 return (
@@ -2807,8 +3064,6 @@ export default function Admin() {
                           </div>
                         </div>
                       )}
-
-                      {/* WITHDRAWALS */}
 
                       {user.withdrawals
                         .length >
@@ -3165,10 +3420,6 @@ export default function Admin() {
           </div>
         )}
 
-        {/* =========================
-            USERS
-        ========================= */}
-
         {activeTab ===
           "users" && (
           <div>
@@ -3188,7 +3439,10 @@ export default function Admin() {
                 }}
               >
                 {users.map(
-                  (user, index) => (
+                  (
+                    user,
+                    index
+                  ) => (
                     <div
                       key={
                         user.phone ||
@@ -3334,16 +3588,16 @@ export default function Admin() {
           </div>
         )}
 
-        {/* =========================
-            FOOTER
-        ========================= */}
-
         <div
           style={{
-            marginTop: "25px",
-            textAlign: "center",
-            color: "#71869A",
-            fontSize: "12px",
+            marginTop:
+              "25px",
+            textAlign:
+              "center",
+            color:
+              "#71869A",
+            fontSize:
+              "12px",
           }}
         >
           Transport Hub Admin Panel
@@ -3353,10 +3607,6 @@ export default function Admin() {
   );
 }
 
-/* =========================
-   STAT CARD
-========================= */
-
 function StatCard({
   icon,
   title,
@@ -3365,36 +3615,50 @@ function StatCard({
   return (
     <div
       style={{
-        background: NAVY,
+        background:
+          NAVY,
         border:
           "1px solid " +
           BORDER,
-        borderRadius: "17px",
-        padding: "18px",
+        borderRadius:
+          "17px",
+        padding:
+          "18px",
         boxShadow:
           "0 8px 22px rgba(16,42,67,0.12)",
       }}
     >
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
+          display:
+            "flex",
+          alignItems:
+            "center",
+          gap:
+            "12px",
         }}
       >
         <div
           style={{
-            width: "43px",
-            height: "43px",
-            borderRadius: "13px",
-            background: NAVY_2,
+            width:
+              "43px",
+            height:
+              "43px",
+            borderRadius:
+              "13px",
+            background:
+              NAVY_2,
             border:
               "1px solid " +
               BORDER,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "20px",
+            display:
+              "flex",
+            alignItems:
+              "center",
+            justifyContent:
+              "center",
+            fontSize:
+              "20px",
           }}
         >
           {icon}
@@ -3402,14 +3666,18 @@ function StatCard({
 
         <div
           style={{
-            minWidth: 0,
+            minWidth:
+              0,
           }}
         >
           <div
             style={{
-              color: MUTED,
-              fontSize: "11px",
-              marginBottom: "5px",
+              color:
+                MUTED,
+              fontSize:
+                "11px",
+              marginBottom:
+                "5px",
               textTransform:
                 "uppercase",
               letterSpacing:
@@ -3421,8 +3689,10 @@ function StatCard({
 
           <strong
             style={{
-              color: "#ffffff",
-              fontSize: "18px",
+              color:
+                "#ffffff",
+              fontSize:
+                "18px",
               wordBreak:
                 "break-word",
             }}
@@ -3435,10 +3705,6 @@ function StatCard({
   );
 }
 
-/* =========================
-   TAB BUTTON
-========================= */
-
 function TabButton({
   active,
   onClick,
@@ -3448,24 +3714,34 @@ function TabButton({
     <button
       onClick={onClick}
       style={{
-        border: "none",
-        borderRadius: "10px",
+        border:
+          "none",
+        borderRadius:
+          "10px",
         padding:
           "10px 14px",
-        background: active
-          ? "#29435A"
-          : "transparent",
-        color: active
-          ? "#ffffff"
-          : MUTED,
-        fontSize: "13px",
-        fontWeight: "700",
-        cursor: "pointer",
+        background:
+          active
+            ? "#29435A"
+            : "transparent",
+        color:
+          active
+            ? "#ffffff"
+            : MUTED,
+        fontSize:
+          "13px",
+        fontWeight:
+          "700",
+        cursor:
+          "pointer",
         whiteSpace:
           "nowrap",
-        display: "flex",
-        alignItems: "center",
-        gap: "7px",
+        display:
+          "flex",
+        alignItems:
+          "center",
+        gap:
+          "7px",
       }}
     >
       {children}
@@ -3473,26 +3749,34 @@ function TabButton({
   );
 }
 
-/* =========================
-   BADGE
-========================= */
-
-function Badge({ children }) {
+function Badge({
+  children,
+}) {
   return (
     <span
       style={{
-        minWidth: "19px",
-        height: "19px",
-        padding: "0 5px",
-        borderRadius: "10px",
-        background: "#8FD694",
-        color: "#102A43",
-        fontSize: "10px",
-        display: "inline-flex",
-        alignItems: "center",
+        minWidth:
+          "19px",
+        height:
+          "19px",
+        padding:
+          "0 5px",
+        borderRadius:
+          "10px",
+        background:
+          "#8FD694",
+        color:
+          "#102A43",
+        fontSize:
+          "10px",
+        display:
+          "inline-flex",
+        alignItems:
+          "center",
         justifyContent:
           "center",
-        fontWeight: "800",
+        fontWeight:
+          "800",
       }}
     >
       {children}
@@ -3500,19 +3784,17 @@ function Badge({ children }) {
   );
 }
 
-/* =========================
-   STATUS BADGE
-========================= */
-
 function StatusBadge({
   status,
 }) {
   const style =
-    status === "Approved"
+    status ===
+    "Approved"
       ? {
           background:
             "rgba(143,214,148,0.14)",
-          color: GREEN,
+          color:
+            GREEN,
           border:
             "1px solid rgba(143,214,148,0.25)",
         }
@@ -3521,14 +3803,16 @@ function StatusBadge({
       ? {
           background:
             "rgba(255,159,150,0.14)",
-          color: RED,
+          color:
+            RED,
           border:
             "1px solid rgba(255,159,150,0.25)",
         }
       : {
           background:
             "rgba(244,215,122,0.14)",
-          color: GOLD,
+          color:
+            GOLD,
           border:
             "1px solid rgba(244,215,122,0.25)",
         };
@@ -3549,14 +3833,11 @@ function StatusBadge({
           "nowrap",
       }}
     >
-      {status || "Pending"}
+      {status ||
+        "Pending"}
     </span>
   );
 }
-
-/* =========================
-   DETAILS GRID
-========================= */
 
 function DetailsGrid({
   children,
@@ -3564,20 +3845,18 @@ function DetailsGrid({
   return (
     <div
       style={{
-        display: "grid",
+        display:
+          "grid",
         gridTemplateColumns:
           "repeat(auto-fit, minmax(190px, 1fr))",
-        gap: "10px",
+        gap:
+          "10px",
       }}
     >
       {children}
     </div>
   );
 }
-
-/* =========================
-   DETAIL
-========================= */
 
 function Detail({
   label,
@@ -3587,7 +3866,8 @@ function Detail({
   return (
     <div
       style={{
-        background: NAVY_2,
+        background:
+          NAVY_2,
         border:
           "1px solid " +
           BORDER,
@@ -3595,14 +3875,18 @@ function Detail({
           "11px",
         padding:
           "12px",
-        minWidth: 0,
+        minWidth:
+          0,
       }}
     >
       <span
         style={{
-          display: "block",
-          color: MUTED,
-          fontSize: "10px",
+          display:
+            "block",
+          color:
+            MUTED,
+          fontSize:
+            "10px",
           textTransform:
             "uppercase",
           letterSpacing:
@@ -3616,14 +3900,18 @@ function Detail({
 
       <strong
         style={{
-          display: "block",
-          color: highlight
-            ? GREEN
-            : "#ffffff",
-          fontSize: "13px",
+          display:
+            "block",
+          color:
+            highlight
+              ? GREEN
+              : "#ffffff",
+          fontSize:
+            "13px",
           wordBreak:
             "break-word",
-          lineHeight: "1.4",
+          lineHeight:
+            "1.4",
         }}
       >
         {value}
@@ -3632,25 +3920,25 @@ function Detail({
   );
 }
 
-/* =========================
-   ACTION BUTTON
-========================= */
-
 function ActionButton({
   type,
   onClick,
   children,
 }) {
   const isApprove =
-    type === "approve";
+    type ===
+    "approve";
 
   return (
     <button
-      onClick={onClick}
+      onClick={
+        onClick
+      }
       style={{
-        border: isApprove
-          ? "1px solid rgba(143,214,148,0.35)"
-          : "1px solid rgba(255,159,150,0.30)",
+        border:
+          isApprove
+            ? "1px solid rgba(143,214,148,0.35)"
+            : "1px solid rgba(255,159,150,0.30)",
         borderRadius:
           "10px",
         padding:
@@ -3676,10 +3964,6 @@ function ActionButton({
   );
 }
 
-/* =========================
-   SECTION HEADER
-========================= */
-
 function SectionHeader({
   icon,
   title,
@@ -3688,7 +3972,8 @@ function SectionHeader({
   return (
     <div
       style={{
-        background: NAVY,
+        background:
+          NAVY,
         border:
           "1px solid " +
           BORDER,
@@ -3702,13 +3987,16 @@ function SectionHeader({
           "flex",
         alignItems:
           "center",
-        gap: "13px",
+        gap:
+          "13px",
       }}
     >
       <div
         style={{
-          width: "45px",
-          height: "45px",
+          width:
+            "45px",
+          height:
+            "45px",
           borderRadius:
             "13px",
           background:
@@ -3732,8 +4020,10 @@ function SectionHeader({
       <div>
         <h2
           style={{
-            margin: 0,
-            color: "#ffffff",
+            margin:
+              0,
+            color:
+              "#ffffff",
             fontSize:
               "20px",
           }}
@@ -3745,7 +4035,8 @@ function SectionHeader({
           style={{
             margin:
               "4px 0 0",
-            color: MUTED,
+            color:
+              MUTED,
             fontSize:
               "12px",
           }}
@@ -3757,10 +4048,6 @@ function SectionHeader({
   );
 }
 
-/* =========================
-   ADMIN CARD
-========================= */
-
 function AdminCard({
   icon,
   title,
@@ -3771,7 +4058,8 @@ function AdminCard({
   return (
     <div
       style={{
-        background: NAVY,
+        background:
+          NAVY,
         border:
           "1px solid " +
           BORDER,
@@ -3785,8 +4073,10 @@ function AdminCard({
     >
       <div
         style={{
-          width: "48px",
-          height: "48px",
+          width:
+            "48px",
+          height:
+            "48px",
           borderRadius:
             "14px",
           background:
@@ -3838,7 +4128,9 @@ function AdminCard({
       </p>
 
       <button
-        onClick={onClick}
+        onClick={
+          onClick
+        }
         style={{
           border:
             "1px solid " +
@@ -3865,10 +4157,6 @@ function AdminCard({
   );
 }
 
-/* =========================
-   EMPTY STATE
-========================= */
-
 function EmptyState({
   icon,
   title,
@@ -3877,7 +4165,8 @@ function EmptyState({
   return (
     <div
       style={{
-        background: NAVY,
+        background:
+          NAVY,
         border:
           "1px solid " +
           BORDER,
@@ -3893,8 +4182,10 @@ function EmptyState({
     >
       <div
         style={{
-          width: "65px",
-          height: "65px",
+          width:
+            "65px",
+          height:
+            "65px",
           borderRadius:
             "18px",
           background:
@@ -3932,7 +4223,8 @@ function EmptyState({
 
       <p
         style={{
-          margin: 0,
+          margin:
+            0,
           color:
             MUTED,
           fontSize:

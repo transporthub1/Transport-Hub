@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabase";
 
 export default function Register() {
+  const router = useRouter();
+
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [referralCode, setReferralCode] = useState("");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -51,7 +56,7 @@ export default function Register() {
     while (
       existingUsers.some(
         (user) =>
-          normalizeCode(user.referralCode) ===
+          normalizeCode(user.referral_code) ===
           normalizeCode(finalCode)
       )
     ) {
@@ -67,27 +72,18 @@ export default function Register() {
       return null;
     }
 
-    const normalizedReferral =
-      normalizeCode(cleanReferral);
+    const normalizedReferral = normalizeCode(cleanReferral);
 
-    const referrer = users.find((user) => {
-      const possibleCodes = [
-        user.referralCode,
-        user.referral,
-        user.referralId,
-        user.myReferralCode,
-      ];
-
-      return possibleCodes.some(
-        (code) =>
-          normalizeCode(code) === normalizedReferral
-      );
-    });
-
-    return referrer || null;
+    return (
+      users.find(
+        (user) =>
+          normalizeCode(user.referral_code) ===
+          normalizedReferral
+      ) || null
+    );
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     setMessage("");
 
     const cleanName = fullName.trim();
@@ -115,9 +111,7 @@ export default function Register() {
     }
 
     if (password.length < 6) {
-      setMessage(
-        "Password must be at least 6 characters."
-      );
+      setMessage("Password must be at least 6 characters.");
       return;
     }
 
@@ -126,161 +120,224 @@ export default function Register() {
       return;
     }
 
-    let users = [];
+    setLoading(true);
 
     try {
-      const savedUsers =
-        localStorage.getItem("transportUsers");
+      const { data: existingUsers, error: usersError } =
+        await supabase
+          .from("users")
+          .select("*");
 
-      if (savedUsers) {
-        const parsedUsers = JSON.parse(savedUsers);
-
-        if (Array.isArray(parsedUsers)) {
-          users = parsedUsers;
-        }
+      if (usersError) {
+        console.log("Users load error:", usersError);
+        setLoading(false);
+        setMessage(
+          "Unable to connect to the server. Please try again."
+        );
+        return;
       }
-    } catch (error) {
-      users = [];
-    }
 
-    const existingUser = users.find(
-      (user) =>
-        normalizePhone(user.phone) === cleanPhone
-    );
+      const users = Array.isArray(existingUsers)
+        ? existingUsers
+        : [];
 
-    if (existingUser) {
-      setMessage(
-        "An account with this number already exists."
+      const existingUser = users.find(
+        (user) =>
+          normalizePhone(user.phone) === cleanPhone
       );
-      return;
-    }
 
-    const referrer = findReferrer(
-      cleanReferral,
-      users
-    );
+      if (existingUser) {
+        setLoading(false);
+        setMessage(
+          "An account with this number already exists."
+        );
+        return;
+      }
 
-    const newReferralCode =
-      generateReferralCode(
-        cleanPhone,
-        cleanName,
+      const referrer = findReferrer(
+        cleanReferral,
         users
       );
 
-    const createdAt =
-      new Date().toISOString();
+      const newReferralCode =
+        generateReferralCode(
+          cleanPhone,
+          cleanName,
+          users
+        );
 
-    const newUser = {
-      id:
-        "user-" +
-        Date.now() +
-        "-" +
-        Math.random()
-          .toString(36)
-          .substring(2, 8),
+      const created_at = new Date().toISOString();
 
-      fullName: cleanName,
+      const newUser = {
+        id:
+          "user-" +
+          Date.now() +
+          "-" +
+          Math.random()
+            .toString(36)
+            .substring(2, 8),
 
-      phone: cleanPhone,
+        full_name: cleanName,
 
-      password: password,
+        phone: cleanPhone,
 
-      balance: 0,
+        password: password,
 
-      referralBonus: 0,
+        balance: 0,
 
-      totalReferralBonus: 0,
+        referral_bonus: 0,
 
-      referralCode: newReferralCode,
+        total_referral_bonus: 0,
 
-      referredBy:
-        cleanReferral || null,
+        referral_code: newReferralCode,
 
-      referrerCode:
-        cleanReferral || null,
+        referred_by:
+          cleanReferral || null,
 
-      referrerPhone:
-        referrer
-          ? normalizePhone(referrer.phone)
-          : null,
+        referrer_code:
+          cleanReferral || null,
 
-      createdAt: createdAt,
-    };
+        referrer_phone:
+          referrer
+            ? normalizePhone(referrer.phone)
+            : null,
 
-    users.push(newUser);
+        created_at: created_at,
+      };
 
-    localStorage.setItem(
-      "transportUsers",
-      JSON.stringify(users)
-    );
+      const { data: insertedUser, error: insertError } =
+        await supabase
+          .from("users")
+          .insert([newUser])
+          .select()
+          .single();
 
-    localStorage.setItem(
-      "transportUser",
-      JSON.stringify(newUser)
-    );
+      if (insertError) {
+        console.log(
+          "Supabase registration error:",
+          insertError
+        );
 
-    localStorage.setItem(
-      "transportLoggedIn",
-      "false"
-    );
+        setLoading(false);
 
-    if (cleanReferral) {
-      let referrals = [];
+        setMessage(
+          insertError.message ||
+            "Registration failed. Please try again."
+        );
 
-      try {
-        const savedReferrals =
-          localStorage.getItem(
-            "transportReferrals"
-          );
-
-        if (savedReferrals) {
-          const parsedReferrals =
-            JSON.parse(savedReferrals);
-
-          if (Array.isArray(parsedReferrals)) {
-            referrals = parsedReferrals;
-          }
-        }
-      } catch (error) {
-        referrals = [];
+        return;
       }
 
-      referrals.push({
-        id: newUser.id,
+      const savedUser = insertedUser || newUser;
 
-        fullName: newUser.fullName,
+      const localUser = {
+        ...savedUser,
 
-        phone: newUser.phone,
+        fullName: savedUser.full_name,
 
-        referredBy: cleanReferral,
+        referralBonus:
+          savedUser.referral_bonus,
 
-        referrerCode: cleanReferral,
+        totalReferralBonus:
+          savedUser.total_referral_bonus,
+
+        referralCode:
+          savedUser.referral_code,
+
+        referredBy:
+          savedUser.referred_by,
+
+        referrerCode:
+          savedUser.referrer_code,
 
         referrerPhone:
-          newUser.referrerPhone,
+          savedUser.referrer_phone,
 
-        createdAt: newUser.createdAt,
-      });
+        createdAt:
+          savedUser.created_at,
+      };
 
       localStorage.setItem(
-        "transportReferrals",
-        JSON.stringify(referrals)
+        "transportUser",
+        JSON.stringify(localUser)
+      );
+
+      localStorage.setItem(
+        "transportCurrentUser",
+        JSON.stringify(localUser)
+      );
+
+      localStorage.setItem(
+        "transportLoggedIn",
+        "false"
+      );
+
+      localStorage.setItem(
+        "transportReferralCode_" +
+          cleanPhone,
+        newReferralCode
+      );
+
+      if (cleanReferral) {
+        const referralData = {
+          id: savedUser.id,
+          fullName: cleanName,
+          phone: cleanPhone,
+          referredBy: cleanReferral,
+          referrerCode: cleanReferral,
+          referrerPhone:
+            savedUser.referrer_phone,
+          createdAt:
+            savedUser.created_at,
+        };
+
+        let referrals = [];
+
+        try {
+          const savedReferrals =
+            localStorage.getItem(
+              "transportReferrals"
+            );
+
+          if (savedReferrals) {
+            const parsedReferrals =
+              JSON.parse(savedReferrals);
+
+            if (Array.isArray(parsedReferrals)) {
+              referrals = parsedReferrals;
+            }
+          }
+        } catch (error) {
+          referrals = [];
+        }
+
+        referrals.push(referralData);
+
+        localStorage.setItem(
+          "transportReferrals",
+          JSON.stringify(referrals)
+        );
+      }
+
+      setMessage(
+        "Registration successful! Redirecting to login..."
+      );
+
+      setTimeout(() => {
+        router.push("/login");
+      }, 1200);
+    } catch (error) {
+      console.log(
+        "Registration error:",
+        error
+      );
+
+      setLoading(false);
+
+      setMessage(
+        "Something went wrong. Please try again."
       );
     }
-
-    localStorage.setItem(
-      "transportReferralCode_" +
-        cleanPhone,
-      newReferralCode
-    );
-
-    setMessage(
-      "Registration successful! Redirecting to login..."
-    );
-
-    setTimeout(() => {
-      window.location.href = "/login";
-    }, 1200);
   };
 
   const inputStyle = {
@@ -327,7 +384,6 @@ export default function Register() {
           border: "1px solid #1E3A56",
         }}
       >
-        {/* Header */}
         <div
           style={{
             textAlign: "center",
@@ -375,7 +431,6 @@ export default function Register() {
           </p>
         </div>
 
-        {/* Full Name */}
         <div style={{ marginBottom: "17px" }}>
           <label style={labelStyle}>
             Full Name
@@ -392,7 +447,6 @@ export default function Register() {
           />
         </div>
 
-        {/* Mobile Number */}
         <div style={{ marginBottom: "17px" }}>
           <label style={labelStyle}>
             Mobile Number
@@ -410,7 +464,6 @@ export default function Register() {
           />
         </div>
 
-        {/* Password */}
         <div style={{ marginBottom: "17px" }}>
           <label style={labelStyle}>
             Password
@@ -427,7 +480,6 @@ export default function Register() {
           />
         </div>
 
-        {/* Confirm Password */}
         <div style={{ marginBottom: "17px" }}>
           <label style={labelStyle}>
             Confirm Password
@@ -444,7 +496,6 @@ export default function Register() {
           />
         </div>
 
-        {/* Referral Code */}
         <div style={{ marginBottom: "22px" }}>
           <label style={labelStyle}>
             Referral Code{" "}
@@ -469,7 +520,6 @@ export default function Register() {
           />
         </div>
 
-        {/* Message */}
         {message && (
           <div
             style={{
@@ -496,29 +546,34 @@ export default function Register() {
           </div>
         )}
 
-        {/* Register Button */}
         <button
           type="button"
           onClick={handleRegister}
+          disabled={loading}
           style={{
             width: "100%",
             padding: "14px",
             border: "none",
             borderRadius: "11px",
-            background:
-              "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
+            background: loading
+              ? "#536B7D"
+              : "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
             color: "#FFFFFF",
             fontSize: "16px",
             fontWeight: "700",
-            cursor: "pointer",
-            boxShadow:
-              "0 6px 18px rgba(46,107,74,0.25)",
+            cursor: loading
+              ? "not-allowed"
+              : "pointer",
+            boxShadow: loading
+              ? "none"
+              : "0 6px 18px rgba(46,107,74,0.25)",
           }}
         >
-          Create Account
+          {loading
+            ? "Creating Account..."
+            : "Create Account"}
         </button>
 
-        {/* Login */}
         <div
           style={{
             textAlign: "center",
