@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export default function Login() {
   const [phone, setPhone] = useState("");
@@ -8,10 +9,14 @@ export default function Login() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const normalizePhone = (value) => {
+    return String(value || "").replace(/\D/g, "");
+  };
+
+  const handleLogin = async () => {
     setMessage("");
 
-    const cleanPhone = phone.trim();
+    const cleanPhone = normalizePhone(phone);
 
     if (!cleanPhone || !password) {
       setMessage("Please enter your mobile number and password.");
@@ -21,33 +26,48 @@ export default function Login() {
     setLoading(true);
 
     try {
-      let users = [];
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("phone", cleanPhone)
+        .eq("password", password)
+        .maybeSingle();
 
-      const savedUsers = localStorage.getItem("transportUsers");
+      if (error) {
+        console.log("Supabase login error:", error);
 
-      if (savedUsers) {
-        try {
-          const parsedUsers = JSON.parse(savedUsers);
-
-          if (Array.isArray(parsedUsers)) {
-            users = parsedUsers;
-          }
-        } catch (error) {
-          users = [];
-        }
+        setLoading(false);
+        setMessage(
+          "Unable to connect to the server. Please try again."
+        );
+        return;
       }
 
-      const user = users.find(
-        (item) =>
-          item.phone === cleanPhone &&
-          item.password === password
-      );
-
-      if (!user) {
+      if (!data) {
         setLoading(false);
         setMessage("Invalid mobile number or password.");
         return;
       }
+
+      const user = {
+        ...data,
+
+        fullName: data.full_name,
+
+        referralBonus: data.referral_bonus,
+
+        totalReferralBonus: data.total_referral_bonus,
+
+        referralCode: data.referral_code,
+
+        referredBy: data.referred_by,
+
+        referrerCode: data.referrer_code,
+
+        referrerPhone: data.referrer_phone,
+
+        createdAt: data.created_at,
+      };
 
       localStorage.setItem(
         "transportUser",
@@ -64,12 +84,19 @@ export default function Login() {
         "true"
       );
 
+      localStorage.setItem(
+        "transportReferralCode_" + cleanPhone,
+        data.referral_code || ""
+      );
+
       setMessage("Login successful! Redirecting...");
 
       setTimeout(() => {
         window.location.href = "/";
       }, 700);
     } catch (error) {
+      console.log("Login error:", error);
+
       setLoading(false);
       setMessage(
         "Something went wrong. Please try again."
@@ -121,7 +148,6 @@ export default function Login() {
           border: "1px solid #1E3A56",
         }}
       >
-        {/* Header */}
         <div
           style={{
             textAlign: "center",
@@ -169,7 +195,6 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Mobile Number */}
         <div style={{ marginBottom: "18px" }}>
           <label style={labelStyle}>
             Mobile Number
@@ -185,7 +210,6 @@ export default function Login() {
           />
         </div>
 
-        {/* Password */}
         <div style={{ marginBottom: "20px" }}>
           <label style={labelStyle}>
             Password
@@ -205,7 +229,6 @@ export default function Login() {
           />
         </div>
 
-        {/* Message */}
         {message && (
           <div
             style={{
@@ -229,7 +252,6 @@ export default function Login() {
           </div>
         )}
 
-        {/* Login Button */}
         <button
           type="button"
           onClick={handleLogin}
@@ -256,7 +278,6 @@ export default function Login() {
           {loading ? "Logging In..." : "Login"}
         </button>
 
-        {/* Register */}
         <div
           style={{
             textAlign: "center",
