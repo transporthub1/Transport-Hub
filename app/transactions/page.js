@@ -20,9 +20,21 @@ function normalizePhone(value) {
 
 function formatTransactionDate(value) {
   if (!value) return "N/A";
+
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 function getTransactionDate(transaction) {
@@ -31,21 +43,17 @@ function getTransactionDate(transaction) {
     transaction?.createdAt ||
     transaction?.created_at ||
     transaction?.submittedAt ||
+    transaction?.submitted_at ||
     0
   );
 }
 
 function getTransactionTimestamp(transaction) {
-  const value = getTransactionDate(
-    transaction
-  );
+  const value = getTransactionDate(transaction);
 
-  const time =
-    new Date(value).getTime();
+  const time = new Date(value).getTime();
 
-  return Number.isNaN(time)
-    ? 0
-    : time;
+  return Number.isNaN(time) ? 0 : time;
 }
 
 function getTransactionType(transaction) {
@@ -81,21 +89,13 @@ function normalizeTransaction(transaction) {
     transaction?.type ||
     "Transaction";
 
-  if (
-    originalType.includes("deposit")
-  ) {
+  if (originalType.includes("deposit")) {
     type = "Deposit";
-  } else if (
-    originalType.includes("withdraw")
-  ) {
+  } else if (originalType.includes("withdraw")) {
     type = "Withdraw";
-  } else if (
-    originalType.includes("return")
-  ) {
+  } else if (originalType.includes("return")) {
     type = "Weekly Return";
-  } else if (
-    originalType.includes("referral")
-  ) {
+  } else if (originalType.includes("referral")) {
     type = "Referral Bonus";
   }
 
@@ -107,11 +107,9 @@ function normalizeTransaction(transaction) {
     returnType:
       transaction?.returnType ||
       transaction?.return_type ||
-      (
-        originalType.includes("return")
-          ? "Weekly"
-          : undefined
-      ),
+      (originalType.includes("return")
+        ? "Weekly"
+        : undefined),
 
     amount: Number(
       transaction?.amount || 0
@@ -126,12 +124,15 @@ function normalizeTransaction(transaction) {
       transaction?.createdAt ||
       transaction?.created_at ||
       transaction?.submittedAt ||
+      transaction?.submitted_at ||
       "N/A",
 
     createdAt:
       transaction?.createdAt ||
       transaction?.created_at ||
       transaction?.date ||
+      transaction?.submittedAt ||
+      transaction?.submitted_at ||
       null,
 
     planName:
@@ -148,18 +149,6 @@ function normalizeTransaction(transaction) {
 /*
  * --------------------------------------------------
  * REMOVE DUPLICATE WITHDRAWALS
- * --------------------------------------------------
- *
- * If the same withdrawal appears locally twice:
- *
- * Pending PKR 33,750
- * Approved PKR 33,750
- *
- * keep the processed record and remove the old
- * Pending duplicate.
- *
- * This also works when Supabase transactions are
- * temporarily empty.
  * --------------------------------------------------
  */
 function removeDuplicateWithdrawals(
@@ -214,9 +203,6 @@ function removeDuplicateWithdrawals(
             ""
         ).toLowerCase();
 
-      /*
-       * Only remove old Pending withdrawal records.
-       */
       if (
         status !==
         "pending"
@@ -235,14 +221,10 @@ function removeDuplicateWithdrawals(
           transaction?.phone ||
             transaction?.userPhone ||
             transaction?.mobile ||
+            transaction?.user_phone ||
             ""
         );
 
-      /*
-       * If a processed withdrawal exists with
-       * the same amount and same user, the Pending
-       * one is considered the duplicate.
-       */
       const matchingProcessed =
         processedWithdrawals.some(
           (processed) => {
@@ -468,6 +450,7 @@ export default function Transactions() {
                         transaction?.phone ||
                           transaction?.userPhone ||
                           transaction?.mobile ||
+                          transaction?.user_phone ||
                           ""
                       );
 
@@ -516,9 +499,6 @@ export default function Transactions() {
               return false;
             }
 
-            /*
-             * Exact ID match.
-             */
             if (
               localTransaction.id
             ) {
@@ -541,11 +521,6 @@ export default function Transactions() {
               }
             }
 
-            /*
-             * If Supabase has a processed
-             * withdrawal with same amount,
-             * don't show an old local Pending copy.
-             */
             const localType =
               getTransactionType(
                 localTransaction
@@ -576,6 +551,7 @@ export default function Transactions() {
                     localTransaction?.phone ||
                       localTransaction?.userPhone ||
                       localTransaction?.mobile ||
+                      localTransaction?.user_phone ||
                       ""
                   );
 
@@ -737,8 +713,9 @@ export default function Transactions() {
       );
 
       /*
-       * Final cleanup in case a duplicate survives
-       * the merge process.
+       * --------------------------------------------------
+       * FINAL CLEANUP
+       * --------------------------------------------------
        */
       const deduplicatedTransactions =
         removeDuplicateWithdrawals(
@@ -748,7 +725,9 @@ export default function Transactions() {
         );
 
       /*
-       * Newest first.
+       * --------------------------------------------------
+       * NEWEST FIRST
+       * --------------------------------------------------
        */
       deduplicatedTransactions.sort(
         (a, b) =>
@@ -761,7 +740,9 @@ export default function Transactions() {
       );
 
       /*
-       * Save cleaned result into local cache.
+       * --------------------------------------------------
+       * SAVE CLEANED RESULT
+       * --------------------------------------------------
        */
       if (
         phone
@@ -883,6 +864,10 @@ export default function Transactions() {
               "18px",
             border:
               "1px solid #1E3A56",
+            boxSizing:
+              "border-box",
+            minWidth:
+              0,
           }}
         >
           <div
@@ -910,7 +895,14 @@ export default function Transactions() {
             📊
           </div>
 
-          <div>
+          <div
+            style={{
+              minWidth:
+                0,
+              overflow:
+                "hidden",
+            }}
+          >
             <h1
               style={{
                 margin:
@@ -921,6 +913,8 @@ export default function Transactions() {
                   "800",
                 letterSpacing:
                   "-0.5px",
+                overflowWrap:
+                  "anywhere",
               }}
             >
               Transaction History
@@ -934,6 +928,8 @@ export default function Transactions() {
                   "15px",
                 color:
                   "#C9D8E6",
+                overflowWrap:
+                  "anywhere",
               }}
             >
               View your deposits and withdrawals
@@ -953,6 +949,10 @@ export default function Transactions() {
                 "column",
               gap:
                 "15px",
+              width:
+                "100%",
+              minWidth:
+                0,
             }}
           >
             {transactions.map(
@@ -1133,9 +1133,13 @@ export default function Transactions() {
                       "Transaction";
 
                 const displayDate =
-                  normalized.date ||
-                  normalized.createdAt ||
-                  "N/A";
+                  formatTransactionDate(
+                    normalized.date ||
+                      normalized.createdAt ||
+                      normalized.created_at ||
+                      normalized.submittedAt ||
+                      normalized.submitted_at
+                  );
 
                 return (
                   <div
@@ -1155,6 +1159,14 @@ export default function Transactions() {
                         "20px",
                       boxShadow:
                         "0 8px 22px rgba(16, 42, 67, 0.16)",
+                      width:
+                        "100%",
+                      minWidth:
+                        0,
+                      boxSizing:
+                        "border-box",
+                      overflow:
+                        "hidden",
                     }}
                   >
 
@@ -1172,6 +1184,8 @@ export default function Transactions() {
                           "12px",
                         marginBottom:
                           "17px",
+                        minWidth:
+                          0,
                       }}
                     >
 
@@ -1183,6 +1197,12 @@ export default function Transactions() {
                             "center",
                           gap:
                             "12px",
+                          minWidth:
+                            0,
+                          flex:
+                            1,
+                          overflow:
+                            "hidden",
                         }}
                       >
                         <div
@@ -1212,7 +1232,14 @@ export default function Transactions() {
                           }
                         </div>
 
-                        <div>
+                        <div
+                          style={{
+                            minWidth:
+                              0,
+                            overflow:
+                              "hidden",
+                          }}
+                        >
                           <strong
                             style={{
                               display:
@@ -1223,6 +1250,8 @@ export default function Transactions() {
                                 colors.title,
                               textTransform:
                                 "capitalize",
+                              overflowWrap:
+                                "anywhere",
                             }}
                           >
                             {
@@ -1275,6 +1304,8 @@ export default function Transactions() {
                             "nowrap",
                           border:
                             "1px solid rgba(255,255,255,0.08)",
+                          flexShrink:
+                            0,
                         }}
                       >
                         {
@@ -1295,6 +1326,12 @@ export default function Transactions() {
                           "repeat(2, minmax(0, 1fr))",
                         gap:
                           "11px",
+                        width:
+                          "100%",
+                        minWidth:
+                          0,
+                        boxSizing:
+                          "border-box",
                       }}
                     >
 
@@ -1311,6 +1348,14 @@ export default function Transactions() {
                             "12px",
                           padding:
                             "13px 14px",
+                          minWidth:
+                            0,
+                          width:
+                            "100%",
+                          boxSizing:
+                            "border-box",
+                          overflow:
+                            "hidden",
                         }}
                       >
                         <span
@@ -1340,6 +1385,10 @@ export default function Transactions() {
                               "17px",
                             color:
                               colors.amount,
+                            overflowWrap:
+                              "anywhere",
+                            wordBreak:
+                              "break-word",
                           }}
                         >
                           PKR{" "}
@@ -1350,7 +1399,7 @@ export default function Transactions() {
                         </strong>
                       </div>
 
-                      {/* DATE */}
+                      {/* DATE & TIME */}
 
                       <div
                         style={{
@@ -1363,6 +1412,16 @@ export default function Transactions() {
                             "12px",
                           padding:
                             "13px 14px",
+                          gridColumn:
+                            "1 / -1",
+                          minWidth:
+                            0,
+                          width:
+                            "100%",
+                          boxSizing:
+                            "border-box",
+                          overflow:
+                            "hidden",
                         }}
                       >
                         <span
@@ -1388,12 +1447,24 @@ export default function Transactions() {
                           style={{
                             display:
                               "block",
+                            width:
+                              "100%",
+                            maxWidth:
+                              "100%",
                             fontSize:
                               "13px",
                             color:
                               "#ffffff",
                             lineHeight:
-                              "1.4",
+                              "1.5",
+                            whiteSpace:
+                              "normal",
+                            overflowWrap:
+                              "anywhere",
+                            wordBreak:
+                              "break-word",
+                            boxSizing:
+                              "border-box",
                           }}
                         >
                           {
@@ -1418,6 +1489,14 @@ export default function Transactions() {
                               "13px 14px",
                             gridColumn:
                               "1 / -1",
+                            minWidth:
+                              0,
+                            width:
+                              "100%",
+                            boxSizing:
+                              "border-box",
+                            overflow:
+                              "hidden",
                           }}
                         >
                           <span
@@ -1447,6 +1526,8 @@ export default function Transactions() {
                                 "14px",
                               color:
                                 "#8FD694",
+                              overflowWrap:
+                                "anywhere",
                             }}
                           >
                             {
@@ -1473,6 +1554,14 @@ export default function Transactions() {
                               "13px 14px",
                             gridColumn:
                               "1 / -1",
+                            minWidth:
+                              0,
+                            width:
+                              "100%",
+                            boxSizing:
+                              "border-box",
+                            overflow:
+                              "hidden",
                           }}
                         >
                           <span
@@ -1502,6 +1591,10 @@ export default function Transactions() {
                                 "14px",
                               color:
                                 "#ffffff",
+                              overflowWrap:
+                                "anywhere",
+                              wordBreak:
+                                "break-word",
                             }}
                           >
                             {
@@ -1527,6 +1620,14 @@ export default function Transactions() {
                               "13px 14px",
                             gridColumn:
                               "1 / -1",
+                            minWidth:
+                              0,
+                            width:
+                              "100%",
+                            boxSizing:
+                              "border-box",
+                            overflow:
+                              "hidden",
                           }}
                         >
                           <span
@@ -1557,7 +1658,11 @@ export default function Transactions() {
                               color:
                                 "#ffffff",
                               lineHeight:
-                                "1.4",
+                                "1.5",
+                              overflowWrap:
+                                "anywhere",
+                              wordBreak:
+                                "break-word",
                             }}
                           >
                             {
@@ -1568,7 +1673,6 @@ export default function Transactions() {
                       )}
 
                     </div>
-
                   </div>
                 );
               }
@@ -1592,6 +1696,10 @@ export default function Transactions() {
                 "center",
               boxShadow:
                 "0 8px 22px rgba(16, 42, 67, 0.16)",
+              boxSizing:
+                "border-box",
+              width:
+                "100%",
             }}
           >
             <div
@@ -1638,6 +1746,8 @@ export default function Transactions() {
                   "14px",
                 color:
                   "#9FB3C8",
+                overflowWrap:
+                  "anywhere",
               }}
             >
               Your deposits and withdrawals
@@ -1676,6 +1786,8 @@ export default function Transactions() {
               "pointer",
             boxShadow:
               "0 5px 14px rgba(16, 42, 67, 0.14)",
+            boxSizing:
+              "border-box",
           }}
         >
           ← Back to Dashboard
