@@ -167,6 +167,13 @@ export default function Admin() {
               oldUser.balance || 0
             ),
 
+          withdrawable_returns:
+            Number(
+              oldUser.withdrawableReturns ??
+                oldUser.withdrawable_returns ??
+                0
+            ),
+
           referral_bonus:
             Number(
               oldUser.referralBonus ??
@@ -256,7 +263,7 @@ export default function Admin() {
       } = await supabase
         .from("users")
         .select(
-          "id, full_name, phone, balance, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
         )
         .order("created_at", {
           ascending: false,
@@ -299,6 +306,12 @@ export default function Admin() {
         balance:
           Number(
             row.balance || 0
+          ),
+
+        withdrawableReturns:
+          Number(
+            row.withdrawable_returns ||
+              0
           ),
 
         referralBonus:
@@ -676,9 +689,12 @@ export default function Admin() {
       return;
     }
 
+    const normalizedPhone =
+      normalizePhone(phone);
+
     const transactionsKey =
       "transportTransactions_" +
-      phone;
+      normalizedPhone;
 
     let transactions = [];
 
@@ -838,6 +854,18 @@ export default function Admin() {
 
         plan: {
           ...newPlan,
+          amount:
+            Number(
+              newPlan.amount ??
+                newPlan.price ??
+                0
+            ),
+          price:
+            Number(
+              newPlan.price ??
+                newPlan.amount ??
+                0
+            ),
         },
 
         status:
@@ -918,6 +946,232 @@ export default function Admin() {
       return false;
     }
   };
+
+  /*
+   * ----------------------------------------------------
+   * ADD WEEKLY RETURN TO SUPABASE
+   * ----------------------------------------------------
+   *
+   * Every newly approved plan receives its first weekly
+   * return immediately.
+   *
+   * This function adds that return to the central
+   * users.withdrawable_returns column.
+   */
+  const addWithdrawableReturnsToSupabase =
+    async (
+      phone,
+      returnAmount
+    ) => {
+      const normalizedPhone =
+        normalizePhone(phone);
+
+      const amountToAdd =
+        Number(
+          returnAmount || 0
+        );
+
+      if (
+        !normalizedPhone ||
+        !Number.isFinite(
+          amountToAdd
+        ) ||
+        amountToAdd <= 0
+      ) {
+        return {
+          success: false,
+          newValue: null,
+        };
+      }
+
+      try {
+        const {
+          data: currentUser,
+          error: findError,
+        } = await supabase
+          .from("users")
+          .select(
+            "id, phone, withdrawable_returns"
+          )
+          .eq(
+            "phone",
+            normalizedPhone
+          )
+          .maybeSingle();
+
+        if (findError) {
+          console.error(
+            "Could not read withdrawable returns:",
+            findError
+          );
+
+          return {
+            success: false,
+            newValue: null,
+          };
+        }
+
+        if (!currentUser) {
+          console.error(
+            "User not found for withdrawable return:",
+            normalizedPhone
+          );
+
+          return {
+            success: false,
+            newValue: null,
+          };
+        }
+
+        const currentReturns =
+          Number(
+            currentUser.withdrawable_returns ||
+              0
+          );
+
+        const newReturns =
+          currentReturns +
+          amountToAdd;
+
+        const {
+          data: updatedUser,
+          error: updateError,
+        } = await supabase
+          .from("users")
+          .update({
+            withdrawable_returns:
+              newReturns,
+          })
+          .eq(
+            "id",
+            currentUser.id
+          )
+          .select(
+            "id, phone, withdrawable_returns"
+          )
+          .maybeSingle();
+
+        if (updateError) {
+          console.error(
+            "Could not update withdrawable returns in Supabase:",
+            updateError
+          );
+
+          return {
+            success: false,
+            newValue: null,
+          };
+        }
+
+        const finalValue =
+          Number(
+            updatedUser?.withdrawable_returns ??
+              newReturns
+          );
+
+        /*
+         * Also keep the existing local compatibility key.
+         */
+        localStorage.setItem(
+          "transportWithdrawableReturns_" +
+            normalizedPhone,
+          String(finalValue)
+        );
+
+        /*
+         * Keep local users copy updated too.
+         */
+        try {
+          const savedUsers =
+            localStorage.getItem(
+              "transportUsers"
+            );
+
+          if (savedUsers) {
+            const parsed =
+              JSON.parse(
+                savedUsers
+              );
+
+            if (
+              Array.isArray(parsed)
+            ) {
+              const updatedUsers =
+                parsed.map(
+                  (user) => {
+                    const userPhone =
+                      normalizePhone(
+                        user.phone ||
+                          user.mobile ||
+                          user.phoneNumber ||
+                          user.mobileNumber
+                      );
+
+                    if (
+                      userPhone ===
+                      normalizedPhone
+                    ) {
+                      return {
+                        ...user,
+
+                        withdrawableReturns:
+                          finalValue,
+
+                        withdrawable_returns:
+                          finalValue,
+                      };
+                    }
+
+                    return user;
+                  }
+                );
+
+              localStorage.setItem(
+                "transportUsers",
+                JSON.stringify(
+                  updatedUsers
+                )
+              );
+            }
+          }
+        } catch (error) {
+          console.error(
+            "Could not update local user returns:",
+            error
+          );
+        }
+
+        console.log(
+          "Withdrawable returns updated in Supabase:",
+          {
+            phone:
+              normalizedPhone,
+
+            added:
+              amountToAdd,
+
+            newValue:
+              finalValue,
+          }
+        );
+
+        return {
+          success: true,
+          newValue:
+            finalValue,
+        };
+      } catch (error) {
+        console.error(
+          "Withdrawable return Supabase error:",
+          error
+        );
+
+        return {
+          success: false,
+          newValue: null,
+        };
+      }
+    };
 
   /*
    * ----------------------------------------------------
@@ -1125,12 +1379,11 @@ export default function Admin() {
 
   /*
    * ----------------------------------------------------
-   * UPDATE USER BALANCE
+   * UPDATE USER BALANCE + REFERRAL BONUS
    * ----------------------------------------------------
    *
-   * NEW:
-   * The balance and referral bonus are now written to
-   * Supabase first, then mirrored to localStorage.
+   * Balance, referral bonus and withdrawable returns
+   * are now all kept centrally in Supabase.
    */
   const updateUserBalance = async (
     phone,
@@ -1152,11 +1405,6 @@ export default function Admin() {
       return null;
     }
 
-    /*
-     * ------------------------------------------------
-     * 1. GET CURRENT USER FROM SUPABASE
-     * ------------------------------------------------
-     */
     let supabaseUser = null;
 
     try {
@@ -1166,7 +1414,7 @@ export default function Admin() {
       } = await supabase
         .from("users")
         .select(
-          "id, full_name, phone, balance, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
         )
         .eq(
           "phone",
@@ -1203,11 +1451,6 @@ export default function Admin() {
       return null;
     }
 
-    /*
-     * ------------------------------------------------
-     * 2. CALCULATE NEW CENTRAL BALANCE
-     * ------------------------------------------------
-     */
     const currentBalance =
       Number(
         supabaseUser.balance || 0
@@ -1215,12 +1458,20 @@ export default function Admin() {
 
     const currentReferralBonus =
       Number(
-        supabaseUser.referral_bonus || 0
+        supabaseUser.referral_bonus ||
+          0
       );
 
     const currentTotalReferralBonus =
       Number(
-        supabaseUser.total_referral_bonus || 0
+        supabaseUser.total_referral_bonus ||
+          0
+      );
+
+    const currentWithdrawableReturns =
+      Number(
+        supabaseUser.withdrawable_returns ||
+          0
       );
 
     const newBalance =
@@ -1235,11 +1486,10 @@ export default function Admin() {
       currentTotalReferralBonus +
       amountToAdd;
 
-    /*
-     * ------------------------------------------------
-     * 3. WRITE TO SUPABASE
-     * ------------------------------------------------
-     */
+    const newWithdrawableReturns =
+      currentWithdrawableReturns +
+      amountToAdd;
+
     try {
       const {
         data: updatedSupabaseUser,
@@ -1249,6 +1499,9 @@ export default function Admin() {
         .update({
           balance:
             newBalance,
+
+          withdrawable_returns:
+            newWithdrawableReturns,
 
           referral_bonus:
             newReferralBonus,
@@ -1261,7 +1514,7 @@ export default function Admin() {
           supabaseUser.id
         )
         .select(
-          "id, full_name, phone, balance, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
         )
         .maybeSingle();
 
@@ -1282,6 +1535,9 @@ export default function Admin() {
           balance:
             newBalance,
 
+          withdrawable_returns:
+            newWithdrawableReturns,
+
           referral_bonus:
             newReferralBonus,
 
@@ -1290,9 +1546,7 @@ export default function Admin() {
         };
 
       /*
-       * ------------------------------------------------
-       * 4. MIRROR CENTRAL DATA TO LOCAL USERS
-       * ------------------------------------------------
+       * Mirror central data to local users.
        */
       let localUsers = [];
 
@@ -1333,6 +1587,12 @@ export default function Admin() {
         balance:
           Number(
             finalSupabaseUser.balance ||
+              0
+          ),
+
+        withdrawableReturns:
+          Number(
+            finalSupabaseUser.withdrawable_returns ||
               0
           ),
 
@@ -1403,6 +1663,12 @@ export default function Admin() {
                 balance:
                   mappedUpdatedUser.balance,
 
+                withdrawableReturns:
+                  mappedUpdatedUser.withdrawableReturns,
+
+                withdrawable_returns:
+                  mappedUpdatedUser.withdrawableReturns,
+
                 referralBonus:
                   mappedUpdatedUser.referralBonus,
 
@@ -1445,50 +1711,20 @@ export default function Admin() {
         )
       );
 
-      /*
-       * ------------------------------------------------
-       * 5. UPDATE CURRENT USERS STATE
-       * ------------------------------------------------
-       */
       setUsers(
         updatedLocalUsers
       );
 
-      /*
-       * ------------------------------------------------
-       * 6. KEEP WITHDRAWABLE BONUS COPY
-       * ------------------------------------------------
-       */
-      const withdrawableKey =
-        "transportWithdrawableReturns_" +
-        normalizedPhone;
-
-      const savedWithdrawable =
-        localStorage.getItem(
-          withdrawableKey
-        );
-
-      const currentWithdrawable =
-        savedWithdrawable !==
-        null
-          ? Number(
-              savedWithdrawable
-            ) || 0
-          : 0;
-
-      const newWithdrawable =
-        currentWithdrawable +
-        amountToAdd;
-
       localStorage.setItem(
-        withdrawableKey,
+        "transportWithdrawableReturns_" +
+          normalizedPhone,
         String(
-          newWithdrawable
+          mappedUpdatedUser.withdrawableReturns
         )
       );
 
       console.log(
-        "Central user balance updated:",
+        "Central referral balance updated:",
         {
           phone:
             normalizedPhone,
@@ -1497,10 +1733,13 @@ export default function Admin() {
             amountToAdd,
 
           newBalance:
-            finalSupabaseUser.balance,
+            mappedUpdatedUser.balance,
+
+          newWithdrawableReturns:
+            mappedUpdatedUser.withdrawableReturns,
 
           newReferralBonus:
-            finalSupabaseUser.referral_bonus,
+            mappedUpdatedUser.referralBonus,
         }
       );
 
@@ -1529,9 +1768,14 @@ export default function Admin() {
       return;
     }
 
+    const normalizedReferrerPhone =
+      normalizePhone(
+        referrerPhone
+      );
+
     const teamKey =
       "transportTeam_" +
-      referrerPhone;
+      normalizedReferrerPhone;
 
     const savedTeam =
       localStorage.getItem(
@@ -1585,9 +1829,7 @@ export default function Admin() {
           (
             !ownerPhone ||
             ownerPhone ===
-              normalizePhone(
-                referrerPhone
-              )
+              normalizedReferrerPhone
           )
         ) {
           changed = true;
@@ -1649,7 +1891,9 @@ export default function Admin() {
 
     const transactionsKey =
       "transportTransactions_" +
-      referrerPhone;
+      normalizePhone(
+        referrerPhone
+      );
 
     const saved =
       localStorage.getItem(
@@ -1680,14 +1924,6 @@ export default function Admin() {
     }
   };
 
-  /*
-   * ----------------------------------------------------
-   * CREDIT REFERRAL BONUSES
-   * ----------------------------------------------------
-   *
-   * NOW ASYNC because user balance is stored centrally
-   * in Supabase.
-   */
   const creditReferralBonuses = async (
     request,
     referredUser,
@@ -1724,7 +1960,9 @@ export default function Admin() {
 
     for (const item of chain) {
       const referrerPhone =
-        item.phone;
+        normalizePhone(
+          item.phone
+        );
 
       const percent =
         Number(
@@ -1764,9 +2002,6 @@ export default function Admin() {
         continue;
       }
 
-      /*
-       * CENTRAL SUPABASE BALANCE UPDATE
-       */
       const referrerUser =
         await updateUserBalance(
           referrerPhone,
@@ -1896,7 +2131,11 @@ export default function Admin() {
       setMessage(
         "Deposit request not found."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -1909,7 +2148,11 @@ export default function Admin() {
       setMessage(
         "This deposit has already been approved."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -1922,12 +2165,18 @@ export default function Admin() {
       setMessage(
         "This deposit has already been rejected."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
     /*
-     * First update Supabase.
+     * ------------------------------------------------
+     * UPDATE DEPOSIT STATUS IN SUPABASE
+     * ------------------------------------------------
      */
     if (request.id) {
       const {
@@ -2002,6 +2251,7 @@ export default function Admin() {
     const planAmount =
       Number(
         requestPlan.amount ||
+          requestPlan.price ||
           request.amount ||
           request.depositAmount ||
           0
@@ -2042,6 +2292,9 @@ export default function Admin() {
           planName,
 
         amount:
+          planAmount,
+
+        price:
           planAmount,
 
         weekly:
@@ -2117,9 +2370,17 @@ export default function Admin() {
       return;
     }
 
+    /*
+     * ------------------------------------------------
+     * APPROVAL DATA
+     * ------------------------------------------------
+     */
     const approvedAt =
       new Date().toISOString();
 
+    /*
+     * Existing local returns compatibility
+     */
     const returnsKey =
       "transportWithdrawableReturns_" +
       phone;
@@ -2147,6 +2408,27 @@ export default function Admin() {
       )
     );
 
+    /*
+     * ------------------------------------------------
+     * CENTRAL SUPABASE WITHDRAWABLE RETURN
+     * ------------------------------------------------
+     */
+    let weeklyReturnSavedToSupabase =
+      true;
+
+    if (
+      weeklyReturn > 0
+    ) {
+      const returnResult =
+        await addWithdrawableReturnsToSupabase(
+          phone,
+          weeklyReturn
+        );
+
+      weeklyReturnSavedToSupabase =
+        returnResult.success;
+    }
+
     const nextReturnDate =
       new Date(
         Date.now() +
@@ -2157,6 +2439,11 @@ export default function Admin() {
             1000
       ).toISOString();
 
+    /*
+     * ------------------------------------------------
+     * ACTIVE PLAN
+     * ------------------------------------------------
+     */
     const activePlan = {
       id:
         "active-plan-" +
@@ -2217,22 +2504,27 @@ export default function Admin() {
         weeklyReturn,
 
       remainingWeeks:
-        DURATION_WEEKS -
-        1,
+        Math.max(
+          DURATION_WEEKS -
+            1,
+          0
+        ),
 
       status:
         "Active",
     };
 
-    /*
-     * Save active plan to localStorage AND Supabase.
-     */
     const activePlanSavedToSupabase =
       await updateActivePlans(
         activePlan,
         phone
       );
 
+    /*
+     * ------------------------------------------------
+     * APPROVED DEPOSIT TRANSACTION
+     * ------------------------------------------------
+     */
     saveTransaction(
       {
         id:
@@ -2285,6 +2577,11 @@ export default function Admin() {
       phone
     );
 
+    /*
+     * ------------------------------------------------
+     * FIRST WEEKLY RETURN TRANSACTION
+     * ------------------------------------------------
+     */
     if (
       weeklyReturn > 0
     ) {
@@ -2323,7 +2620,9 @@ export default function Admin() {
     }
 
     /*
-     * CENTRAL REFERRAL BALANCE
+     * ------------------------------------------------
+     * REFERRAL BONUS
+     * ------------------------------------------------
      */
     let referralResult = {
       credited: false,
@@ -2368,6 +2667,13 @@ export default function Admin() {
         ? " Active plan saved to Supabase successfully."
         : " Warning: active plan was saved locally, but could not be saved to Supabase.";
 
+    const weeklyReturnMessage =
+      weeklyReturnSavedToSupabase
+        ? " Weekly return of PKR " +
+          weeklyReturn.toLocaleString() +
+          " synced to Supabase."
+        : " Warning: weekly return was not synced to Supabase.";
+
     setMessage(
       planName +
         " for " +
@@ -2380,12 +2686,14 @@ export default function Admin() {
         " approved successfully. First weekly return of PKR " +
         weeklyReturn.toLocaleString() +
         " has been credited immediately. Next return will be available in 7 days." +
+        weeklyReturnMessage +
         activePlanMessage +
         referralMessage
     );
 
     setMessageType(
-      activePlanSavedToSupabase
+      activePlanSavedToSupabase &&
+        weeklyReturnSavedToSupabase
         ? "success"
         : "error"
     );
@@ -2413,7 +2721,11 @@ export default function Admin() {
       setMessage(
         "Withdrawal request not found."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -2426,7 +2738,11 @@ export default function Admin() {
       setMessage(
         "This withdrawal has already been approved."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -2439,21 +2755,31 @@ export default function Admin() {
       setMessage(
         "This withdrawal has already been rejected."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
     const phone =
-      request.phone ||
-      request.mobile ||
-      request.mobileNumber ||
-      "";
+      normalizePhone(
+        request.phone ||
+          request.mobile ||
+          request.mobileNumber ||
+          ""
+      );
 
     if (!phone) {
       setMessage(
         "User mobile number is missing from this withdrawal request."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -2717,10 +3043,13 @@ export default function Admin() {
     depositRequests.forEach(
       (request, index) => {
         const phone =
-          request.phone ||
-          request.mobile ||
-          request.mobileNumber ||
-          request.user?.phone ||
+          normalizePhone(
+            request.phone ||
+              request.mobile ||
+              request.mobileNumber ||
+              request.user?.phone ||
+              ""
+          ) ||
           "deposit-unknown-" +
             index;
 
@@ -2803,9 +3132,12 @@ export default function Admin() {
     withdrawRequests.forEach(
       (request, index) => {
         const phone =
-          request.phone ||
-          request.mobile ||
-          request.mobileNumber ||
+          normalizePhone(
+            request.phone ||
+              request.mobile ||
+              request.mobileNumber ||
+              ""
+          ) ||
           "withdraw-unknown-" +
             index;
 
@@ -3647,6 +3979,7 @@ export default function Admin() {
                                 const displayAmount =
                                   Number(
                                     requestPlan.amount ||
+                                      requestPlan.price ||
                                       request.amount ||
                                       request.depositAmount ||
                                       0
@@ -4468,6 +4801,17 @@ export default function Admin() {
                             ).toLocaleString()
                           }
                           highlight
+                        />
+
+                        <Detail
+                          label="Withdrawable Returns"
+                          value={
+                            "PKR " +
+                            Number(
+                              user.withdrawableReturns ||
+                                0
+                            ).toLocaleString()
+                          }
                         />
 
                         <Detail

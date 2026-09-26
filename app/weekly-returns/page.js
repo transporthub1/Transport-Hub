@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 const DEFAULT_PLAN = {
   name: "Starter",
@@ -38,529 +39,1438 @@ function saveJSON(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizePhone(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function getPlanName(plan) {
+  return (
+    plan?.name ||
+    plan?.planName ||
+    "Transport Plan"
+  );
+}
+
+function getWeeklyAmountFromPlan(plan) {
+  return Number(
+    plan?.weekly ??
+      plan?.weeklyReturn ??
+      plan?.daily ??
+      plan?.dailyReturn ??
+      0
+  );
+}
+
+function normalizeActivePlan(row) {
+  const rawPlan =
+    row?.plan && typeof row.plan === "object"
+      ? row.plan
+      : {};
+
+  const weekly = Number(
+    rawPlan.weekly ??
+      rawPlan.weeklyReturn ??
+      rawPlan.daily ??
+      rawPlan.dailyReturn ??
+      0
+  );
+
+  const price = Number(
+    rawPlan.price ??
+      rawPlan.amount ??
+      0
+  );
+
+  const durationWeeks = Number(
+    rawPlan.durationWeeks ??
+      rawPlan.duration ??
+      260
+  );
+
+  const durationYears = Number(
+    rawPlan.durationYears ??
+      5
+  );
+
+  const returnsPaid = Number(
+    row?.returns_paid ??
+      row?.returnsPaid ??
+      0
+  );
+
+  const earnedReturns = Number(
+    row?.earned_returns ??
+      row?.earnedReturns ??
+      row?.total_earned ??
+      row?.totalEarned ??
+      0
+  );
+
+  const totalEarned = Number(
+    row?.total_earned ??
+      row?.totalEarned ??
+      row?.earned_returns ??
+      row?.earnedReturns ??
+      0
+  );
+
+  const activatedAt =
+    row?.activated_at ||
+    row?.activatedAt ||
+    null;
+
+  const approvedAt =
+    row?.approved_at ||
+    row?.approvedAt ||
+    null;
+
+  const lastReturnAt =
+    row?.last_return_at ||
+    row?.lastReturnAt ||
+    null;
+
+  const nextReturnAt =
+    row?.next_return_at ||
+    row?.nextReturnAt ||
+    null;
+
+  return {
+    id:
+      row?.id ||
+      rawPlan?.id ||
+      null,
+
+    depositRequestId:
+      row?.deposit_request_id ||
+      row?.depositRequestId ||
+      null,
+
+    userPhone:
+      row?.user_phone ||
+      row?.userPhone ||
+      "",
+
+    name: getPlanName(rawPlan),
+
+    planName: getPlanName(rawPlan),
+
+    price,
+
+    amount: price,
+
+    weekly,
+
+    weeklyReturn: weekly,
+
+    // Compatibility with old data
+    daily: weekly,
+    dailyReturn: weekly,
+
+    durationWeeks: 260,
+    durationYears,
+
+    duration: 260,
+
+    totalReturn:
+      Number(
+        rawPlan.totalReturn ||
+          rawPlan.total_return ||
+          0
+      ) ||
+      weekly * 260,
+
+    returnsPaid,
+
+    earnedReturns,
+
+    totalEarned,
+
+    activatedAt,
+
+    approvedAt,
+
+    lastReturnAt,
+
+    nextReturnAt,
+
+    status:
+      row?.status ||
+      "Active",
+
+    updatedAt:
+      row?.updated_at ||
+      row?.updatedAt ||
+      null,
+  };
+}
+
 export default function DailyReturns() {
   const [user, setUser] = useState(null);
   const [activePlans, setActivePlans] = useState([]);
-  const [withdrawableReturns, setWithdrawableReturns] = useState(0);
+  const [withdrawableReturns, setWithdrawableReturns] =
+    useState(0);
   const [loading, setLoading] = useState(true);
   const [claimingId, setClaimingId] = useState(null);
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("success");
+  const [messageType, setMessageType] =
+    useState("success");
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem("transportLoggedIn");
+    let cancelled = false;
 
-    if (loggedIn !== "true") {
-      window.location.href = "/login";
-      return;
-    }
+    const loadData = async () => {
+      const loggedIn =
+        localStorage.getItem(
+          "transportLoggedIn"
+        );
 
-    const savedUser = readJSON("transportUser", null);
-
-    if (!savedUser) {
-      window.location.href = "/login";
-      return;
-    }
-
-    setUser(savedUser);
-
-    const phone =
-      savedUser.phone ||
-      savedUser.mobile ||
-      savedUser.number ||
-      "";
-
-    let plans = [];
-
-    if (phone) {
-      const userPlans = readJSON(
-        `transportActivePlans_${phone}`,
-        []
-      );
-
-      if (Array.isArray(userPlans)) {
-        plans = userPlans;
+      if (loggedIn !== "true") {
+        window.location.href = "/login";
+        return;
       }
-    }
 
-    if (plans.length === 0) {
-      const oldPlan = readJSON(
-        "transportActivePlan",
+      const savedUser = readJSON(
+        "transportUser",
         null
       );
 
-      if (oldPlan) {
-        plans = Array.isArray(oldPlan)
-          ? oldPlan
-          : [oldPlan];
+      if (!savedUser) {
+        window.location.href = "/login";
+        return;
       }
-    }
 
-    setActivePlans(plans);
+      if (cancelled) return;
 
-    if (phone) {
-      const savedWithdrawable = localStorage.getItem(
-        `transportWithdrawableReturns_${phone}`
-      );
+      setUser(savedUser);
 
-      if (savedWithdrawable !== null) {
-        setWithdrawableReturns(
-          Number(savedWithdrawable) || 0
-        );
-      } else {
-        let totalEarned = 0;
+      const phone =
+        savedUser.phone ||
+        savedUser.mobile ||
+        savedUser.number ||
+        "";
 
-        plans.forEach((plan) => {
-          totalEarned += Number(
-            plan.earnedReturns || 0
-          );
-        });
+      const cleanPhone =
+        normalizePhone(phone);
 
-        setWithdrawableReturns(totalEarned);
-      }
-    }
+      let supabasePlans = [];
+      let supabaseUser = null;
 
-    setLoading(false);
-  }, []);
+      /* =========================================================
+         LOAD USER + ACTIVE PLANS FROM SUPABASE
+      ========================================================= */
 
-  const totalInvestment = useMemo(() => {
-    return activePlans.reduce(
-      (total, plan) =>
-        total +
-        Number(
-          plan.price ||
-          plan.amount ||
-          0
-        ),
-      0
-    );
-  }, [activePlans]);
+      try {
+        const [
+          activePlansResult,
+          userResult,
+        ] = await Promise.all([
+          supabase
+            .from("active_plans")
+            .select("*")
+            .order("created_at", {
+              ascending: true,
+            }),
 
-  const totalWeeklyReturn = useMemo(() => {
-    return activePlans.reduce(
-      (total, plan) =>
-        total +
-        Number(
-          plan.weekly ||
-          plan.weeklyReturn ||
-          plan.daily ||
-          plan.dailyReturn ||
-          0
-        ),
-      0
-    );
-  }, [activePlans]);
+          supabase
+            .from("users")
+            .select(
+              "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus"
+            )
+            .eq("phone", phone)
+            .maybeSingle(),
+        ]);
 
-  const totalEarned = useMemo(() => {
-    return activePlans.reduce(
-      (total, plan) =>
-        total +
-        Number(plan.earnedReturns || 0),
-      0
-    );
-  }, [activePlans]);
-
-  const totalExpectedReturn = useMemo(() => {
-    return activePlans.reduce(
-      (total, plan) => {
-        const weekly = Number(
-          plan.weekly ||
-          plan.weeklyReturn ||
-          plan.daily ||
-          plan.dailyReturn ||
-          0
-        );
-
-        const durationWeeks = Number(
-          plan.durationWeeks || 260
-        );
-
-        const totalReturn =
-          Number(plan.totalReturn || 0) ||
-          weekly * durationWeeks;
-
-        return total + totalReturn;
-      },
-      0
-    );
-  }, [activePlans]);
-
-  const getWeeklyAmount = (plan) => {
-    return Number(
-      plan.weekly ||
-      plan.weeklyReturn ||
-      plan.daily ||
-      plan.dailyReturn ||
-      0
-    );
-  };
-
-  const getDurationWeeks = (plan) => {
-    return Number(
-      plan.durationWeeks || 260
-    );
-  };
-
-  const getDurationYears = (plan) => {
-    return Number(
-      plan.durationYears || 5
-    );
-  };
-
-  const getNextReturnTime = (plan) => {
-    /*
-      Admin approval creates:
-      lastReturnAt = approval time
-      nextReturnAt = approval time + 7 days
-
-      Use nextReturnAt first so the first immediate
-      return is NOT claimed again.
-    */
-
-    if (plan.nextReturnAt) {
-      const nextTime = new Date(
-        plan.nextReturnAt
-      ).getTime();
-
-      if (!Number.isNaN(nextTime)) {
-        return nextTime;
-      }
-    }
-
-    const lastReturnAt =
-      plan.lastReturnAt ||
-      plan.activatedAt ||
-      plan.createdAt;
-
-    if (!lastReturnAt) {
-      return null;
-    }
-
-    const lastTime =
-      new Date(lastReturnAt).getTime();
-
-    if (Number.isNaN(lastTime)) {
-      return null;
-    }
-
-    return (
-      lastTime +
-      7 * 24 * 60 * 60 * 1000
-    );
-  };
-
-  const canClaim = (plan) => {
-    const nextTime =
-      getNextReturnTime(plan);
-
-    if (!nextTime) {
-      return false;
-    }
-
-    return Date.now() >= nextTime;
-  };
-
-  const getTimeRemaining = (plan) => {
-    const nextTime =
-      getNextReturnTime(plan);
-
-    if (!nextTime) {
-      return "Waiting";
-    }
-
-    const difference =
-      nextTime - Date.now();
-
-    if (difference <= 0) {
-      return "Return Available";
-    }
-
-    const totalMinutes = Math.ceil(
-      difference / (1000 * 60)
-    );
-
-    const days = Math.floor(
-      totalMinutes / (60 * 24)
-    );
-
-    const remainingAfterDays =
-      totalMinutes -
-      days * 24 * 60;
-
-    const hours = Math.floor(
-      remainingAfterDays / 60
-    );
-
-    const minutes =
-      remainingAfterDays % 60;
-
-    if (days > 0) {
-      return `${days}d ${hours}h ${minutes}m remaining`;
-    }
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m remaining`;
-    }
-
-    return `${minutes}m remaining`;
-  };
-
-  const claimReturn = (planId, index) => {
-    if (!user) {
-      return;
-    }
-
-    const phone =
-      user.phone ||
-      user.mobile ||
-      user.number ||
-      "";
-
-    if (!phone) {
-      setMessage(
-        "User account information is missing."
-      );
-      setMessageType("error");
-      return;
-    }
-
-    const plans = readJSON(
-      `transportActivePlans_${phone}`,
-      []
-    );
-
-    if (!Array.isArray(plans)) {
-      return;
-    }
-
-    const actualIndex = plans.findIndex(
-      (item, itemIndex) => {
         if (
-          planId &&
-          item.id &&
-          item.id === planId
+          activePlansResult.error
         ) {
-          return true;
+          console.log(
+            "Supabase active plans error:",
+            activePlansResult.error
+          );
+        } else {
+          const allRows =
+            Array.isArray(
+              activePlansResult.data
+            )
+              ? activePlansResult.data
+              : [];
+
+          supabasePlans =
+            allRows
+              .filter((row) => {
+                const rowPhone =
+                  normalizePhone(
+                    row.user_phone
+                  );
+
+                return (
+                  rowPhone === cleanPhone &&
+                  String(
+                    row.status || "Active"
+                  ).toLowerCase() ===
+                    "active"
+                );
+              })
+              .map(
+                normalizeActivePlan
+              );
         }
 
-        return itemIndex === index;
+        if (
+          userResult.error
+        ) {
+          console.log(
+            "Supabase user load error:",
+            userResult.error
+          );
+        } else {
+          supabaseUser =
+            userResult.data || null;
+        }
+      } catch (error) {
+        console.log(
+          "Supabase weekly returns load error:",
+          error
+        );
       }
-    );
 
-    if (actualIndex === -1) {
-      setMessage(
-        "Active plan could not be found."
+      /* =========================================================
+         SUPABASE IS AUTHORITATIVE
+         LOCAL STORAGE IS FALLBACK / COMPATIBILITY ONLY
+      ========================================================= */
+
+      let plans = [];
+
+      if (
+        supabasePlans.length > 0
+      ) {
+        plans = supabasePlans;
+
+        saveJSON(
+          `transportActivePlans_${phone}`,
+          plans
+        );
+      } else {
+        const localPlans =
+          readJSON(
+            `transportActivePlans_${phone}`,
+            []
+          );
+
+        if (
+          Array.isArray(localPlans) &&
+          localPlans.length > 0
+        ) {
+          plans = localPlans;
+        }
+      }
+
+      if (plans.length === 0) {
+        const oldPlan =
+          readJSON(
+            "transportActivePlan",
+            null
+          );
+
+        if (oldPlan) {
+          plans = Array.isArray(
+            oldPlan
+          )
+            ? oldPlan
+            : [oldPlan];
+        }
+      }
+
+      const normalizedPlans =
+        plans.map((plan) => {
+          return {
+            ...plan,
+
+            price: Number(
+              plan.price ??
+                plan.amount ??
+                0
+            ),
+
+            amount: Number(
+              plan.amount ??
+                plan.price ??
+                0
+            ),
+
+            weekly: Number(
+              plan.weekly ??
+                plan.weeklyReturn ??
+                plan.daily ??
+                plan.dailyReturn ??
+                0
+            ),
+
+            weeklyReturn: Number(
+              plan.weeklyReturn ??
+                plan.weekly ??
+                plan.daily ??
+                plan.dailyReturn ??
+                0
+            ),
+
+            daily: Number(
+              plan.daily ??
+                plan.weekly ??
+                plan.weeklyReturn ??
+                plan.dailyReturn ??
+                0
+            ),
+
+            dailyReturn: Number(
+              plan.dailyReturn ??
+                plan.weekly ??
+                plan.weeklyReturn ??
+                plan.daily ??
+                0
+            ),
+
+            durationWeeks: 260,
+
+            durationYears: Number(
+              plan.durationYears || 5
+            ),
+
+            duration: 260,
+
+            returnsPaid: Number(
+              plan.returnsPaid || 0
+            ),
+
+            earnedReturns: Number(
+              plan.earnedReturns ||
+                plan.totalEarned ||
+                0
+            ),
+
+            totalEarned: Number(
+              plan.totalEarned ||
+                plan.earnedReturns ||
+                0
+            ),
+
+            nextReturnAt:
+              plan.nextReturnAt ||
+              plan.next_return_at ||
+              null,
+
+            lastReturnAt:
+              plan.lastReturnAt ||
+              plan.last_return_at ||
+              null,
+          };
+        });
+
+      if (
+        cancelled
+      ) {
+        return;
+      }
+
+      setActivePlans(
+        normalizedPlans
       );
-      setMessageType("error");
-      return;
-    }
 
-    const plan =
-      plans[actualIndex];
-
-    if (!canClaim(plan)) {
-      setMessage(
-        "Weekly return is not available yet. Please wait until 7 days are completed."
-      );
-      setMessageType("error");
-      return;
-    }
-
-    const weeklyAmount =
-      getWeeklyAmount(plan);
-
-    const durationWeeks =
-      getDurationWeeks(plan);
-
-    const returnsPaid = Number(
-      plan.returnsPaid || 0
-    );
-
-    if (
-      returnsPaid >= durationWeeks
-    ) {
-      setMessage(
-        "This transport plan has completed all weekly returns."
-      );
-      setMessageType("error");
-      return;
-    }
-
-    if (weeklyAmount <= 0) {
-      setMessage(
-        "Weekly return amount is not available for this plan."
-      );
-      setMessageType("error");
-      return;
-    }
-
-    setClaimingId(
-      planId || actualIndex
-    );
-
-    const newEarnedReturns =
-      Number(plan.earnedReturns || 0) +
-      weeklyAmount;
-
-    const newReturnsPaid =
-      returnsPaid + 1;
-
-    const now =
-      new Date().toISOString();
-
-    const nextReturnAt =
-      new Date(
-        Date.now() +
-        7 * 24 * 60 * 60 * 1000
-      ).toISOString();
-
-    const updatedPlan = {
-      ...plan,
-
-      weekly: weeklyAmount,
-      weeklyReturn: weeklyAmount,
-
-      // Compatibility with old data
-      daily: weeklyAmount,
-      dailyReturn: weeklyAmount,
-
-      durationWeeks,
-      durationYears:
-        Number(plan.durationYears || 5),
-
-      // Compatibility
-      duration: durationWeeks,
-
-      returnsPaid:
-        newReturnsPaid,
-
-      earnedReturns:
-        newEarnedReturns,
-
-      totalEarned:
-        newEarnedReturns,
-
-      lastReturnAt: now,
-
-      nextReturnAt,
-
-      updatedAt: now,
-    };
-
-    const updatedPlans =
-      [...plans];
-
-    updatedPlans[actualIndex] =
-      updatedPlan;
-
-    saveJSON(
-      `transportActivePlans_${phone}`,
-      updatedPlans
-    );
-
-    if (
-      updatedPlans.length === 1
-    ) {
       saveJSON(
-        "transportActivePlan",
-        updatedPlan
-      );
-    }
-
-    const oldWithdrawable =
-      Number(
-        localStorage.getItem(
-          `transportWithdrawableReturns_${phone}`
-        ) || 0
+        `transportActivePlans_${phone}`,
+        normalizedPlans
       );
 
-    const newWithdrawable =
-      oldWithdrawable +
-      weeklyAmount;
+      /* =========================================================
+         LOAD WITHDRAWABLE RETURNS FROM SUPABASE
+      ========================================================= */
 
-    localStorage.setItem(
-      `transportWithdrawableReturns_${phone}`,
-      String(newWithdrawable)
-    );
+      if (supabaseUser) {
+        const centralWithdrawable =
+          Number(
+            supabaseUser.withdrawable_returns ||
+              0
+          );
 
-    const transactionKey =
-      `transportTransactions_${phone}`;
+        setWithdrawableReturns(
+          centralWithdrawable
+        );
 
-    const transactions =
-      readJSON(
-        transactionKey,
-        []
-      );
+        localStorage.setItem(
+          `transportWithdrawableReturns_${phone}`,
+          String(
+            centralWithdrawable
+          )
+        );
 
-    const newTransaction = {
-      id:
-        "weekly-return-" +
-        Date.now() +
-        "-" +
-        actualIndex,
+        const updatedLocalUser =
+          {
+            ...savedUser,
 
-      type: "Return",
+            balance: Number(
+              supabaseUser.balance ||
+                savedUser.balance ||
+                0
+            ),
 
-      returnType: "Weekly",
+            withdrawableReturns:
+              centralWithdrawable,
 
-      amount:
-        weeklyAmount,
+            referralBonus:
+              Number(
+                supabaseUser.referral_bonus ||
+                  savedUser.referralBonus ||
+                  0
+              ),
 
-      status: "Completed",
+            totalReferralBonus:
+              Number(
+                supabaseUser.total_referral_bonus ||
+                  savedUser.totalReferralBonus ||
+                  0
+              ),
+          };
 
-      planName:
-        updatedPlan.name ||
-        updatedPlan.planName ||
-        "Transport Plan",
+        saveJSON(
+          "transportUser",
+          updatedLocalUser
+        );
 
-      description:
-        `Weekly return from ${
-          updatedPlan.name ||
-          updatedPlan.planName ||
-          "Transport Plan"
-        }`,
+        setUser(
+          updatedLocalUser
+        );
+      } else {
+        const savedWithdrawable =
+          localStorage.getItem(
+            `transportWithdrawableReturns_${phone}`
+          );
 
-      date: now,
+        if (
+          savedWithdrawable !==
+          null
+        ) {
+          setWithdrawableReturns(
+            Number(
+              savedWithdrawable
+            ) || 0
+          );
+        } else {
+          const earnedFromPlans =
+            normalizedPlans.reduce(
+              (total, plan) =>
+                total +
+                Number(
+                  plan.earnedReturns ||
+                    plan.totalEarned ||
+                    0
+                ),
+              0
+            );
 
-      createdAt: now,
+          setWithdrawableReturns(
+            earnedFromPlans
+          );
+        }
+      }
+
+      setLoading(false);
     };
 
-    const transactionList =
-      Array.isArray(transactions)
-        ? transactions
-        : [];
+    loadData();
 
-    transactionList.unshift(
-      newTransaction
-    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    saveJSON(
-      transactionKey,
-      transactionList
-    );
+  const totalInvestment =
+    useMemo(() => {
+      return activePlans.reduce(
+        (total, plan) =>
+          total +
+          Number(
+            plan.price ||
+              plan.amount ||
+              0
+          ),
+        0
+      );
+    }, [activePlans]);
 
-    setActivePlans(
-      updatedPlans
-    );
+  const totalWeeklyReturn =
+    useMemo(() => {
+      return activePlans.reduce(
+        (total, plan) =>
+          total +
+          Number(
+            plan.weekly ||
+              plan.weeklyReturn ||
+              plan.daily ||
+              plan.dailyReturn ||
+              0
+          ),
+        0
+      );
+    }, [activePlans]);
 
-    setWithdrawableReturns(
-      newWithdrawable
-    );
+  const totalEarned =
+    useMemo(() => {
+      return activePlans.reduce(
+        (total, plan) =>
+          total +
+          Number(
+            plan.earnedReturns ||
+              plan.totalEarned ||
+              0
+          ),
+        0
+      );
+    }, [activePlans]);
 
-    setMessage(
-      `PKR ${formatMoney(
-        weeklyAmount
-      )} weekly return has been added to your withdrawable balance.`
-    );
+  const totalExpectedReturn =
+    useMemo(() => {
+      return activePlans.reduce(
+        (total, plan) => {
+          const weekly =
+            Number(
+              plan.weekly ||
+                plan.weeklyReturn ||
+                plan.daily ||
+                plan.dailyReturn ||
+                0
+            );
 
-    setMessageType(
-      "success"
-    );
+          const durationWeeks =
+            Number(
+              plan.durationWeeks ||
+                260
+            );
 
-    setTimeout(() => {
-      setClaimingId(null);
-    }, 500);
-  };
+          const totalReturn =
+            Number(
+              plan.totalReturn ||
+                0
+            ) ||
+            weekly *
+              durationWeeks;
+
+          return (
+            total +
+            totalReturn
+          );
+        },
+        0
+      );
+    }, [activePlans]);
+
+  const getWeeklyAmount =
+    (plan) => {
+      return Number(
+        plan.weekly ||
+          plan.weeklyReturn ||
+          plan.daily ||
+          plan.dailyReturn ||
+          0
+      );
+    };
+
+  const getDurationWeeks =
+    (plan) => {
+      return Number(
+        plan.durationWeeks ||
+          260
+      );
+    };
+
+  const getDurationYears =
+    (plan) => {
+      return Number(
+        plan.durationYears ||
+          5
+      );
+    };
+
+  const getNextReturnTime =
+    (plan) => {
+      /*
+        Supabase fields:
+        next_return_at
+        last_return_at
+
+        Normalized frontend fields:
+        nextReturnAt
+        lastReturnAt
+      */
+
+      if (
+        plan.nextReturnAt
+      ) {
+        const nextTime =
+          new Date(
+            plan.nextReturnAt
+          ).getTime();
+
+        if (
+          !Number.isNaN(
+            nextTime
+          )
+        ) {
+          return nextTime;
+        }
+      }
+
+      const lastReturnAt =
+        plan.lastReturnAt ||
+        plan.activatedAt ||
+        plan.approvedAt;
+
+      if (
+        !lastReturnAt
+      ) {
+        return null;
+      }
+
+      const lastTime =
+        new Date(
+          lastReturnAt
+        ).getTime();
+
+      if (
+        Number.isNaN(
+          lastTime
+        )
+      ) {
+        return null;
+      }
+
+      return (
+        lastTime +
+        7 *
+          24 *
+          60 *
+          60 *
+          1000
+      );
+    };
+
+  const canClaim =
+    (plan) => {
+      const nextTime =
+        getNextReturnTime(
+          plan
+        );
+
+      if (
+        !nextTime
+      ) {
+        return false;
+      }
+
+      return (
+        Date.now() >=
+        nextTime
+      );
+    };
+
+  const getTimeRemaining =
+    (plan) => {
+      const nextTime =
+        getNextReturnTime(
+          plan
+        );
+
+      if (
+        !nextTime
+      ) {
+        return "Waiting";
+      }
+
+      const difference =
+        nextTime -
+        Date.now();
+
+      if (
+        difference <= 0
+      ) {
+        return "Return Available";
+      }
+
+      const totalMinutes =
+        Math.ceil(
+          difference /
+            (1000 * 60)
+        );
+
+      const days =
+        Math.floor(
+          totalMinutes /
+            (60 * 24)
+        );
+
+      const remainingAfterDays =
+        totalMinutes -
+        days *
+          24 *
+          60;
+
+      const hours =
+        Math.floor(
+          remainingAfterDays /
+            60
+        );
+
+      const minutes =
+        remainingAfterDays %
+        60;
+
+      if (
+        days > 0
+      ) {
+        return `${days}d ${hours}h ${minutes}m remaining`;
+      }
+
+      if (
+        hours > 0
+      ) {
+        return `${hours}h ${minutes}m remaining`;
+      }
+
+      return `${minutes}m remaining`;
+    };
+
+  const claimReturn =
+    async (
+      planId,
+      index
+    ) => {
+      if (!user) {
+        return;
+      }
+
+      const phone =
+        user.phone ||
+        user.mobile ||
+        user.number ||
+        "";
+
+      if (!phone) {
+        setMessage(
+          "User account information is missing."
+        );
+        setMessageType(
+          "error"
+        );
+        return;
+      }
+
+      if (
+        !planId
+      ) {
+        setMessage(
+          "Active plan ID is missing."
+        );
+        setMessageType(
+          "error"
+        );
+        return;
+      }
+
+      setClaimingId(
+        planId
+      );
+
+      setMessage("");
+
+      try {
+        /* =======================================================
+           GET THE LATEST PLAN DIRECTLY FROM SUPABASE
+        ======================================================= */
+
+        const {
+          data: dbPlan,
+          error: dbPlanError,
+        } = await supabase
+          .from(
+            "active_plans"
+          )
+          .select("*")
+          .eq(
+            "id",
+            planId
+          )
+          .maybeSingle();
+
+        if (
+          dbPlanError
+        ) {
+          console.log(
+            "Plan load before claim error:",
+            dbPlanError
+          );
+
+          setMessage(
+            "Could not load this active plan. Please try again."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        if (
+          !dbPlan
+        ) {
+          setMessage(
+            "This active plan could not be found in the system."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        const latestPlan =
+          normalizeActivePlan(
+            dbPlan
+          );
+
+        const weeklyAmount =
+          getWeeklyAmount(
+            latestPlan
+          );
+
+        const durationWeeks =
+          getDurationWeeks(
+            latestPlan
+          );
+
+        const returnsPaid =
+          Number(
+            latestPlan.returnsPaid ||
+              0
+          );
+
+        /* =======================================================
+           VERIFY PLAN BELONGS TO THIS USER
+        ======================================================= */
+
+        const planPhone =
+          normalizePhone(
+            dbPlan.user_phone
+          );
+
+        const userPhone =
+          normalizePhone(
+            phone
+          );
+
+        if (
+          planPhone !==
+          userPhone
+        ) {
+          setMessage(
+            "This active plan does not belong to the logged-in account."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        /* =======================================================
+           CHECK 7-DAY CYCLE
+        ======================================================= */
+
+        if (
+          !canClaim(
+            latestPlan
+          )
+        ) {
+          setMessage(
+            "Weekly return is not available yet. Please wait until 7 days are completed."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        /* =======================================================
+           CHECK PLAN COMPLETION
+        ======================================================= */
+
+        if (
+          returnsPaid >=
+          durationWeeks
+        ) {
+          setMessage(
+            "This transport plan has completed all weekly returns."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        if (
+          weeklyAmount <=
+          0
+        ) {
+          setMessage(
+            "Weekly return amount is not available for this plan."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        /* =======================================================
+           CALCULATE NEW PLAN VALUES
+        ======================================================= */
+
+        const newReturnsPaid =
+          returnsPaid +
+          1;
+
+        const newEarnedReturns =
+          Number(
+            latestPlan.earnedReturns ||
+              0
+          ) +
+          weeklyAmount;
+
+        const now =
+          new Date().toISOString();
+
+        const nextReturnAt =
+          new Date(
+            Date.now() +
+              7 *
+                24 *
+                60 *
+                60 *
+                1000
+          ).toISOString();
+
+        /* =======================================================
+           UPDATE ACTIVE PLAN IN SUPABASE
+        ======================================================= */
+
+        const {
+          data: updatedDbPlan,
+          error: updatePlanError,
+        } = await supabase
+          .from(
+            "active_plans"
+          )
+          .update({
+            returns_paid:
+              newReturnsPaid,
+
+            earned_returns:
+              newEarnedReturns,
+
+            total_earned:
+              newEarnedReturns,
+
+            last_return_at:
+              now,
+
+            next_return_at:
+              nextReturnAt,
+
+            remaining_weeks:
+              Math.max(
+                0,
+                durationWeeks -
+                  newReturnsPaid
+              ),
+
+            updated_at:
+              now,
+          })
+          .eq(
+            "id",
+            planId
+          )
+          .select("*")
+          .maybeSingle();
+
+        if (
+          updatePlanError
+        ) {
+          console.log(
+            "Active plan update error:",
+            updatePlanError
+          );
+
+          setMessage(
+            "Weekly return could not be saved. Please try again."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        if (
+          !updatedDbPlan
+        ) {
+          setMessage(
+            "The weekly return update was not confirmed by the system."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        /* =======================================================
+           GET CURRENT USER WITHDRAWABLE BALANCE
+        ======================================================= */
+
+        const {
+          data: currentUser,
+          error: currentUserError,
+        } = await supabase
+          .from(
+            "users"
+          )
+          .select(
+            "id, phone, balance, withdrawable_returns"
+          )
+          .eq(
+            "phone",
+            phone
+          )
+          .maybeSingle();
+
+        if (
+          currentUserError
+        ) {
+          console.log(
+            "Current user load error:",
+            currentUserError
+          );
+
+          setMessage(
+            "Plan was updated, but the withdrawable balance could not be loaded."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        if (
+          !currentUser
+        ) {
+          setMessage(
+            "Your user account could not be found."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        const currentWithdrawable =
+          Number(
+            currentUser.withdrawable_returns ||
+              0
+          );
+
+        const newWithdrawable =
+          currentWithdrawable +
+          weeklyAmount;
+
+        /* =======================================================
+           UPDATE WITHDRAWABLE RETURNS IN SUPABASE
+        ======================================================= */
+
+        const {
+          data: updatedUser,
+          error: updateUserError,
+        } = await supabase
+          .from(
+            "users"
+          )
+          .update({
+            withdrawable_returns:
+              newWithdrawable,
+          })
+          .eq(
+            "id",
+            currentUser.id
+          )
+          .select(
+            "id, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, full_name"
+          )
+          .maybeSingle();
+
+        if (
+          updateUserError
+        ) {
+          console.log(
+            "Withdrawable balance update error:",
+            updateUserError
+          );
+
+          setMessage(
+            "The plan return was updated, but the withdrawable balance could not be saved."
+          );
+          setMessageType(
+            "error"
+          );
+          return;
+        }
+
+        /* =======================================================
+           UPDATE LOCAL STORAGE
+        ======================================================= */
+
+        const updatedFrontendPlan =
+          normalizeActivePlan(
+            updatedDbPlan
+          );
+
+        let localPlans =
+          readJSON(
+            `transportActivePlans_${phone}`,
+            []
+          );
+
+        if (
+          !Array.isArray(
+            localPlans
+          )
+        ) {
+          localPlans = [];
+        }
+
+        const localIndex =
+          localPlans.findIndex(
+            (item) =>
+              String(
+                item.id || ""
+              ) ===
+              String(
+                planId
+              )
+          );
+
+        if (
+          localIndex !==
+          -1
+        ) {
+          localPlans[
+            localIndex
+          ] = {
+            ...localPlans[
+              localIndex
+            ],
+
+            ...updatedFrontendPlan,
+          };
+        } else {
+          localPlans.push(
+            updatedFrontendPlan
+          );
+        }
+
+        saveJSON(
+          `transportActivePlans_${phone}`,
+          localPlans
+        );
+
+        if (
+          localPlans.length ===
+          1
+        ) {
+          saveJSON(
+            "transportActivePlan",
+            localPlans[0]
+          );
+        }
+
+        localStorage.setItem(
+          `transportWithdrawableReturns_${phone}`,
+          String(
+            Number(
+              updatedUser?.withdrawable_returns ??
+                newWithdrawable
+            )
+          )
+        );
+
+        const updatedLocalUser =
+          {
+            ...user,
+
+            balance: Number(
+              updatedUser?.balance ??
+                user.balance ??
+                0
+            ),
+
+            withdrawableReturns:
+              Number(
+                updatedUser?.withdrawable_returns ??
+                  newWithdrawable
+              ),
+
+            referralBonus:
+              Number(
+                updatedUser?.referral_bonus ??
+                  user.referralBonus ??
+                  0
+              ),
+
+            totalReferralBonus:
+              Number(
+                updatedUser?.total_referral_bonus ??
+                  user.totalReferralBonus ??
+                  0
+              ),
+          };
+
+        saveJSON(
+          "transportUser",
+          updatedLocalUser
+        );
+
+        setUser(
+          updatedLocalUser
+        );
+
+        /* =======================================================
+           SAVE TRANSACTION LOCALLY
+        ======================================================= */
+
+        const transactionKey =
+          `transportTransactions_${phone}`;
+
+        const storedTransactions =
+          readJSON(
+            transactionKey,
+            []
+          );
+
+        const transactionList =
+          Array.isArray(
+            storedTransactions
+          )
+            ? storedTransactions
+            : [];
+
+        const alreadySaved =
+          transactionList.some(
+            (item) =>
+              item.id ===
+              `weekly-return-${planId}-${newReturnsPaid}`
+          );
+
+        if (
+          !alreadySaved
+        ) {
+          const newTransaction =
+            {
+              id:
+                `weekly-return-${planId}-${newReturnsPaid}`,
+
+              type:
+                "Return",
+
+              returnType:
+                "Weekly",
+
+              amount:
+                weeklyAmount,
+
+              status:
+                "Completed",
+
+              planName:
+                updatedFrontendPlan.name,
+
+              description:
+                `Weekly return from ${updatedFrontendPlan.name}`,
+
+              date:
+                now,
+
+              createdAt:
+                now,
+            };
+
+          transactionList.unshift(
+            newTransaction
+          );
+
+          saveJSON(
+            transactionKey,
+            transactionList
+          );
+        }
+
+        /* =======================================================
+           UPDATE SCREEN
+        ======================================================= */
+
+        const nextPlans =
+          activePlans.map(
+            (item) =>
+              String(
+                item.id || ""
+              ) ===
+              String(
+                planId
+              )
+                ? updatedFrontendPlan
+                : item
+          );
+
+        setActivePlans(
+          nextPlans
+        );
+
+        setWithdrawableReturns(
+          Number(
+            updatedUser?.withdrawable_returns ??
+              newWithdrawable
+          )
+        );
+
+        setMessage(
+          `PKR ${formatMoney(
+            weeklyAmount
+          )} weekly return has been added to your withdrawable balance.`
+        );
+
+        setMessageType(
+          "success"
+        );
+      } catch (error) {
+        console.log(
+          "Weekly return claim error:",
+          error
+        );
+
+        setMessage(
+          "Something went wrong while claiming the weekly return."
+        );
+        setMessageType(
+          "error"
+        );
+      } finally {
+        setTimeout(() => {
+          setClaimingId(
+            null
+          );
+        }, 500);
+      }
+    };
 
   const displayName =
     user?.fullName ||
@@ -571,17 +1481,37 @@ export default function DailyReturns() {
 
   if (loading) {
     return (
-      <div style={styles.loadingPage}>
-        <div style={styles.loadingCard}>
-          <div style={styles.loadingIcon}>
+      <div
+        style={
+          styles.loadingPage
+        }
+      >
+        <div
+          style={
+            styles.loadingCard
+          }
+        >
+          <div
+            style={
+              styles.loadingIcon
+            }
+          >
             ⏳
           </div>
 
-          <h2 style={styles.loadingTitle}>
+          <h2
+            style={
+              styles.loadingTitle
+            }
+          >
             Loading Weekly Returns
           </h2>
 
-          <p style={styles.loadingText}>
+          <p
+            style={
+              styles.loadingText
+            }
+          >
             Please wait...
           </p>
         </div>
@@ -590,23 +1520,51 @@ export default function DailyReturns() {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.container}>
+    <div
+      style={
+        styles.page
+      }
+    >
+      <div
+        style={
+          styles.container
+        }
+      >
 
         {/* HEADER */}
 
-        <header style={styles.header}>
-          <div style={styles.headerLeft}>
-            <div style={styles.headerIcon}>
+        <header
+          style={
+            styles.header
+          }
+        >
+          <div
+            style={
+              styles.headerLeft
+            }
+          >
+            <div
+              style={
+                styles.headerIcon
+              }
+            >
               📈
             </div>
 
             <div>
-              <h1 style={styles.title}>
+              <h1
+                style={
+                  styles.title
+                }
+              >
                 Weekly Returns
               </h1>
 
-              <p style={styles.subtitle}>
+              <p
+                style={
+                  styles.subtitle
+                }
+              >
                 Welcome, {displayName}
               </p>
             </div>
@@ -625,7 +1583,11 @@ export default function DailyReturns() {
           </button>
         </header>
 
-        <main style={styles.content}>
+        <main
+          style={
+            styles.content
+          }
+        >
 
           {/* MESSAGE */}
 
@@ -663,7 +1625,11 @@ export default function DailyReturns() {
 
           {/* WALLET */}
 
-          <div style={styles.walletCard}>
+          <div
+            style={
+              styles.walletCard
+            }
+          >
             <div>
               <p
                 style={
@@ -706,7 +1672,11 @@ export default function DailyReturns() {
 
           <div className="statsGrid">
 
-            <div style={styles.statCard}>
+            <div
+              style={
+                styles.statCard
+              }
+            >
               <div
                 style={
                   styles.statIcon
@@ -738,7 +1708,11 @@ export default function DailyReturns() {
               </div>
             </div>
 
-            <div style={styles.statCard}>
+            <div
+              style={
+                styles.statCard
+              }
+            >
               <div
                 style={
                   styles.statIcon
@@ -773,7 +1747,11 @@ export default function DailyReturns() {
               </div>
             </div>
 
-            <div style={styles.statCard}>
+            <div
+              style={
+                styles.statCard
+              }
+            >
               <div
                 style={
                   styles.statIcon
@@ -808,7 +1786,11 @@ export default function DailyReturns() {
               </div>
             </div>
 
-            <div style={styles.statCard}>
+            <div
+              style={
+                styles.statCard
+              }
+            >
               <div
                 style={
                   styles.statIcon
@@ -979,7 +1961,9 @@ export default function DailyReturns() {
                       durationWeeks;
 
                     const available =
-                      canClaim(plan);
+                      canClaim(
+                        plan
+                      );
 
                     const planId =
                       plan.id ||
@@ -987,7 +1971,9 @@ export default function DailyReturns() {
 
                     return (
                       <div
-                        key={planId}
+                        key={
+                          planId
+                        }
                         style={
                           styles.planCard
                         }
@@ -1013,9 +1999,9 @@ export default function DailyReturns() {
                                 styles.planName
                               }
                             >
-                              {plan.name ||
-                                plan.planName ||
-                                "Transport Plan"}
+                              {getPlanName(
+                                plan
+                              )}
                             </h3>
 
                           </div>
@@ -1460,7 +2446,10 @@ export default function DailyReturns() {
       <style jsx>{`
         .statsGrid {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(
+            4,
+            minmax(0, 1fr)
+          );
           gap: 16px;
           margin-bottom: 28px;
         }
@@ -1476,7 +2465,10 @@ export default function DailyReturns() {
 
         @media (max-width: 900px) {
           .statsGrid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(
+              2,
+              minmax(0, 1fr)
+            );
           }
         }
 
@@ -1500,7 +2492,8 @@ const styles = {
     minHeight: "100vh",
     background: "#eef3f7",
     color: "#ffffff",
-    fontFamily: "Arial, sans-serif",
+    fontFamily:
+      "Arial, sans-serif",
     paddingBottom: "50px",
   },
 
@@ -1516,7 +2509,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontFamily: "Arial, sans-serif",
+    fontFamily:
+      "Arial, sans-serif",
   },
 
   loadingCard: {
@@ -1542,17 +2536,20 @@ const styles = {
   },
 
   loadingText: {
-    margin: "8px 0 0",
+    margin:
+      "8px 0 0",
     color: "#9FB3C8",
   },
 
   header: {
     background:
       "linear-gradient(135deg, #102A43 0%, #173B5A 100%)",
-    padding: "24px 30px",
+    padding:
+      "24px 30px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "20px",
     borderBottom:
       "1px solid #1E3A56",
@@ -1584,7 +2581,8 @@ const styles = {
   },
 
   subtitle: {
-    margin: "5px 0 0",
+    margin:
+      "5px 0 0",
     color: "#C9D8E6",
     fontSize: "14px",
   },
@@ -1594,14 +2592,16 @@ const styles = {
       "1px solid #45627C",
     background: "#173B5A",
     color: "#ffffff",
-    padding: "11px 17px",
+    padding:
+      "11px 17px",
     borderRadius: "9px",
     cursor: "pointer",
     fontWeight: "700",
   },
 
   content: {
-    padding: "28px 20px",
+    padding:
+      "28px 20px",
   },
 
   successMessage: {
@@ -1610,7 +2610,8 @@ const styles = {
       "1px solid #3E8E5B",
     color: "#ffffff",
     borderRadius: "12px",
-    padding: "14px 16px",
+    padding:
+      "14px 16px",
     marginBottom: "20px",
     display: "flex",
     alignItems: "center",
@@ -1624,7 +2625,8 @@ const styles = {
       "1px solid #A65B52",
     color: "#ffffff",
     borderRadius: "12px",
-    padding: "14px 16px",
+    padding:
+      "14px 16px",
     marginBottom: "20px",
     display: "flex",
     alignItems: "center",
@@ -1648,7 +2650,8 @@ const styles = {
     padding: "26px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "20px",
     border:
       "1px solid #1E3A56",
@@ -1664,7 +2667,8 @@ const styles = {
   },
 
   walletAmount: {
-    margin: "7px 0",
+    margin:
+      "7px 0",
     color: "#8FD694",
     fontSize: "32px",
   },
@@ -1734,23 +2738,28 @@ const styles = {
   },
 
   statValue: {
-    margin: "5px 0 0",
+    margin:
+      "5px 0 0",
     color: "#ffffff",
     fontSize: "17px",
-    whiteSpace: "nowrap",
+    whiteSpace:
+      "nowrap",
   },
 
   greenValue: {
-    margin: "5px 0 0",
+    margin:
+      "5px 0 0",
     color: "#8FD694",
     fontSize: "17px",
-    whiteSpace: "nowrap",
+    whiteSpace:
+      "nowrap",
   },
 
   emptyCard: {
     background: "#102A43",
     borderRadius: "20px",
-    padding: "45px 25px",
+    padding:
+      "45px 25px",
     textAlign: "center",
     border:
       "1px solid #1E3A56",
@@ -1772,7 +2781,8 @@ const styles = {
 
   emptyText: {
     maxWidth: "600px",
-    margin: "10px auto 20px",
+    margin:
+      "10px auto 20px",
     color: "#9FB3C8",
     lineHeight: 1.6,
     fontSize: "14px",
@@ -1781,7 +2791,8 @@ const styles = {
   sectionHeader: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "20px",
     marginBottom: "17px",
   },
@@ -1793,7 +2804,8 @@ const styles = {
   },
 
   sectionText: {
-    margin: "5px 0 0",
+    margin:
+      "5px 0 0",
     color: "#60758A",
     fontSize: "13px",
   },
@@ -1801,13 +2813,15 @@ const styles = {
   expectedBadge: {
     background: "#102A43",
     color: "#8FD694",
-    padding: "10px 14px",
+    padding:
+      "10px 14px",
     borderRadius: "9px",
     border:
       "1px solid #1E3A56",
     fontSize: "13px",
     fontWeight: "700",
-    whiteSpace: "nowrap",
+    whiteSpace:
+      "nowrap",
   },
 
   plansGrid: {
@@ -1830,8 +2844,10 @@ const styles = {
 
   planTop: {
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    justifyContent:
+      "space-between",
+    alignItems:
+      "flex-start",
     gap: "15px",
     marginBottom: "20px",
   },
@@ -1840,15 +2856,18 @@ const styles = {
     display: "inline-block",
     background: "#173B5A",
     color: "#8FD694",
-    padding: "5px 8px",
+    padding:
+      "5px 8px",
     borderRadius: "6px",
     fontSize: "10px",
     fontWeight: "800",
-    letterSpacing: "0.5px",
+    letterSpacing:
+      "0.5px",
   },
 
   planName: {
-    margin: "8px 0 0",
+    margin:
+      "8px 0 0",
     color: "#ffffff",
     fontSize: "21px",
   },
@@ -1891,7 +2910,8 @@ const styles = {
 
   progressHeader: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     color: "#C9D8E6",
     fontSize: "12px",
     marginBottom: "7px",
@@ -1919,7 +2939,8 @@ const styles = {
     padding: "13px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "12px",
     marginBottom: "13px",
   },
@@ -1949,7 +2970,8 @@ const styles = {
     background:
       "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
     color: "#ffffff",
-    padding: "13px 16px",
+    padding:
+      "13px 16px",
     borderRadius: "9px",
     cursor: "pointer",
     fontWeight: "800",
@@ -1962,7 +2984,8 @@ const styles = {
       "1px solid #45627C",
     background: "#173B5A",
     color: "#9FB3C8",
-    padding: "13px 16px",
+    padding:
+      "13px 16px",
     borderRadius: "9px",
     cursor: "not-allowed",
     fontWeight: "700",
@@ -1983,14 +3006,17 @@ const styles = {
 
   simpleInfoSection: {
     marginBottom: "25px",
-    background: "transparent",
+    background:
+      "transparent",
   },
 
   simpleInfoLine: {
     display: "flex",
-    alignItems: "flex-start",
+    alignItems:
+      "flex-start",
     gap: "12px",
-    padding: "12px 0",
+    padding:
+      "12px 0",
     borderBottom:
       "1px solid #d8e1e8",
   },
@@ -2008,7 +3034,8 @@ const styles = {
     color: "#ffffff",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent:
+      "center",
     fontWeight: "800",
     fontSize: "12px",
     flexShrink: 0,
@@ -2023,7 +3050,8 @@ const styles = {
   },
 
   simpleInfoText: {
-    margin: "3px 0 0",
+    margin:
+      "3px 0 0",
     color: "#60758A",
     fontSize: "11px",
     lineHeight: 1.5,
@@ -2040,7 +3068,8 @@ const styles = {
     background:
       "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
     color: "#ffffff",
-    padding: "13px 19px",
+    padding:
+      "13px 19px",
     borderRadius: "9px",
     cursor: "pointer",
     fontWeight: "800",
@@ -2052,7 +3081,8 @@ const styles = {
       "1px solid #1E3A56",
     background: "#102A43",
     color: "#ffffff",
-    padding: "13px 19px",
+    padding:
+      "13px 19px",
     borderRadius: "9px",
     cursor: "pointer",
     fontWeight: "700",
