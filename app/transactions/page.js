@@ -29,8 +29,9 @@ function getTransactionDate(transaction) {
 }
 
 function getTransactionTimestamp(transaction) {
-  const value =
-    getTransactionDate(transaction);
+  const value = getTransactionDate(
+    transaction
+  );
 
   const time =
     new Date(value).getTime();
@@ -65,10 +66,9 @@ function getTransactionType(transaction) {
 }
 
 function normalizeTransaction(transaction) {
-  const originalType =
-    String(
-      transaction?.type || ""
-    ).toLowerCase();
+  const originalType = String(
+    transaction?.type || ""
+  ).toLowerCase();
 
   let type =
     transaction?.type ||
@@ -138,144 +138,144 @@ function normalizeTransaction(transaction) {
   };
 }
 
-function isLocalDuplicateOfCentral(
-  localTransaction,
-  centralTransactions
+/*
+ * --------------------------------------------------
+ * REMOVE DUPLICATE WITHDRAWALS
+ * --------------------------------------------------
+ *
+ * If the same withdrawal appears locally twice:
+ *
+ * Pending PKR 33,750
+ * Approved PKR 33,750
+ *
+ * keep the processed record and remove the old
+ * Pending duplicate.
+ *
+ * This also works when Supabase transactions are
+ * temporarily empty.
+ * --------------------------------------------------
+ */
+function removeDuplicateWithdrawals(
+  transactions
 ) {
-  if (
-    !localTransaction ||
-    !Array.isArray(
-      centralTransactions
-    ) ||
-    centralTransactions.length === 0
-  ) {
-    return false;
-  }
+  const list = Array.isArray(
+    transactions
+  )
+    ? [...transactions]
+    : [];
 
-  /*
-   * Exact ID match.
-   */
-  if (localTransaction.id) {
-    const exactIdMatch =
-      centralTransactions.some(
-        (central) =>
-          String(
-            central?.id || ""
-          ) ===
-          String(
-            localTransaction.id
-          )
-      );
-
-    if (exactIdMatch) {
-      return true;
-    }
-  }
-
-  /*
-   * Old local withdrawal duplicates:
-   * If the local record is Pending and Supabase
-   * already has the same user's processed withdrawal
-   * with the same amount, hide the local duplicate.
-   */
-  const localType =
-    getTransactionType(
-      localTransaction
-    );
-
-  if (
-    localType !==
-    "withdraw"
-  ) {
-    return false;
-  }
-
-  const localStatus =
-    String(
-      localTransaction?.status ||
-        ""
-    ).toLowerCase();
-
-  if (
-    localStatus !==
-    "pending"
-  ) {
-    return false;
-  }
-
-  const localPhone =
-    normalizePhone(
-      localTransaction?.phone ||
-        localTransaction?.userPhone ||
-        localTransaction?.mobile ||
-        ""
-    );
-
-  const localAmount =
-    Number(
-      localTransaction?.amount ||
-        0
-    );
-
-  return centralTransactions.some(
-    (central) => {
-      const centralType =
+  const withdrawals =
+    list.filter(
+      (transaction) =>
         getTransactionType(
-          central
-        );
+          transaction
+        ) === "withdraw"
+    );
 
-      if (
-        centralType !==
-        "withdraw"
-      ) {
-        return false;
-      }
-
-      const centralStatus =
-        String(
-          central?.status ||
+  const processedWithdrawals =
+    withdrawals.filter(
+      (transaction) => {
+        const status = String(
+          transaction?.status ||
             ""
         ).toLowerCase();
 
-      if (
-        centralStatus !==
-          "approved" &&
-        centralStatus !==
-          "rejected" &&
-        centralStatus !==
-          "completed"
-      ) {
-        return false;
+        return (
+          status === "approved" ||
+          status === "rejected" ||
+          status === "completed"
+        );
       }
+    );
 
-      const centralPhone =
-        normalizePhone(
-          central?.user_phone ||
-            central?.phone ||
-            central?.userPhone ||
-            central?.mobile ||
-            ""
+  return list.filter(
+    (transaction) => {
+      const type =
+        getTransactionType(
+          transaction
         );
 
-      const centralAmount =
+      if (
+        type !== "withdraw"
+      ) {
+        return true;
+      }
+
+      const status =
+        String(
+          transaction?.status ||
+            ""
+        ).toLowerCase();
+
+      /*
+       * Only remove old Pending withdrawal records.
+       */
+      if (
+        status !==
+        "pending"
+      ) {
+        return true;
+      }
+
+      const amount =
         Number(
-          central?.amount ||
+          transaction?.amount ||
             0
         );
 
-      if (
-        localPhone &&
-        centralPhone &&
-        localPhone !==
-          centralPhone
-      ) {
-        return false;
-      }
+      const phone =
+        normalizePhone(
+          transaction?.phone ||
+            transaction?.userPhone ||
+            transaction?.mobile ||
+            ""
+        );
 
-      return (
-        localAmount ===
-        centralAmount
-      );
+      /*
+       * If a processed withdrawal exists with
+       * the same amount and same user, the Pending
+       * one is considered the duplicate.
+       */
+      const matchingProcessed =
+        processedWithdrawals.some(
+          (processed) => {
+            const processedAmount =
+              Number(
+                processed?.amount ||
+                  0
+              );
+
+            if (
+              processedAmount !==
+              amount
+            ) {
+              return false;
+            }
+
+            const processedPhone =
+              normalizePhone(
+                processed?.phone ||
+                  processed?.userPhone ||
+                  processed?.mobile ||
+                  processed?.user_phone ||
+                  ""
+              );
+
+            if (
+              phone &&
+              processedPhone
+            ) {
+              return (
+                phone ===
+                processedPhone
+              );
+            }
+
+            return true;
+          }
+        );
+
+      return !matchingProcessed;
     }
   );
 }
@@ -390,7 +390,7 @@ export default function Transactions() {
 
       /*
        * --------------------------------------------------
-       * LOAD OLD LOCAL TRANSACTIONS
+       * LOAD LOCAL TRANSACTIONS
        * --------------------------------------------------
        */
       let localTransactions =
@@ -486,16 +486,172 @@ export default function Transactions() {
 
       /*
        * --------------------------------------------------
-       * REMOVE OLD LOCAL DUPLICATES
+       * REMOVE LOCAL DUPLICATES FIRST
+       * --------------------------------------------------
+       */
+      const cleanedLocalTransactions =
+        removeDuplicateWithdrawals(
+          localTransactions
+        );
+
+      /*
+       * --------------------------------------------------
+       * REMOVE LOCAL RECORDS ALREADY REPRESENTED
+       * BY SUPABASE
        * --------------------------------------------------
        */
       const filteredLocalTransactions =
-        localTransactions.filter(
-          (localTransaction) =>
-            !isLocalDuplicateOfCentral(
-              localTransaction,
-              supabaseTransactions
-            )
+        cleanedLocalTransactions.filter(
+          (localTransaction) => {
+            if (
+              !localTransaction
+            ) {
+              return false;
+            }
+
+            /*
+             * Exact ID match.
+             */
+            if (
+              localTransaction.id
+            ) {
+              const exactMatch =
+                supabaseTransactions.some(
+                  (central) =>
+                    String(
+                      central?.id ||
+                        ""
+                    ) ===
+                    String(
+                      localTransaction.id
+                    )
+                );
+
+              if (
+                exactMatch
+              ) {
+                return false;
+              }
+            }
+
+            /*
+             * If Supabase has a processed
+             * withdrawal with same amount,
+             * don't show an old local Pending copy.
+             */
+            const localType =
+              getTransactionType(
+                localTransaction
+              );
+
+            if (
+              localType ===
+              "withdraw"
+            ) {
+              const localStatus =
+                String(
+                  localTransaction?.status ||
+                    ""
+                ).toLowerCase();
+
+              if (
+                localStatus ===
+                "pending"
+              ) {
+                const localAmount =
+                  Number(
+                    localTransaction?.amount ||
+                      0
+                  );
+
+                const localPhone =
+                  normalizePhone(
+                    localTransaction?.phone ||
+                      localTransaction?.userPhone ||
+                      localTransaction?.mobile ||
+                      ""
+                  );
+
+                const centralProcessed =
+                  supabaseTransactions.some(
+                    (
+                      central
+                    ) => {
+                      const centralType =
+                        getTransactionType(
+                          central
+                        );
+
+                      if (
+                        centralType !==
+                        "withdraw"
+                      ) {
+                        return false;
+                      }
+
+                      const centralStatus =
+                        String(
+                          central?.status ||
+                            ""
+                        ).toLowerCase();
+
+                      if (
+                        centralStatus !==
+                          "approved" &&
+                        centralStatus !==
+                          "rejected" &&
+                        centralStatus !==
+                          "completed"
+                      ) {
+                        return false;
+                      }
+
+                      const centralAmount =
+                        Number(
+                          central?.amount ||
+                            0
+                        );
+
+                      if (
+                        centralAmount !==
+                        localAmount
+                      ) {
+                        return false;
+                      }
+
+                      const centralPhone =
+                        normalizePhone(
+                          central?.user_phone ||
+                            central?.phone ||
+                            central?.userPhone ||
+                            central?.mobile ||
+                            ""
+                        );
+
+                      if (
+                        localPhone &&
+                        centralPhone
+                      ) {
+                        return (
+                          localPhone ===
+                          centralPhone
+                        );
+                      }
+
+                      return true;
+                    }
+                  );
+
+                if (
+                  centralProcessed
+                ) {
+                  return false;
+                }
+              }
+            }
+
+            return true;
+          }
         );
 
       /*
@@ -573,15 +729,21 @@ export default function Transactions() {
         }
       );
 
-      const finalTransactions =
-        Array.from(
-          mergedMap.values()
+      /*
+       * Final cleanup in case a duplicate survives
+       * the merge process.
+       */
+      const deduplicatedTransactions =
+        removeDuplicateWithdrawals(
+          Array.from(
+            mergedMap.values()
+          )
         );
 
       /*
        * Newest first.
        */
-      finalTransactions.sort(
+      deduplicatedTransactions.sort(
         (a, b) =>
           getTransactionTimestamp(
             b
@@ -592,9 +754,7 @@ export default function Transactions() {
       );
 
       /*
-       * --------------------------------------------------
-       * UPDATE LOCAL CACHE
-       * --------------------------------------------------
+       * Save cleaned result into local cache.
        */
       if (
         phone
@@ -604,7 +764,7 @@ export default function Transactions() {
             "transportTransactions_" +
               phone,
             JSON.stringify(
-              finalTransactions
+              deduplicatedTransactions
             )
           );
         } catch (error) {
@@ -621,7 +781,7 @@ export default function Transactions() {
       }
 
       setTransactions(
-        finalTransactions
+        deduplicatedTransactions
       );
 
       setLoading(
@@ -822,6 +982,11 @@ export default function Transactions() {
                     "return"
                   );
 
+                const isReferral =
+                  type.includes(
+                    "referral"
+                  );
+
                 let colors = {
                   border:
                     "#80651d",
@@ -886,6 +1051,23 @@ export default function Transactions() {
                   };
                 }
 
+                if (
+                  isReferral
+                ) {
+                  colors = {
+                    border:
+                      "#80651d",
+                    iconBackground:
+                      "#5D4A1B",
+                    icon:
+                      "🎁",
+                    title:
+                      "#ffffff",
+                    amount:
+                      "#F4D77A",
+                  };
+                }
+
                 const status =
                   String(
                     normalized.status ||
@@ -938,6 +1120,8 @@ export default function Transactions() {
                     ? "Withdraw"
                     : isDeposit
                     ? "Deposit"
+                    : isReferral
+                    ? "Referral Bonus"
                     : normalized.type ||
                       "Transaction";
 
