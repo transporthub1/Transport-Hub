@@ -1,159 +1,465 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
+
+function normalizePhone(value) {
+  let phone = String(value || "")
+    .replace(/\s+/g, "")
+    .replace(/-/g, "")
+    .trim();
+
+  if (phone.startsWith("+92")) {
+    phone = "0" + phone.slice(3);
+  } else if (phone.startsWith("0092")) {
+    phone = "0" + phone.slice(4);
+  }
+
+  return phone;
+}
+
+function getTransactionDate(transaction) {
+  return (
+    transaction?.date ||
+    transaction?.createdAt ||
+    transaction?.created_at ||
+    transaction?.submittedAt ||
+    0
+  );
+}
+
+function normalizeTransaction(transaction) {
+  const originalType = String(
+    transaction?.type || ""
+  ).toLowerCase();
+
+  let type = transaction?.type || "Transaction";
+
+  if (originalType.includes("deposit")) {
+    type = "Deposit";
+  } else if (
+    originalType.includes("withdraw")
+  ) {
+    type = "Withdraw";
+  } else if (
+    originalType.includes("return")
+  ) {
+    type = "Weekly Return";
+  }
+
+  return {
+    ...transaction,
+
+    type,
+
+    returnType:
+      transaction?.returnType ||
+      transaction?.return_type ||
+      (
+        originalType.includes("return")
+          ? "Weekly"
+          : undefined
+      ),
+
+    amount: Number(
+      transaction?.amount || 0
+    ),
+
+    status:
+      transaction?.status ||
+      "Completed",
+
+    date:
+      transaction?.date ||
+      transaction?.createdAt ||
+      transaction?.created_at ||
+      transaction?.submittedAt ||
+      "N/A",
+
+    createdAt:
+      transaction?.createdAt ||
+      transaction?.created_at ||
+      transaction?.date ||
+      null,
+
+    planName:
+      transaction?.planName ||
+      transaction?.plan_name ||
+      "",
+
+    description:
+      transaction?.description ||
+      "",
+  };
+}
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem("transportLoggedIn");
+    let cancelled = false;
 
-    if (loggedIn !== "true") {
-      window.location.replace("/login");
-      return;
-    }
-
-    const savedUser = localStorage.getItem("transportUser");
-
-    let user = null;
-
-    try {
-      user = savedUser ? JSON.parse(savedUser) : null;
-    } catch (error) {
-      console.log("Could not load user");
-    }
-
-    const phone =
-      user?.phone ||
-      user?.mobile ||
-      user?.number ||
-      "";
-
-    let savedTransactions = null;
-
-    /*
-      First load current user's transactions.
-    */
-    if (phone) {
-      savedTransactions = localStorage.getItem(
-        "transportTransactions_" + phone
+    const loadTransactions = async () => {
+      const loggedIn = localStorage.getItem(
+        "transportLoggedIn"
       );
-    }
 
-    /*
-      Compatibility fallback for old global transactions.
-    */
-    if (!savedTransactions) {
-      savedTransactions = localStorage.getItem(
-        "transportTransactions"
+      if (loggedIn !== "true") {
+        window.location.replace("/login");
+        return;
+      }
+
+      const savedUser = localStorage.getItem(
+        "transportUser"
       );
-    }
 
-    if (savedTransactions) {
+      let user = null;
+
       try {
-        const parsedTransactions = JSON.parse(
-          savedTransactions
+        user = savedUser
+          ? JSON.parse(savedUser)
+          : null;
+      } catch (error) {
+        console.log(
+          "Could not load user"
         );
+      }
 
-        if (Array.isArray(parsedTransactions)) {
-          let userTransactions = parsedTransactions;
+      const rawPhone =
+        user?.phone ||
+        user?.mobile ||
+        user?.number ||
+        "";
 
-          /*
-            If transaction records contain user information,
-            only show the currently logged-in user's records.
-          */
-          if (phone) {
-            const containsUserData =
-              parsedTransactions.some(
-                (transaction) =>
-                  transaction?.phone ||
-                  transaction?.userPhone ||
-                  transaction?.mobile
-              );
+      const phone =
+        normalizePhone(rawPhone);
 
-            if (containsUserData) {
-              userTransactions =
-                parsedTransactions.filter(
+      /*
+       * --------------------------------------------------
+       * LOAD TRANSACTIONS FROM SUPABASE
+       * --------------------------------------------------
+       */
+      let supabaseTransactions = [];
+
+      if (phone) {
+        try {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("transactions")
+            .select("*")
+            .eq(
+              "user_phone",
+              phone
+            )
+            .order("created_at", {
+              ascending: false,
+            });
+
+          if (error) {
+            console.log(
+              "Supabase transactions load error:",
+              error.message
+            );
+          } else {
+            supabaseTransactions =
+              Array.isArray(data)
+                ? data.map(
+                    normalizeTransaction
+                  )
+                : [];
+          }
+        } catch (error) {
+          console.log(
+            "Supabase transactions request failed:",
+            error
+          );
+        }
+      }
+
+      /*
+       * --------------------------------------------------
+       * LOAD OLD LOCAL TRANSACTIONS
+       * --------------------------------------------------
+       *
+       * LocalStorage remains as compatibility fallback
+       * so existing older records do not disappear.
+       * --------------------------------------------------
+       */
+      let localTransactions = [];
+
+      let savedTransactions = null;
+
+      if (rawPhone) {
+        savedTransactions =
+          localStorage.getItem(
+            "transportTransactions_" +
+              rawPhone
+          );
+      }
+
+      if (!savedTransactions && phone) {
+        savedTransactions =
+          localStorage.getItem(
+            "transportTransactions_" +
+              phone
+          );
+      }
+
+      if (!savedTransactions) {
+        savedTransactions =
+          localStorage.getItem(
+            "transportTransactions"
+          );
+      }
+
+      if (savedTransactions) {
+        try {
+          const parsedTransactions =
+            JSON.parse(
+              savedTransactions
+            );
+
+          if (
+            Array.isArray(
+              parsedTransactions
+            )
+          ) {
+            localTransactions =
+              parsedTransactions
+                .map(
+                  normalizeTransaction
+                )
+                .filter(
                   (transaction) => {
+                    if (!phone) {
+                      return true;
+                    }
+
                     const transactionPhone =
-                      transaction?.phone ||
-                      transaction?.userPhone ||
-                      transaction?.mobile ||
-                      "";
+                      normalizePhone(
+                        transaction?.phone ||
+                          transaction?.userPhone ||
+                          transaction?.mobile ||
+                          ""
+                      );
+
+                    /*
+                     * Old local records may not have phone.
+                     * Keep them for compatibility when phone
+                     * information does not exist.
+                     */
+                    if (
+                      !transactionPhone
+                    ) {
+                      return true;
+                    }
 
                     return (
-                      String(transactionPhone) ===
-                      String(phone)
+                      transactionPhone ===
+                      phone
                     );
                   }
                 );
-            }
           }
-
-          /*
-            Convert all Return transactions
-            to Weekly Return.
-          */
-          const normalizedTransactions =
-            userTransactions.map(
-              (transaction) => {
-                const originalType = String(
-                  transaction?.type || ""
-                );
-
-                const isReturn =
-                  originalType
-                    .toLowerCase()
-                    .includes("return");
-
-                if (isReturn) {
-                  return {
-                    ...transaction,
-                    type: "Weekly Return",
-                    returnType: "Weekly",
-                  };
-                }
-
-                return transaction;
-              }
-            );
-
-          /*
-            Newest transactions first.
-          */
-          normalizedTransactions.sort(
-            (a, b) => {
-              const dateA = new Date(
-                a?.date ||
-                  a?.createdAt ||
-                  a?.submittedAt ||
-                  0
-              ).getTime();
-
-              const dateB = new Date(
-                b?.date ||
-                  b?.createdAt ||
-                  b?.submittedAt ||
-                  0
-              ).getTime();
-
-              return dateB - dateA;
-            }
-          );
-
-          setTransactions(
-            normalizedTransactions
+        } catch (error) {
+          console.log(
+            "Could not load local transactions"
           );
         }
-      } catch (error) {
-        console.log(
-          "Could not load transactions"
-        );
       }
-    }
 
-    setLoading(false);
+      /*
+       * --------------------------------------------------
+       * MERGE SUPABASE + LOCAL
+       * --------------------------------------------------
+       *
+       * Supabase is the central source.
+       * Duplicate transaction IDs are removed.
+       * --------------------------------------------------
+       */
+      const mergedMap = new Map();
+
+      supabaseTransactions.forEach(
+        (transaction) => {
+          const key =
+            String(
+              transaction?.id ||
+                ""
+            ).trim();
+
+          if (key) {
+            mergedMap.set(
+              key,
+              transaction
+            );
+          }
+        }
+      );
+
+      localTransactions.forEach(
+        (transaction) => {
+          const key =
+            String(
+              transaction?.id ||
+                ""
+            ).trim();
+
+          if (key) {
+            if (
+              !mergedMap.has(key)
+            ) {
+              mergedMap.set(
+                key,
+                transaction
+              );
+            }
+          } else {
+            const fallbackKey =
+              JSON.stringify({
+                type:
+                  transaction?.type ||
+                  "",
+                amount:
+                  transaction?.amount ||
+                  0,
+                date:
+                  getTransactionDate(
+                    transaction
+                  ),
+              });
+
+            if (
+              !mergedMap.has(
+                fallbackKey
+              )
+            ) {
+              mergedMap.set(
+                fallbackKey,
+                transaction
+              );
+            }
+          }
+        }
+      );
+
+      const finalTransactions =
+        Array.from(
+          mergedMap.values()
+        );
+
+      /*
+       * Newest transactions first.
+       */
+      finalTransactions.sort(
+        (a, b) => {
+          const dateA =
+            new Date(
+              getTransactionDate(
+                a
+              )
+            ).getTime();
+
+          const dateB =
+            new Date(
+              getTransactionDate(
+                b
+              )
+            ).getTime();
+
+          return dateB - dateA;
+        }
+      );
+
+      /*
+       * Save the central records into local cache too.
+       * This does not replace Supabase; it is only a
+       * compatibility cache.
+       */
+      if (
+        phone &&
+        supabaseTransactions.length >
+          0
+      ) {
+        try {
+          const localKey =
+            "transportTransactions_" +
+            phone;
+
+          const existingLocal =
+            localTransactions;
+
+          const centralMap =
+            new Map();
+
+          supabaseTransactions.forEach(
+            (transaction) => {
+              if (transaction?.id) {
+                centralMap.set(
+                  String(
+                    transaction.id
+                  ),
+                  transaction
+                );
+              }
+            }
+          );
+
+          existingLocal.forEach(
+            (transaction) => {
+              if (
+                transaction?.id &&
+                !centralMap.has(
+                  String(
+                    transaction.id
+                  )
+                )
+              ) {
+                centralMap.set(
+                  String(
+                    transaction.id
+                  ),
+                  transaction
+                );
+              }
+            }
+          );
+
+          localStorage.setItem(
+            localKey,
+            JSON.stringify(
+              Array.from(
+                centralMap.values()
+              )
+            )
+          );
+        } catch (error) {
+          console.log(
+            "Could not update local transaction cache"
+          );
+        }
+      }
+
+      if (
+        cancelled
+      ) {
+        return;
+      }
+
+      setTransactions(
+        finalTransactions
+      );
+
+      setLoading(false);
+    };
+
+    loadTransactions();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {
@@ -264,9 +570,16 @@ export default function Transactions() {
           >
             {transactions.map(
               (transaction, index) => {
-                const originalType = String(
-                  transaction.type || ""
-                );
+                const normalized =
+                  normalizeTransaction(
+                    transaction
+                  );
+
+                const originalType =
+                  String(
+                    normalized.type ||
+                      ""
+                  );
 
                 const type =
                   originalType.toLowerCase();
@@ -320,7 +633,8 @@ export default function Transactions() {
 
                 const status =
                   String(
-                    transaction.status || ""
+                    normalized.status ||
+                      ""
                   ).toLowerCase();
 
                 let statusBackground =
@@ -329,36 +643,55 @@ export default function Transactions() {
                 let statusColor =
                   "#F4D77A";
 
-                if (status === "approved") {
+                if (
+                  status ===
+                  "approved"
+                ) {
                   statusBackground =
                     "#24543E";
                   statusColor =
                     "#8FD694";
                 }
 
-                if (status === "rejected") {
+                if (
+                  status ===
+                  "rejected"
+                ) {
                   statusBackground =
                     "#573533";
                   statusColor =
                     "#FF9F96";
                 }
 
+                if (
+                  status ===
+                  "completed"
+                ) {
+                  statusBackground =
+                    "#24543E";
+                  statusColor =
+                    "#8FD694";
+                }
+
                 const displayType =
                   isReturn
                     ? "Weekly Return"
-                    : transaction.type ||
+                    : isWithdrawal
+                    ? "Withdraw"
+                    : isDeposit
+                    ? "Deposit"
+                    : normalized.type ||
                       "Transaction";
 
                 const displayDate =
-                  transaction.date ||
-                  transaction.createdAt ||
-                  transaction.submittedAt ||
+                  normalized.date ||
+                  normalized.createdAt ||
                   "N/A";
 
                 return (
                   <div
                     key={
-                      transaction.id ||
+                      normalized.id ||
                       index
                     }
                     style={{
@@ -462,7 +795,7 @@ export default function Transactions() {
                             "1px solid rgba(255,255,255,0.08)",
                         }}
                       >
-                        {transaction.status ||
+                        {normalized.status ||
                           "Completed"}
                       </span>
 
@@ -525,7 +858,7 @@ export default function Transactions() {
                         >
                           PKR{" "}
                           {Number(
-                            transaction.amount ||
+                            normalized.amount ||
                               0
                           ).toLocaleString()}
                         </strong>
@@ -581,7 +914,7 @@ export default function Transactions() {
                         </strong>
                       </div>
 
-                      {/* WEEKLY RETURN */}
+                      {/* RETURN TYPE */}
 
                       {isReturn && (
                         <div
@@ -628,7 +961,114 @@ export default function Transactions() {
                                 "#8FD694",
                             }}
                           >
-                            Weekly Return
+                            {normalized.returnType ||
+                              "Weekly"}
+                          </strong>
+                        </div>
+                      )}
+
+                      {/* PLAN */}
+
+                      {normalized.planName && (
+                        <div
+                          style={{
+                            background:
+                              "#173B5A",
+                            border:
+                              "1px solid " +
+                              colors.border,
+                            borderRadius:
+                              "12px",
+                            padding:
+                              "13px 14px",
+                            gridColumn:
+                              "1 / -1",
+                          }}
+                        >
+                          <span
+                            style={{
+                              display:
+                                "block",
+                              fontSize:
+                                "10px",
+                              color:
+                                "#9FB3C8",
+                              marginBottom:
+                                "5px",
+                              textTransform:
+                                "uppercase",
+                              letterSpacing:
+                                "0.5px",
+                            }}
+                          >
+                            Plan
+                          </span>
+
+                          <strong
+                            style={{
+                              display:
+                                "block",
+                              fontSize:
+                                "14px",
+                              color:
+                                "#ffffff",
+                            }}
+                          >
+                            {normalized.planName}
+                          </strong>
+                        </div>
+                      )}
+
+                      {/* DESCRIPTION */}
+
+                      {normalized.description && (
+                        <div
+                          style={{
+                            background:
+                              "#173B5A",
+                            border:
+                              "1px solid " +
+                              colors.border,
+                            borderRadius:
+                              "12px",
+                            padding:
+                              "13px 14px",
+                            gridColumn:
+                              "1 / -1",
+                          }}
+                        >
+                          <span
+                            style={{
+                              display:
+                                "block",
+                              fontSize:
+                                "10px",
+                              color:
+                                "#9FB3C8",
+                              marginBottom:
+                                "5px",
+                              textTransform:
+                                "uppercase",
+                              letterSpacing:
+                                "0.5px",
+                            }}
+                          >
+                            Details
+                          </span>
+
+                          <strong
+                            style={{
+                              display:
+                                "block",
+                              fontSize:
+                                "13px",
+                              color:
+                                "#ffffff",
+                              lineHeight:
+                                "1.4",
+                            }}
+                          >
+                            {normalized.description}
                           </strong>
                         </div>
                       )}
