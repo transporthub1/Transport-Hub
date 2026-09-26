@@ -1,3161 +1,17 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase";
-
-const NAVY = "#102A43";
-const NAVY_2 = "#173B5A";
-const BORDER = "#29435A";
-const LIGHT = "#C9D8E6";
-const MUTED = "#9FB3C8";
-const GREEN = "#8FD694";
-const RED = "#FF9F96";
-const GOLD = "#F4D77A";
-const PAGE_BG = "#eef3f7";
-
-const DURATION_YEARS = 5;
-const DURATION_WEEKS = 260;
-
-const REFERRAL_LEVELS = [
-  { level: 1, percent: 10 },
-  { level: 2, percent: 5 },
-  { level: 3, percent: 3 },
-  { level: 4, percent: 2 },
-  { level: 5, percent: 1 },
-  { level: 6, percent: 0.5 },
-];
-
-export default function Admin() {
-  const [depositRequests, setDepositRequests] = useState([]);
-  const [withdrawRequests, setWithdrawRequests] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("success");
-  const [activeTab, setActiveTab] = useState("overview");
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const loggedIn = localStorage.getItem(
-      "transportAdminLoggedIn"
-    );
-
-    if (loggedIn !== "true") {
-      window.location.href = "/admin/login";
-      return;
-    }
-
-    loadAllData();
-  }, []);
-
-  const loadAllData = async () => {
-    await loadUsers();
-    await loadDepositRequests();
-    await loadWithdrawRequests();
-    setLoading(false);
-  };
-
-  const normalizePhone = (value) => {
-    if (
-      value === null ||
-      value === undefined
-    ) {
-      return "";
-    }
-
-    let phone = String(value)
-      .replace(/\s+/g, "")
-      .replace(/-/g, "")
-      .trim();
-
-    if (phone.startsWith("+92")) {
-      phone = "0" + phone.slice(3);
-    } else if (phone.startsWith("0092")) {
-      phone = "0" + phone.slice(4);
-    }
-
-    return phone;
-  };
-
-  /*
-   * ----------------------------------------------------
-   * MIGRATE OLD LOCAL USERS TO SUPABASE
-   * ----------------------------------------------------
-   */
-  const migrateUsersToSupabase = async (
-    oldUsers
-  ) => {
-    if (
-      !Array.isArray(oldUsers) ||
-      oldUsers.length === 0
-    ) {
-      return {
-        migrated: 0,
-        skipped: 0,
-        failed: 0,
-      };
-    }
-
-    let migrated = 0;
-    let skipped = 0;
-    let failed = 0;
-
-    for (const oldUser of oldUsers) {
-      const phone = normalizePhone(
-        oldUser.phone ||
-          oldUser.mobile ||
-          oldUser.mobileNumber ||
-          oldUser.phoneNumber
-      );
-
-      if (!phone) {
-        failed++;
-        continue;
-      }
-
-      try {
-        const {
-          data: existingUser,
-          error: findError,
-        } = await supabase
-          .from("users")
-          .select("id, phone")
-          .eq("phone", phone)
-          .maybeSingle();
-
-        if (findError) {
-          console.log(
-            "Could not check Supabase user:",
-            findError.message
-          );
-
-          failed++;
-          continue;
-        }
-
-        if (existingUser) {
-          skipped++;
-          continue;
-        }
-
-        const newId =
-          oldUser.id ||
-          "user-" +
-            Date.now() +
-            "-" +
-            Math.random()
-              .toString(36)
-              .slice(2, 8);
-
-        const userRow = {
-          id: newId,
-
-          full_name:
-            oldUser.fullName ||
-            oldUser.full_name ||
-            oldUser.name ||
-            oldUser.username ||
-            "",
-
-          phone: phone,
-
-          password:
-            oldUser.password ||
-            "",
-
-          balance:
-            Number(
-              oldUser.balance || 0
-            ),
-
-          withdrawable_returns:
-            Number(
-              oldUser.withdrawableReturns ??
-                oldUser.withdrawable_returns ??
-                0
-            ),
-
-          referral_bonus:
-            Number(
-              oldUser.referralBonus ??
-                oldUser.referral_bonus ??
-                0
-            ),
-
-          total_referral_bonus:
-            Number(
-              oldUser.totalReferralBonus ??
-                oldUser.total_referral_bonus ??
-                0
-            ),
-
-          referral_code:
-            oldUser.referralCode ||
-            oldUser.referral_code ||
-            oldUser.referral ||
-            "",
-
-          referred_by:
-            oldUser.referredBy ??
-            oldUser.referred_by ??
-            null,
-
-          referrer_code:
-            oldUser.referrerCode ??
-            oldUser.referrer_code ??
-            null,
-
-          referrer_phone:
-            oldUser.referrerPhone ??
-            oldUser.referrer_phone ??
-            null,
-
-          created_at:
-            oldUser.createdAt ||
-            oldUser.created_at ||
-            new Date().toISOString(),
-        };
-
-        const {
-          error: insertError,
-        } = await supabase
-          .from("users")
-          .insert([userRow]);
-
-        if (insertError) {
-          console.log(
-            "Could not migrate user:",
-            phone,
-            insertError.message
-          );
-
-          failed++;
-          continue;
-        }
-
-        migrated++;
-      } catch (error) {
-        console.log(
-          "Migration error:",
-          error
-        );
-
-        failed++;
-      }
-    }
-
-    return {
-      migrated,
-      skipped,
-      failed,
-    };
-  };
-
-  /*
-   * ----------------------------------------------------
-   * LOAD USERS FROM SUPABASE
-   * ----------------------------------------------------
-   */
-  const loadUsers = async () => {
-    try {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("users")
-        .select(
-          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
-        )
-        .order("created_at", {
-          ascending: false,
-        });
-
-      if (error) {
-        console.error(
-          "Could not load Supabase users:",
-          error
-        );
-
-        setUsers([]);
-
-        setMessage(
-          "Supabase Users Error: " +
-            error.message
-        );
-
-        setMessageType("error");
-        return;
-      }
-
-      const mappedUsers = (
-        Array.isArray(data)
-          ? data
-          : []
-      ).map((row) => ({
-        id:
-          row.id || "",
-
-        fullName:
-          row.full_name ||
-          "",
-
-        phone:
-          normalizePhone(
-            row.phone
-          ),
-
-        balance:
-          Number(
-            row.balance || 0
-          ),
-
-        withdrawableReturns:
-          Number(
-            row.withdrawable_returns ||
-              0
-          ),
-
-        referralBonus:
-          Number(
-            row.referral_bonus ||
-              0
-          ),
-
-        totalReferralBonus:
-          Number(
-            row.total_referral_bonus ||
-              0
-          ),
-
-        referralCode:
-          row.referral_code ||
-          "",
-
-        referredBy:
-          row.referred_by ||
-          null,
-
-        referrerCode:
-          row.referrer_code ||
-          null,
-
-        referrerPhone:
-          row.referrer_phone ||
-          null,
-
-        createdAt:
-          row.created_at ||
-          "",
-      }));
-
-      setUsers(
-        mappedUsers
-      );
-
-      localStorage.setItem(
-        "transportUsers",
-        JSON.stringify(
-          mappedUsers
-        )
-      );
-
-      console.log(
-        "Supabase users loaded successfully:",
-        mappedUsers.length
-      );
-    } catch (error) {
-      console.error(
-        "Supabase users loading error:",
-        error
-      );
-
-      setUsers([]);
-
-      setMessage(
-        "Supabase Users Error: " +
-          (error?.message ||
-            "Unknown error")
-      );
-
-      setMessageType("error");
-    }
-  };
-
-  /*
-   * ----------------------------------------------------
-   * SUPABASE DEPOSIT REQUESTS
-   * ----------------------------------------------------
-   */
-  const loadDepositRequests = async () => {
-    try {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("deposit_requests")
-        .select("*")
-        .order("created_at", {
-          ascending: false,
-        });
-
-      if (error) {
-        console.log(
-          "Could not load Supabase deposit requests:",
-          error.message
-        );
-
-        loadDepositRequestsFromLocalStorage();
-        return;
-      }
-
-      const mappedRequests = (
-        Array.isArray(data)
-          ? data
-          : []
-      ).map((row) => {
-        const userData =
-          row.user_data &&
-          typeof row.user_data ===
-            "object"
-            ? row.user_data
-            : {};
-
-        return {
-          ...userData,
-
-          ...row,
-
-          id:
-            row.id ||
-            "deposit-" +
-              Date.now(),
-
-          user:
-            userData,
-
-          phone:
-            userData.phone ||
-            userData.mobile ||
-            row.phone ||
-            "",
-
-          fullName:
-            userData.fullName ||
-            userData.full_name ||
-            userData.name ||
-            row.full_name ||
-            row.name ||
-            "User",
-
-          paymentMethod:
-            row.payment_method ||
-            row.paymentMethod ||
-            "",
-
-          paymentMethodId:
-            row.payment_method_id ||
-            row.paymentMethodId ||
-            "",
-
-          accountName:
-            row.account_name ||
-            row.accountName ||
-            "",
-
-          accountNumber:
-            row.account_number ||
-            row.accountNumber ||
-            "",
-
-          bankName:
-            row.bank_name ||
-            row.bankName ||
-            "",
-
-          transactionId:
-            row.transaction_id ||
-            row.transactionId ||
-            "",
-
-          depositAmount:
-            Number(
-              row.deposit_amount ||
-                row.depositAmount ||
-                0
-            ),
-
-          amount:
-            Number(
-              row.deposit_amount ||
-                row.depositAmount ||
-                row.amount ||
-                row.plan?.amount ||
-                0
-            ),
-
-          plan:
-            row.plan || {},
-
-          screenshot:
-            row.screenshot ||
-            "",
-
-          screenshotName:
-            row.screenshot_name ||
-            "",
-
-          status:
-            row.status ||
-            "Pending",
-
-          submittedAt:
-            userData.submittedAt ||
-            row.submitted_at ||
-            row.created_at ||
-            row.createdAt ||
-            "",
-        };
-      });
-
-      setDepositRequests(
-        mappedRequests
-      );
-
-      localStorage.setItem(
-        "transportDepositRequests",
-        JSON.stringify(
-          mappedRequests
-        )
-      );
-    } catch (error) {
-      console.log(
-        "Supabase deposit loading error:",
-        error
-      );
-
-      loadDepositRequestsFromLocalStorage();
-    }
-  };
-
-  const loadDepositRequestsFromLocalStorage =
-    () => {
-      let requests = [];
-
-      const savedRequests =
-        localStorage.getItem(
-          "transportDepositRequests"
-        );
-
-      if (savedRequests) {
-        try {
-          const parsed =
-            JSON.parse(
-              savedRequests
-            );
-
-          if (Array.isArray(parsed)) {
-            requests = parsed;
-          }
-        } catch (error) {
-          console.log(
-            "Could not load deposit requests"
-          );
-        }
-      }
-
-      if (requests.length === 0) {
-        const oldRequest =
-          localStorage.getItem(
-            "transportDepositRequest"
-          );
-
-        if (oldRequest) {
-          try {
-            const parsed =
-              JSON.parse(oldRequest);
-
-            if (parsed) {
-              const migrated = {
-                ...parsed,
-                id:
-                  parsed.id ||
-                  "deposit-" +
-                    Date.now(),
-              };
-
-              requests = [migrated];
-
-              localStorage.setItem(
-                "transportDepositRequests",
-                JSON.stringify(
-                  requests
-                )
-              );
-            }
-          } catch (error) {
-            console.log(
-              "Could not migrate old deposit request"
-            );
-          }
-        }
-      }
-
-      setDepositRequests(
-        requests
-      );
-    };
-
-  /*
-   * ----------------------------------------------------
-   * WITHDRAW REQUESTS
-   * ----------------------------------------------------
-   *
-   * Withdrawals now load from Supabase first.
-   * LocalStorage remains as compatibility fallback.
-   * ----------------------------------------------------
-   */
-  const loadWithdrawRequests = async () => {
-    try {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("withdraw_requests")
-        .select("*")
-        .order("created_at", {
-          ascending: false,
-        });
-
-      if (error) {
-        console.log(
-          "Could not load Supabase withdrawal requests:",
-          error.message
-        );
-
-        loadWithdrawRequestsFromLocalStorage();
-        return;
-      }
-
-      const mappedRequests = (
-        Array.isArray(data)
-          ? data
-          : []
-      ).map((row) => {
-        const userData =
-          row.user_data &&
-          typeof row.user_data ===
-            "object"
-            ? row.user_data
-            : {};
-
-        return {
-          ...userData,
-
-          ...row,
-
-          id:
-            row.id ||
-            "withdraw-" +
-              Date.now(),
-
-          user:
-            userData,
-
-          phone:
-            normalizePhone(
-              row.user_phone ||
-              userData.phone ||
-              userData.mobile ||
-              ""
-            ),
-
-          fullName:
-            row.full_name ||
-            userData.fullName ||
-            userData.full_name ||
-            userData.name ||
-            "User",
-
-          bankName:
-            row.bank_name ||
-            userData.bankName ||
-            "",
-
-          accountNumber:
-            row.account_number ||
-            userData.accountNumber ||
-            "",
-
-          amount:
-            Number(
-              row.amount ||
-                userData.amount ||
-                0
-            ),
-
-          returnType:
-            row.return_type ||
-            userData.returnType ||
-            "Weekly",
-
-          withdrawableBalance:
-            Number(
-              row.withdrawable_balance ||
-                userData.withdrawableBalance ||
-                0
-            ),
-
-          availableBalanceAtRequest:
-            Number(
-              row.available_balance_at_request ||
-                userData.availableBalanceAtRequest ||
-                0
-            ),
-
-          status:
-            row.status ||
-            "Pending",
-
-          submittedAt:
-            row.submitted_at ||
-            userData.submittedAt ||
-            row.created_at ||
-            "",
-
-          createdAt:
-            row.created_at ||
-            userData.createdAt ||
-            "",
-
-          updatedAt:
-            row.updated_at ||
-            userData.updatedAt ||
-            "",
-        };
-      });
-
-      setWithdrawRequests(
-        mappedRequests
-      );
-
-      localStorage.setItem(
-        "transportWithdrawRequests",
-        JSON.stringify(
-          mappedRequests
-        )
-      );
-
-      if (mappedRequests.length > 0) {
-        localStorage.setItem(
-          "transportWithdrawRequest",
-          JSON.stringify(
-            mappedRequests[0]
-          )
-        );
-      }
-    } catch (error) {
-      console.log(
-        "Supabase withdrawal loading error:",
-        error
-      );
-
-      loadWithdrawRequestsFromLocalStorage();
-    }
-  };
-
-  const loadWithdrawRequestsFromLocalStorage =
-    () => {
-      let requests = [];
-
-      const savedRequests =
-        localStorage.getItem(
-          "transportWithdrawRequests"
-        );
-
-      if (savedRequests) {
-        try {
-          const parsed =
-            JSON.parse(
-              savedRequests
-            );
-
-          if (Array.isArray(parsed)) {
-            requests = parsed;
-          }
-        } catch (error) {
-          console.log(
-            "Could not load withdrawal requests"
-          );
-        }
-      }
-
-      if (requests.length === 0) {
-        const oldRequest =
-          localStorage.getItem(
-            "transportWithdrawRequest"
-          );
-
-        if (oldRequest) {
-          try {
-            const parsed =
-              JSON.parse(oldRequest);
-
-            if (parsed) {
-              requests = [
-                {
-                  ...parsed,
-
-                  id:
-                    parsed.id ||
-                    "withdraw-" +
-                      Date.now(),
-
-                  phone:
-                    normalizePhone(
-                      parsed.phone ||
-                        parsed.mobile ||
-                        parsed.mobileNumber ||
-                        ""
-                    ),
-
-                  amount:
-                    Number(
-                      parsed.amount ||
-                        0
-                    ),
-
-                  returnType:
-                    parsed.returnType ||
-                    "Weekly",
-
-                  status:
-                    parsed.status ||
-                    "Pending",
-                },
-              ];
-
-              localStorage.setItem(
-                "transportWithdrawRequests",
-                JSON.stringify(
-                  requests
-                )
-              );
-            }
-          } catch (error) {
-            console.log(
-              "Could not migrate old withdrawal request"
-            );
-          }
-        }
-      }
-
-      setWithdrawRequests(
-        requests
-      );
-    };
-
-  /*
-   * ----------------------------------------------------
-   * LOCAL TRANSACTIONS
-   * ----------------------------------------------------
-   */
-  const saveTransaction = (
-    transaction,
-    phone
-  ) => {
-    if (!phone) {
-      return;
-    }
-
-    const normalizedPhone =
-      normalizePhone(phone);
-
-    const transactionsKey =
-      "transportTransactions_" +
-      normalizedPhone;
-
-    let transactions = [];
-
-    const savedTransactions =
-      localStorage.getItem(
-        transactionsKey
-      );
-
-    if (savedTransactions) {
-      try {
-        const parsed =
-          JSON.parse(
-            savedTransactions
-          );
-
-        if (Array.isArray(parsed)) {
-          transactions = parsed;
-        }
-      } catch (error) {
-        transactions = [];
-      }
-    }
-
-    const alreadyExists =
-      transactions.some(
-        (item) =>
-          item.id ===
-          transaction.id
-      );
-
-    if (!alreadyExists) {
-      transactions.unshift(
-        transaction
-      );
-
-      localStorage.setItem(
-        transactionsKey,
-        JSON.stringify(
-          transactions
-        )
-      );
-    }
-  };
-
-  /*
-   * ----------------------------------------------------
-   * CENTRAL SUPABASE TRANSACTIONS
-   * ----------------------------------------------------
-   *
-   * Every new Deposit / Return / Withdraw /
-   * Referral Bonus transaction is also stored centrally.
-   * ----------------------------------------------------
-   */
-  const saveTransactionToSupabase =
-    async (
-      transaction,
-      phone
-    ) => {
-      const normalizedPhone =
-        normalizePhone(
-          phone ||
-            transaction?.phone ||
-            transaction?.userPhone ||
-            ""
-        );
-
-      if (
-        !transaction ||
-        !transaction.id ||
-        !normalizedPhone
-      ) {
-        return false;
-      }
-
-      let centralType =
-        String(
-          transaction.type ||
-            ""
-        ).trim();
-
-      let returnType =
-        transaction.returnType ||
-        null;
-
-      let description =
-        transaction.description ||
-        "";
-
-      if (
-        centralType.toLowerCase() ===
-        "weekly return"
-      ) {
-        centralType =
-          "Return";
-
-        returnType =
-          returnType ||
-          "Weekly";
-
-        description =
-          description ||
-          "Weekly Return";
-      } else if (
-        centralType.toLowerCase() ===
-        "withdrawal"
-      ) {
-        centralType =
-          "Withdraw";
-
-        description =
-          description ||
-          "Withdrawal";
-      } else if (
-        centralType.toLowerCase() ===
-        "deposit"
-      ) {
-        centralType =
-          "Deposit";
-
-        description =
-          description ||
-          "Deposit Approved";
-      } else if (
-        centralType.toLowerCase() ===
-        "referral bonus"
-      ) {
-        centralType =
-          "Referral Bonus";
-
-        description =
-          description ||
-          "Referral Bonus";
-      }
-
-      const createdAt =
-        transaction.createdAt ||
-        transaction.created_at ||
-        new Date().toISOString();
-
-      const transactionRow = {
-        id:
-          String(
-            transaction.id
-          ),
-
-        user_phone:
-          normalizedPhone,
-
-        type:
-          centralType,
-
-        amount:
-          Number(
-            transaction.amount || 0
-          ),
-
-        status:
-          transaction.status ||
-          "Pending",
-
-        return_type:
-          returnType,
-
-        description:
-          description,
-
-        plan_name:
-          transaction.planName ||
-          transaction.plan?.name ||
-          null,
-
-        created_at:
-          createdAt,
-      };
-
-      try {
-        const {
-          error,
-        } = await supabase
-          .from("transactions")
-          .upsert(
-            [transactionRow],
-            {
-              onConflict:
-                "id",
-            }
-          );
-
-        if (error) {
-          console.error(
-            "Supabase transaction save error:",
-            error
-          );
-
-          return false;
-        }
-
-        console.log(
-          "Transaction saved to Supabase:",
-          transactionRow
-        );
-
-        return true;
-      } catch (error) {
-        console.error(
-          "Supabase transaction save failed:",
-          error
-        );
-
-        return false;
-      }
-    };
-
-  /*
-   * Update an existing local transaction status.
-   * Used for Pending -> Approved / Rejected.
-   */
-  const updateSavedTransactionStatus = (
-    transactionId,
-    phone,
-    newStatus
-  ) => {
-    if (!transactionId || !phone) {
-      return false;
-    }
-
-    const normalizedPhone =
-      normalizePhone(phone);
-
-    const transactionsKey =
-      "transportTransactions_" +
-      normalizedPhone;
-
-    let transactions = [];
-
-    const savedTransactions =
-      localStorage.getItem(
-        transactionsKey
-      );
-
-    if (savedTransactions) {
-      try {
-        const parsed =
-          JSON.parse(
-            savedTransactions
-          );
-
-        if (Array.isArray(parsed)) {
-          transactions = parsed;
-        }
-      } catch {
-        transactions = [];
-      }
-    }
-
-    let found = false;
-
-    const updatedTransactions =
-      transactions.map(
-        (item) => {
-          if (
-            item.id ===
-            transactionId
-          ) {
-            found = true;
-
-            return {
-              ...item,
-              status: newStatus,
-              updatedAt:
-                new Date().toISOString(),
-            };
-          }
-
-          return item;
-        }
-      );
-
-    if (found) {
-      localStorage.setItem(
-        transactionsKey,
-        JSON.stringify(
-          updatedTransactions
-        )
-      );
-    }
-
-    return found;
-  };
-
-  const saveDepositRequests = (
-    requests
-  ) => {
-    localStorage.setItem(
-      "transportDepositRequests",
-      JSON.stringify(requests)
-    );
-
-    setDepositRequests(
-      requests
-    );
-  };
-
-  const saveWithdrawRequests = (
-    requests
-  ) => {
-    localStorage.setItem(
-      "transportWithdrawRequests",
-      JSON.stringify(requests)
-    );
-
-    if (requests.length > 0) {
-      localStorage.setItem(
-        "transportWithdrawRequest",
-        JSON.stringify(
-          requests[0]
-        )
-      );
-    } else {
-      localStorage.removeItem(
-        "transportWithdrawRequest"
-      );
-    }
-
-    setWithdrawRequests(
-      requests
-    );
-  };
-
-  /*
-   * ----------------------------------------------------
-   * ACTIVE PLANS
-   * ----------------------------------------------------
-   */
-  const updateActivePlans = async (
-    newPlan,
-    phone
-  ) => {
-    if (!phone || !newPlan) {
-      return false;
-    }
-
-    const normalizedPhone =
-      normalizePhone(phone);
-
-    if (!normalizedPhone) {
-      return false;
-    }
-
-    const plansKey =
-      "transportActivePlans_" +
-      normalizedPhone;
-
-    let plans = [];
-
-    const savedPlans =
-      localStorage.getItem(
-        plansKey
-      );
-
-    if (savedPlans) {
-      try {
-        const parsed =
-          JSON.parse(
-            savedPlans
-          );
-
-        if (Array.isArray(parsed)) {
-          plans = parsed;
-        }
-      } catch (error) {
-        plans = [];
-      }
-    }
-
-    const alreadyActive =
-      plans.some(
-        (plan) =>
-          plan.depositRequestId ===
-          newPlan.depositRequestId
-      );
-
-    if (!alreadyActive) {
-      plans.push(newPlan);
-    }
-
-    localStorage.setItem(
-      plansKey,
-      JSON.stringify(plans)
-    );
-
-    try {
-      const supabasePlanRow = {
-        id:
-          newPlan.id ||
-          "active-plan-" +
-            newPlan.depositRequestId,
-
-        deposit_request_id:
-          newPlan.depositRequestId ||
-          null,
-
-        user_phone:
-          normalizedPhone,
-
-        plan: {
-          ...newPlan,
-
-          amount:
-            Number(
-              newPlan.amount ??
-                newPlan.price ??
-                0
-            ),
-
-          price:
-            Number(
-              newPlan.price ??
-                newPlan.amount ??
-                0
-            ),
-        },
-
-        status:
-          newPlan.status ||
-          "Active",
-
-        activated_at:
-          newPlan.activatedAt ||
-          null,
-
-        approved_at:
-          newPlan.approvedAt ||
-          null,
-
-        last_return_at:
-          newPlan.lastReturnAt ||
-          null,
-
-        next_return_at:
-          newPlan.nextReturnAt ||
-          null,
-
-        returns_paid:
-          Number(
-            newPlan.returnsPaid || 0
-          ),
-
-        earned_returns:
-          Number(
-            newPlan.earnedReturns || 0
-          ),
-
-        total_earned:
-          Number(
-            newPlan.totalEarned || 0
-          ),
-
-        remaining_weeks:
-          Number(
-            newPlan.remainingWeeks ??
-              DURATION_WEEKS
-          ),
-      };
-
-      const {
-        error: activePlanError,
-      } = await supabase
-        .from("active_plans")
-        .upsert(
-          [supabasePlanRow],
-          {
-            onConflict:
-              "id",
-          }
-        );
-
-      if (activePlanError) {
-        console.error(
-          "Supabase active plan save error:",
-          activePlanError
-        );
-
-        return false;
-      }
-
-      console.log(
-        "Active plan saved to Supabase:",
-        supabasePlanRow.id
-      );
-
-      return true;
-    } catch (error) {
-      console.error(
-        "Active plan Supabase save error:",
-        error
-      );
-
-      return false;
-    }
-  };
-
-  /*
-   * ----------------------------------------------------
-   * ADD WEEKLY RETURN TO SUPABASE
-   * ----------------------------------------------------
-   *
-   * Every newly approved plan receives its first weekly
-   * return immediately.
-   */
-  const addWithdrawableReturnsToSupabase =
-    async (
-      phone,
-      returnAmount
-    ) => {
-      const normalizedPhone =
-        normalizePhone(phone);
-
-      const amountToAdd =
-        Number(
-          returnAmount || 0
-        );
-
-      if (
-        !normalizedPhone ||
-        !Number.isFinite(
-          amountToAdd
-        ) ||
-        amountToAdd <= 0
-      ) {
-        return {
-          success: false,
-          newValue: null,
-        };
-      }
-
-      try {
-        const {
-          data: currentUser,
-          error: findError,
-        } = await supabase
-          .from("users")
-          .select(
-            "id, phone, withdrawable_returns"
-          )
-          .eq(
-            "phone",
-            normalizedPhone
-          )
-          .maybeSingle();
-
-        if (findError) {
-          console.error(
-            "Could not read withdrawable returns:",
-            findError
-          );
-
-          return {
-            success: false,
-            newValue: null,
-          };
-        }
-
-        if (!currentUser) {
-          console.error(
-            "User not found for withdrawable return:",
-            normalizedPhone
-          );
-
-          return {
-            success: false,
-            newValue: null,
-          };
-        }
-
-        const currentReturns =
-          Number(
-            currentUser.withdrawable_returns ||
-              0
-          );
-
-        const newReturns =
-          currentReturns +
-          amountToAdd;
-
-        const {
-          data: updatedUser,
-          error: updateError,
-        } = await supabase
-          .from("users")
-          .update({
-            withdrawable_returns:
-              newReturns,
-          })
-          .eq(
-            "id",
-            currentUser.id
-          )
-          .select(
-            "id, phone, withdrawable_returns"
-          )
-          .maybeSingle();
-
-        if (updateError) {
-          console.error(
-            "Could not update withdrawable returns in Supabase:",
-            updateError
-          );
-
-          return {
-            success: false,
-            newValue: null,
-          };
-        }
-
-        const finalValue =
-          Number(
-            updatedUser?.withdrawable_returns ??
-              newReturns
-          );
-
-        localStorage.setItem(
-          "transportWithdrawableReturns_" +
-            normalizedPhone,
-          String(finalValue)
-        );
-
-        try {
-          const savedUsers =
-            localStorage.getItem(
-              "transportUsers"
-            );
-
-          if (savedUsers) {
-            const parsed =
-              JSON.parse(
-                savedUsers
-              );
-
-            if (
-              Array.isArray(parsed)
-            ) {
-              const updatedUsers =
-                parsed.map(
-                  (user) => {
-                    const userPhone =
-                      normalizePhone(
-                        user.phone ||
-                          user.mobile ||
-                          user.phoneNumber ||
-                          user.mobileNumber
-                      );
-
-                    if (
-                      userPhone ===
-                      normalizedPhone
-                    ) {
-                      return {
-                        ...user,
-
-                        withdrawableReturns:
-                          finalValue,
-
-                        withdrawable_returns:
-                          finalValue,
-                      };
-                    }
-
-                    return user;
-                  }
-                );
-
-              localStorage.setItem(
-                "transportUsers",
-                JSON.stringify(
-                  updatedUsers
-                )
-              );
-            }
-          }
-        } catch (error) {
-          console.error(
-            "Could not update local user returns:",
-            error
-          );
-        }
-
-        console.log(
-          "Withdrawable returns updated in Supabase:",
-          {
-            phone:
-              normalizedPhone,
-
-            added:
-              amountToAdd,
-
-            newValue:
-              finalValue,
-          }
-        );
-
-        return {
-          success: true,
-          newValue:
-            finalValue,
-        };
-      } catch (error) {
-        console.error(
-          "Withdrawable return Supabase error:",
-          error
-        );
-
-        return {
-          success: false,
-          newValue: null,
-        };
-      }
-    };
-
-  /*
-   * ----------------------------------------------------
-   * USER / REFERRAL HELPERS
-   * ----------------------------------------------------
-   */
-  const findUserByPhone = (
-    phone
-  ) => {
-    const normalized =
-      normalizePhone(phone);
-
-    if (!normalized) {
-      return null;
-    }
-
-    return (
-      users.find((user) => {
-        const userPhone =
-          normalizePhone(
-            user.phone ||
-              user.mobile ||
-              user.mobileNumber ||
-              user.phoneNumber
-          );
-
-        return (
-          userPhone ===
-          normalized
-        );
-      }) || null
-    );
-  };
-
-  const getUserPhone = (
-    user
-  ) => {
-    if (!user) {
-      return "";
-    }
-
-    return normalizePhone(
-      user.phone ||
-        user.mobile ||
-        user.mobileNumber ||
-        user.phoneNumber
-    );
-  };
-
-  const getReferrerValue = (
-    user
-  ) => {
-    if (!user) {
-      return "";
-    }
-
-    return (
-      user.referrerPhone ||
-      user.referrerMobile ||
-      user.referrerNumber ||
-      user.parentPhone ||
-      user.uplinePhone ||
-      user.referredByPhone ||
-      user.referredByMobile ||
-      user.sponsorPhone ||
-      user.sponsorMobile ||
-      user.referrerCode ||
-      user.referredBy ||
-      user.referralBy ||
-      user.parent ||
-      user.upline ||
-      user.sponsor ||
-      user.referralCodeUsed ||
-      user.usedReferralCode ||
-      user.usedReferral ||
-      user.joinedWithReferral ||
-      user.referredByCode ||
-      ""
-    );
-  };
-
-  const findReferrer = (
-    user
-  ) => {
-    if (!user) {
-      return null;
-    }
-
-    const referrerValue =
-      getReferrerValue(user);
-
-    if (!referrerValue) {
-      return null;
-    }
-
-    const value = String(
-      referrerValue
-    ).trim();
-
-    if (!value) {
-      return null;
-    }
-
-    const byPhone =
-      findUserByPhone(value);
-
-    if (byPhone) {
-      return byPhone;
-    }
-
-    const lowerValue =
-      value.toLowerCase();
-
-    const byCode =
-      users.find((item) => {
-        const code =
-          item.referralCode ||
-          item.referral ||
-          item.referralId ||
-          item.myReferralCode ||
-          "";
-
-        return (
-          String(code)
-            .trim()
-            .toLowerCase() ===
-          lowerValue
-        );
-      });
-
-    return byCode || null;
-  };
-
-  const getReferralChain = (
-    startingUser
-  ) => {
-    const chain = [];
-    const visited = {};
-
-    let currentUser =
-      startingUser;
-
-    for (
-      let level = 1;
-      level <=
-      REFERRAL_LEVELS.length;
-      level++
-    ) {
-      if (!currentUser) {
-        break;
-      }
-
-      const currentPhone =
-        getUserPhone(
-          currentUser
-        );
-
-      if (
-        !currentPhone ||
-        visited[currentPhone]
-      ) {
-        break;
-      }
-
-      visited[currentPhone] =
-        true;
-
-      const referrer =
-        findReferrer(
-          currentUser
-        );
-
-      if (!referrer) {
-        break;
-      }
-
-      const referrerPhone =
-        getUserPhone(
-          referrer
-        );
-
-      if (
-        !referrerPhone ||
-        visited[referrerPhone]
-      ) {
-        break;
-      }
-
-      chain.push({
-        level: level,
-
-        user:
-          referrer,
-
-        phone:
-          referrerPhone,
-
-        percent:
-          REFERRAL_LEVELS[
-            level - 1
-          ].percent,
-      });
-
-      currentUser =
-        referrer;
-    }
-
-    return chain;
-  };
-
-  /*
-   * ----------------------------------------------------
-   * UPDATE USER BALANCE + REFERRAL BONUS
-   * ----------------------------------------------------
-   */
-  const updateUserBalance = async (
-    phone,
-    bonusAmount
-  ) => {
-    const normalizedPhone =
-      normalizePhone(phone);
-
-    const amountToAdd =
-      Number(bonusAmount || 0);
-
-    if (
-      !normalizedPhone ||
-      !Number.isFinite(
-        amountToAdd
-      ) ||
-      amountToAdd <= 0
-    ) {
-      return null;
-    }
-
-    let supabaseUser = null;
-
-    try {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("users")
-        .select(
-          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
-        )
-        .eq(
-          "phone",
-          normalizedPhone
-        )
-        .maybeSingle();
-
-      if (error) {
-        console.error(
-          "Could not read user from Supabase before balance update:",
-          error
-        );
-
-        return null;
-      }
-
-      supabaseUser =
-        data || null;
-    } catch (error) {
-      console.error(
-        "Supabase balance read error:",
-        error
-      );
-
-      return null;
-    }
-
-    if (!supabaseUser) {
-      console.error(
-        "User not found in Supabase:",
-        normalizedPhone
-      );
-
-      return null;
-    }
-
-    const currentBalance =
-      Number(
-        supabaseUser.balance || 0
-      );
-
-    const currentReferralBonus =
-      Number(
-        supabaseUser.referral_bonus ||
-          0
-      );
-
-    const currentTotalReferralBonus =
-      Number(
-        supabaseUser.total_referral_bonus ||
-          0
-      );
-
-    const currentWithdrawableReturns =
-      Number(
-        supabaseUser.withdrawable_returns ||
-          0
-      );
-
-    const newBalance =
-      currentBalance +
-      amountToAdd;
-
-    const newReferralBonus =
-      currentReferralBonus +
-      amountToAdd;
-
-    const newTotalReferralBonus =
-      currentTotalReferralBonus +
-      amountToAdd;
-
-    const newWithdrawableReturns =
-      currentWithdrawableReturns +
-      amountToAdd;
-
-    try {
-      const {
-        data: updatedSupabaseUser,
-        error: updateError,
-      } = await supabase
-        .from("users")
-        .update({
-          balance:
-            newBalance,
-
-          withdrawable_returns:
-            newWithdrawableReturns,
-
-          referral_bonus:
-            newReferralBonus,
-
-          total_referral_bonus:
-            newTotalReferralBonus,
-        })
-        .eq(
-          "id",
-          supabaseUser.id
-        )
-        .select(
-          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
-        )
-        .maybeSingle();
-
-      if (updateError) {
-        console.error(
-          "Supabase user balance update error:",
-          updateError
-        );
-
-        return null;
-      }
-
-      const finalSupabaseUser =
-        updatedSupabaseUser ||
-        {
-          ...supabaseUser,
-
-          balance:
-            newBalance,
-
-          withdrawable_returns:
-            newWithdrawableReturns,
-
-          referral_bonus:
-            newReferralBonus,
-
-          total_referral_bonus:
-            newTotalReferralBonus,
-        };
-
-      let localUsers = [];
-
-      try {
-        const savedUsers =
-          localStorage.getItem(
-            "transportUsers"
-          );
-
-        if (savedUsers) {
-          const parsed =
-            JSON.parse(
-              savedUsers
-            );
-
-          if (Array.isArray(parsed)) {
-            localUsers = parsed;
-          }
-        }
-      } catch {
-        localUsers = [];
-      }
-
-      const mappedUpdatedUser = {
-        id:
-          finalSupabaseUser.id ||
-          "",
-
-        fullName:
-          finalSupabaseUser.full_name ||
-          "",
-
-        phone:
-          normalizePhone(
-            finalSupabaseUser.phone
-          ),
-
-        balance:
-          Number(
-            finalSupabaseUser.balance ||
-              0
-          ),
-
-        withdrawableReturns:
-          Number(
-            finalSupabaseUser.withdrawable_returns ||
-              0
-          ),
-
-        referralBonus:
-          Number(
-            finalSupabaseUser.referral_bonus ||
-              0
-          ),
-
-        totalReferralBonus:
-          Number(
-            finalSupabaseUser.total_referral_bonus ||
-              0
-          ),
-
-        referralCode:
-          finalSupabaseUser.referral_code ||
-          "",
-
-        referredBy:
-          finalSupabaseUser.referred_by ||
-          null,
-
-        referrerCode:
-          finalSupabaseUser.referrer_code ||
-          null,
-
-        referrerPhone:
-          finalSupabaseUser.referrer_phone ||
-          null,
-
-        createdAt:
-          finalSupabaseUser.created_at ||
-          "",
-      };
-
-      let localUserFound = false;
-
-      const updatedLocalUsers =
-        localUsers.map(
-          (user) => {
-            const userPhone =
-              getUserPhone(
-                user
-              );
-
-            if (
-              userPhone ===
-              normalizedPhone
-            ) {
-              localUserFound =
-                true;
-
-              return {
-                ...user,
-
-                id:
-                  mappedUpdatedUser.id ||
-                  user.id,
-
-                fullName:
-                  mappedUpdatedUser.fullName ||
-                  user.fullName,
-
-                phone:
-                  normalizedPhone,
-
-                balance:
-                  mappedUpdatedUser.balance,
-
-                withdrawableReturns:
-                  mappedUpdatedUser.withdrawableReturns,
-
-                withdrawable_returns:
-                  mappedUpdatedUser.withdrawableReturns,
-
-                referralBonus:
-                  mappedUpdatedUser.referralBonus,
-
-                totalReferralBonus:
-                  mappedUpdatedUser.totalReferralBonus,
-
-                referralCode:
-                  mappedUpdatedUser.referralCode ||
-                  user.referralCode,
-
-                referredBy:
-                  mappedUpdatedUser.referredBy,
-
-                referrerCode:
-                  mappedUpdatedUser.referrerCode,
-
-                referrerPhone:
-                  mappedUpdatedUser.referrerPhone,
-
-                createdAt:
-                  mappedUpdatedUser.createdAt ||
-                  user.createdAt,
-              };
-            }
-
-            return user;
-          }
-        );
-
-      if (!localUserFound) {
-        updatedLocalUsers.push(
-          mappedUpdatedUser
-        );
-      }
-
-      localStorage.setItem(
-        "transportUsers",
-        JSON.stringify(
-          updatedLocalUsers
-        )
-      );
-
-      setUsers(
-        updatedLocalUsers
-      );
-
-      localStorage.setItem(
-        "transportWithdrawableReturns_" +
-          normalizedPhone,
-        String(
-          mappedUpdatedUser.withdrawableReturns
-        )
-      );
-
-      console.log(
-        "Central referral balance updated:",
-        {
-          phone:
-            normalizedPhone,
-
-          added:
-            amountToAdd,
-
-          newBalance:
-            mappedUpdatedUser.balance,
-
-          newWithdrawableReturns:
-            mappedUpdatedUser.withdrawableReturns,
-
-          newReferralBonus:
-            mappedUpdatedUser.referralBonus,
-        }
-      );
-
-      return mappedUpdatedUser;
-    } catch (error) {
-      console.error(
-        "User balance sync error:",
-        error
-      );
-
-      return null;
-    }
-  };
-
-  const updateTeamMemberBonus = (
-    referrerPhone,
-    referredPhone,
-    bonusAmount,
-    level
-  ) => {
-    if (
-      !referrerPhone ||
-      !referredPhone ||
-      !bonusAmount
-    ) {
-      return;
-    }
-
-    const normalizedReferrerPhone =
-      normalizePhone(
-        referrerPhone
-      );
-
-    const teamKey =
-      "transportTeam_" +
-      normalizedReferrerPhone;
-
-    const savedTeam =
-      localStorage.getItem(
-        teamKey
-      );
-
-    if (!savedTeam) {
-      return;
-    }
-
-    let team = [];
-
-    try {
-      const parsed =
-        JSON.parse(
-          savedTeam
-        );
-
-      if (Array.isArray(parsed)) {
-        team = parsed;
-      }
-    } catch (error) {
-      return;
-    }
-
-    let changed = false;
-
-    const updatedTeam =
-      team.map((member) => {
-        const memberPhone =
-          normalizePhone(
-            member.phone ||
-              member.mobile ||
-              member.mobileNumber ||
-              member.userPhone
-          );
-
-        const ownerPhone =
-          normalizePhone(
-            member.ownerPhone ||
-              member.referrerPhone ||
-              member.parentPhone ||
-              member.uplinePhone
-          );
-
-        if (
-          memberPhone ===
-            normalizePhone(
-              referredPhone
-            ) &&
-          (
-            !ownerPhone ||
-            ownerPhone ===
-              normalizedReferrerPhone
-          )
-        ) {
-          changed = true;
-
-          return {
-            ...member,
-
-            bonusEarned:
-              Number(
-                member.bonusEarned ||
-                  member.bonus ||
-                  0
-              ) +
-              bonusAmount,
-
-            referralBonus:
-              Number(
-                member.referralBonus ||
-                  0
-              ) +
-              bonusAmount,
-
-            lastReferralBonus:
-              bonusAmount,
-
-            lastReferralBonusLevel:
-              level,
-          };
-        }
-
-        return member;
-      });
-
-    if (changed) {
-      localStorage.setItem(
-        teamKey,
-        JSON.stringify(
-          updatedTeam
-        )
-      );
-    }
-  };
-
-  const referralBonusAlreadyCredited = (
-    request,
-    referrerPhone
-  ) => {
-    if (
-      !request ||
-      !referrerPhone
-    ) {
-      return false;
-    }
-
-    const marker =
-      "referral-bonus-" +
-      request.id +
-      "-L";
-
-    const transactionsKey =
-      "transportTransactions_" +
-      normalizePhone(
-        referrerPhone
-      );
-
-    const saved =
-      localStorage.getItem(
-        transactionsKey
-      );
-
-    if (!saved) {
-      return false;
-    }
-
-    try {
-      const transactions =
-        JSON.parse(saved);
-
-      if (!Array.isArray(transactions)) {
-        return false;
-      }
-
-      return transactions.some(
-        (item) =>
-          item.id &&
-          String(
-            item.id
-          ).indexOf(marker) === 0
-      );
-    } catch (error) {
-      return false;
-    }
-  };
-
-  const creditReferralBonuses = async (
-    request,
-    referredUser,
-    depositAmount
-  ) => {
-    if (
-      !request ||
-      !referredUser ||
-      !depositAmount ||
-      depositAmount <= 0
-    ) {
-      return {
-        credited: false,
-        totalBonus: 0,
-        details: [],
-      };
-    }
-
-    const chain =
-      getReferralChain(
-        referredUser
-      );
-
-    if (chain.length === 0) {
-      return {
-        credited: false,
-        totalBonus: 0,
-        details: [],
-      };
-    }
-
-    let totalBonus = 0;
-    const details = [];
-
-    for (const item of chain) {
-      const referrerPhone =
-        normalizePhone(
-          item.phone
-        );
-
-      const percent =
-        Number(
-          item.percent || 0
-        );
-
-      if (
-        !referrerPhone ||
-        percent <= 0
-      ) {
-        continue;
-      }
-
-      const alreadyCredited =
-        referralBonusAlreadyCredited(
-          request,
-          referrerPhone
-        );
-
-      if (alreadyCredited) {
-        continue;
-      }
-
-      const bonusAmount =
-        Number(
-          (
-            depositAmount *
-            percent /
-            100
-          ).toFixed(2)
-        );
-
-      if (
-        !bonusAmount ||
-        bonusAmount <= 0
-      ) {
-        continue;
-      }
-
-      const referrerUser =
-        await updateUserBalance(
-          referrerPhone,
-          bonusAmount
-        );
-
-      if (!referrerUser) {
-        console.error(
-          "Could not credit referral balance:",
-          referrerPhone
-        );
-
-        continue;
-      }
-
-      const transactionId =
-        "referral-bonus-" +
-        request.id +
-        "-L" +
-        item.level;
-
-      const referralTransaction = {
-        id:
-          transactionId,
-
-        type:
-          "Referral Bonus",
-
-        amount:
-          bonusAmount,
-
-        depositAmount:
-          depositAmount,
-
-        percentage:
-          percent,
-
-        level:
-          item.level,
-
-        referredPhone:
-          getUserPhone(
-            referredUser
-          ),
-
-        referredName:
-          referredUser.fullName ||
-          referredUser.name ||
-          referredUser.username ||
-          "User",
-
-        status:
-          "Completed",
-
-        phone:
-          referrerPhone,
-
-        transactionId:
-          transactionId,
-
-        number:
-          referrerPhone,
-
-        date:
-          new Date().toLocaleString(),
-
-        createdAt:
-          new Date().toISOString(),
-
-        description:
-          "Referral Bonus - Level " +
-          item.level,
-      };
-
-      saveTransaction(
-        referralTransaction,
-        referrerPhone
-      );
-
-      await saveTransactionToSupabase(
-        referralTransaction,
-        referrerPhone
-      );
-
-      updateTeamMemberBonus(
-        referrerPhone,
-        getUserPhone(
-          referredUser
-        ),
-        bonusAmount,
-        item.level
-      );
-
-      totalBonus +=
-        bonusAmount;
-
-      details.push({
-        level:
-          item.level,
-
-        percent:
-          percent,
-
-        amount:
-          bonusAmount,
-
-        phone:
-          referrerPhone,
-      });
-    }
-
-    return {
-      credited:
-        details.length > 0,
-
-      totalBonus:
-        totalBonus,
-
-      details:
-        details,
-    };
-  };
-
-  /*
-   * ----------------------------------------------------
-   * DEPOSIT STATUS
-   * ----------------------------------------------------
-   */
-  const updateDepositStatus = async (
-    requestId,
-    newStatus
-  ) => {
-    const request =
-      depositRequests.find(
-        (item) =>
-          item.id ===
-          requestId
-      );
-
-    if (!request) {
-      setMessage(
-        "Deposit request not found."
-      );
-
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
-
-    if (
-      newStatus ===
-        "Approved" &&
-      request.status ===
-        "Approved"
-    ) {
-      setMessage(
-        "This deposit has already been approved."
-      );
-
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
-
-    if (
-      newStatus ===
-        "Rejected" &&
-      request.status ===
-        "Rejected"
-    ) {
-      setMessage(
-        "This deposit has already been rejected."
-      );
-
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
-
-    if (request.id) {
-      const {
-        error: supabaseUpdateError,
-      } = await supabase
-        .from("deposit_requests")
-        .update({
-          status:
-            newStatus,
-
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          request.id
-        );
-
-      if (supabaseUpdateError) {
-        console.error(
-          "Supabase deposit status update error:",
-          supabaseUpdateError
-        );
-
-        setMessage(
-          "Supabase Error: " +
-            supabaseUpdateError.message
-        );
-
-        setMessageType(
-          "error"
-        );
-
-        return;
-      }
-    }
-
-    const phone =
-      normalizePhone(
-        request.phone ||
-          request.mobile ||
-          request.mobileNumber ||
-          request.user?.phone ||
-          request.user?.mobile ||
-          ""
-      );
-
-    if (
-      newStatus ===
-        "Approved" &&
-      !phone
-    ) {
-      setMessage(
-        "User mobile number is missing from this request."
-      );
-
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
-
-    const requestPlan =
-      request.plan || {};
-
-    const planName =
-      requestPlan.name ||
-      request.planName ||
-      "Transport Plan";
-
-    const planAmount =
-      Number(
-        requestPlan.amount ||
-          requestPlan.price ||
-          request.amount ||
-          request.depositAmount ||
-          0
-      );
-
-    const weeklyReturn =
-      Number(
-        requestPlan.weekly ||
-          request.weeklyReturn ||
-          request.dailyReturn ||
-          requestPlan.daily ||
-          request.daily ||
-          0
-      );
-
-    const totalReturn =
-      weeklyReturn *
-      DURATION_WEEKS;
-
-    const updatedRequest = {
-      ...request,
-
-      status:
-        newStatus,
-
-      updatedAt:
-        new Date().toISOString(),
-
-      plan: {
-        ...requestPlan,
-
-        id:
-          requestPlan.id ||
-          request.planId ||
-          "",
-
-        name:
-          planName,
-
-        amount:
-          planAmount,
-
-        price:
-          planAmount,
-
-        weekly:
-          weeklyReturn,
-
-        daily:
-          weeklyReturn,
-
-        durationYears:
-          DURATION_YEARS,
-
-        durationWeeks:
-          DURATION_WEEKS,
-
-        duration:
-          DURATION_WEEKS,
-
-        totalReturn:
-          totalReturn,
-      },
-
-      planName:
-        planName,
-
-      amount:
-        planAmount,
-
-      weeklyReturn:
-        weeklyReturn,
-
-      dailyReturn:
-        weeklyReturn,
-
-      durationYears:
-        DURATION_YEARS,
-
-      durationWeeks:
-        DURATION_WEEKS,
-
-      duration:
-        DURATION_WEEKS,
-
-      totalReturn:
-        totalReturn,
-    };
-
-    const updatedRequests =
-      depositRequests.map(
-        (item) =>
-          item.id ===
-          requestId
-            ? updatedRequest
-            : item
-      );
-
-    saveDepositRequests(
-      updatedRequests
-    );
-
-    if (
-      newStatus ===
-      "Rejected"
-    ) {
-      setMessage(
-        planName +
-          " deposit request rejected."
-      );
-
-      setMessageType(
-        "success"
-      );
-
-      return;
-    }
-
-    const approvedAt =
-      new Date().toISOString();
-
-    const returnsKey =
-      "transportWithdrawableReturns_" +
-      phone;
-
-    const savedReturns =
-      localStorage.getItem(
-        returnsKey
-      );
-
-    const currentWithdrawableReturns =
-      savedReturns !== null
-        ? Number(
-            savedReturns
-          ) || 0
-        : 0;
-
-    const newWithdrawableReturns =
-      currentWithdrawableReturns +
-      weeklyReturn;
-
-    localStorage.setItem(
-      returnsKey,
-      String(
-        newWithdrawableReturns
-      )
-    );
-
-    let weeklyReturnSavedToSupabase =
-      true;
-
-    if (
-      weeklyReturn > 0
-    ) {
-      const returnResult =
-        await addWithdrawableReturnsToSupabase(
-          phone,
-          weeklyReturn
-        );
-
-      weeklyReturnSavedToSupabase =
-        returnResult.success;
-    }
-
-    const nextReturnDate =
-      new Date(
-        Date.now() +
-          7 *
-            24 *
-            60 *
-            60 *
-            1000
-      ).toISOString();
-
-    const activePlan = {
-      id:
-        "active-plan-" +
-        request.id,
-
-      depositRequestId:
-        request.id,
-
-      userPhone:
-        phone,
-
-      name:
-        planName,
-
-      price:
-        planAmount,
-
-      amount:
-        planAmount,
-
-      weekly:
-        weeklyReturn,
-
-      daily:
-        weeklyReturn,
-
-      durationYears:
-        DURATION_YEARS,
-
-      durationWeeks:
-        DURATION_WEEKS,
-
-      duration:
-        DURATION_WEEKS,
-
-      totalReturn:
-        totalReturn,
-
-      activatedAt:
-        approvedAt,
-
-      approvedAt:
-        approvedAt,
-
-      lastReturnAt:
-        approvedAt,
-
-      nextReturnAt:
-        nextReturnDate,
-
-      returnsPaid:
-        1,
-
-      earnedReturns:
-        weeklyReturn,
-
-      totalEarned:
-        weeklyReturn,
-
-      remainingWeeks:
-        Math.max(
-          DURATION_WEEKS -
-            1,
-          0
-        ),
-
-      status:
-        "Active",
-    };
-
-    const activePlanSavedToSupabase =
-      await updateActivePlans(
-        activePlan,
-        phone
-      );
-
-    const depositTransaction = {
-      id:
-        "deposit-" +
-        request.id,
-
-      type:
-        "Deposit",
-
-      amount:
-        planAmount,
-
-      planName:
-        planName,
-
-      status:
-        "Approved",
-
-      phone:
-        phone,
-
-      transactionId:
-        request.transactionId ||
-        request.txId ||
-        request.transectionId ||
-        request.transactionID ||
-        "",
-
-      number:
-        request.number ||
-        request.depositNumber ||
-        request.mobileNumber ||
-        request.depositPhone ||
-        phone ||
-        "",
-
-      screenshot:
-        request.screenshot ||
-        request.paymentScreenshot ||
-        request.receipt ||
-        "",
-
-      date:
-        request.submittedAt
-          ? new Date(
-              request.submittedAt
-            ).toLocaleString()
-          : new Date().toLocaleString(),
-
-      createdAt:
-        request.submittedAt ||
-        approvedAt,
-
-      description:
-        "Deposit Approved",
-    };
-
-    saveTransaction(
-      depositTransaction,
-      phone
-    );
-
-    const depositTransactionSavedToSupabase =
-      await saveTransactionToSupabase(
-        depositTransaction,
-        phone
-      );
-
-    let weeklyTransactionSavedToSupabase =
-      true;
-
-    if (
-      weeklyReturn > 0
-    ) {
-      const weeklyTransaction = {
-        id:
-          "weekly-return-" +
-          request.id,
-
-        type:
-          "Weekly Return",
-
-        amount:
-          weeklyReturn,
-
-        planName:
-          planName,
-
-        status:
-          "Completed",
-
-        phone:
-          phone,
-
-        transactionId:
-          "",
-
-        number:
-          phone,
-
-        date:
-          new Date().toLocaleString(),
-
-        createdAt:
-          approvedAt,
-
-        returnType:
-          "Weekly",
-
-        description:
-          "First Weekly Return",
-      };
-
-      saveTransaction(
-        weeklyTransaction,
-        phone
-      );
-
-      weeklyTransactionSavedToSupabase =
-        await saveTransactionToSupabase(
-          weeklyTransaction,
-          phone
-        );
-    }
-
-    let referralResult = {
-      credited: false,
-      totalBonus: 0,
-      details: [],
-    };
-
-    const referredUser =
-      findUserByPhone(
-        phone
-      );
-
-    if (
-      referredUser &&
-      planAmount > 0
-    ) {
-      referralResult =
-        await creditReferralBonuses(
-          request,
-          referredUser,
-          planAmount
-        );
-    }
-
-    let referralMessage =
-      "";
-
-    if (
-      referralResult.credited
-    ) {
-      referralMessage =
-        " Referral bonus of PKR " +
-        referralResult.totalBonus.toLocaleString() +
-        " credited to eligible referrer(s) and synced to Supabase.";
-    } else {
-      referralMessage =
-        " No eligible referral bonus was found for this user.";
-    }
-
-    const activePlanMessage =
-      activePlanSavedToSupabase
-        ? " Active plan saved to Supabase successfully."
-        : " Warning: active plan was saved locally, but could not be saved to Supabase.";
-
-    const weeklyReturnMessage =
-      weeklyReturnSavedToSupabase
-        ? " Weekly return of PKR " +
-          weeklyReturn.toLocaleString() +
-          " synced to Supabase."
-        : " Warning: weekly return was not synced to Supabase.";
-
-    const transactionMessage =
-      depositTransactionSavedToSupabase &&
-      weeklyTransactionSavedToSupabase
-        ? " Deposit/Return transactions synced to Supabase."
-        : " Warning: one or more transaction records could not be synced to Supabase.";
-
-    setMessage(
-      planName +
-        " for " +
-        (
-          request.fullName ||
-          request.user?.fullName ||
-          request.user?.name ||
-          "user"
-        ) +
-        " approved successfully. First weekly return of PKR " +
-        weeklyReturn.toLocaleString() +
-        " has been credited immediately. Next return will be available in 7 days." +
-        weeklyReturnMessage +
-        activePlanMessage +
-        transactionMessage +
-        referralMessage
-    );
-
-    setMessageType(
-      activePlanSavedToSupabase &&
-        weeklyReturnSavedToSupabase &&
-        depositTransactionSavedToSupabase &&
-        weeklyTransactionSavedToSupabase
-        ? "success"
-        : "error"
-    );
-
-    await loadUsers();
-  };
-
   /*
    * ----------------------------------------------------
    * WITHDRAW STATUS
    * ----------------------------------------------------
    *
-   * APPROVAL:
-   * - Reads central users.withdrawable_returns
-   * - Verifies enough return balance exists
-   * - Deducts withdrawal amount centrally
-   * - Updates withdraw_requests in Supabase
-   * - Updates local transaction status
-   * - Saves transaction centrally in Supabase
+   * WEEKLY WITHDRAWAL:
+   * - Deducts from users.withdrawable_returns
+   *
+   * REFERRAL WITHDRAWAL:
+   * - Deducts from users.balance
+   * - Also keeps withdrawable_returns synchronized
    *
    * REJECTION:
-   * - Does NOT deduct withdrawable_returns
-   * - Only changes withdrawal request status
-   * - Updates local transaction to Rejected
-   * - Saves transaction centrally in Supabase
+   * - Does not deduct any balance
    * ----------------------------------------------------
    */
   const updateWithdrawStatus = async (
@@ -3247,6 +103,51 @@ export default function Admin() {
 
     /*
      * --------------------------------------------------
+     * DETECT WITHDRAWAL TYPE
+     * --------------------------------------------------
+     *
+     * Referral types:
+     * Referral
+     * Referral Bonus
+     * Bonus
+     * Wallet
+     * Wallet Balance
+     *
+     * Everything else remains Weekly.
+     */
+    const rawReturnType =
+      String(
+        request.returnType ||
+          request.return_type ||
+          request.user?.returnType ||
+          "Weekly"
+      )
+        .trim()
+        .toLowerCase();
+
+    const isReferralWithdrawal =
+      rawReturnType ===
+        "referral" ||
+      rawReturnType ===
+        "referral bonus" ||
+      rawReturnType ===
+        "referralbonus" ||
+      rawReturnType ===
+        "bonus" ||
+      rawReturnType ===
+        "wallet" ||
+      rawReturnType ===
+        "wallet balance" ||
+      rawReturnType ===
+        "walletbalance";
+
+    const withdrawalType =
+      isReferralWithdrawal
+        ? "Referral"
+        : "Weekly";
+
+    /*
+     * --------------------------------------------------
      * APPROVAL
      * --------------------------------------------------
      */
@@ -3257,7 +158,11 @@ export default function Admin() {
       try {
         /*
          * STEP 1:
-         * Read the latest central withdrawable balance.
+         * Read the latest central user balance.
+         *
+         * We read BOTH balance and withdrawable_returns
+         * because referral and weekly withdrawals use
+         * different wallets.
          */
         const {
           data: currentUser,
@@ -3265,7 +170,7 @@ export default function Admin() {
         } = await supabase
           .from("users")
           .select(
-            "id, phone, withdrawable_returns"
+            "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus"
           )
           .eq(
             "phone",
@@ -3303,6 +208,12 @@ export default function Admin() {
           return;
         }
 
+        const currentBalance =
+          Number(
+            currentUser.balance ||
+              0
+          );
+
         const currentReturns =
           Number(
             currentUser.withdrawable_returns ||
@@ -3310,9 +221,458 @@ export default function Admin() {
           );
 
         /*
-         * Pending withdrawals are only reserved.
-         * The central balance is deducted only here,
-         * after Admin approval.
+         * ------------------------------------------------
+         * REFERRAL WITHDRAWAL
+         * ------------------------------------------------
+         *
+         * Referral withdrawal is deducted from the
+         * user's Wallet Balance.
+         */
+        if (
+          isReferralWithdrawal
+        ) {
+          if (
+            withdrawAmount >
+            currentBalance
+          ) {
+            setMessage(
+              "Insufficient wallet balance. Available in Supabase: PKR " +
+                currentBalance.toLocaleString()
+            );
+
+            setMessageType(
+              "error"
+            );
+
+            return;
+          }
+
+          const newBalance =
+            currentBalance -
+            withdrawAmount;
+
+          /*
+           * Keep referral bonus balance synchronized.
+           *
+           * referral_bonus represents the currently
+           * credited referral bonus balance.
+           */
+          const currentReferralBonus =
+            Number(
+              currentUser.referral_bonus ||
+                0
+            );
+
+          const newReferralBonus =
+            Math.max(
+              0,
+              currentReferralBonus -
+                withdrawAmount
+            );
+
+          /*
+           * IMPORTANT:
+           *
+           * The existing system also credits referral
+           * bonuses into withdrawable_returns.
+           *
+           * We therefore deduct the same referral amount
+           * from withdrawable_returns as well, but never
+           * allow it to go below zero.
+           *
+           * This prevents the same referral bonus from
+           * remaining available for another withdrawal.
+           */
+          const newWithdrawableReturns =
+            Math.max(
+              0,
+              currentReturns -
+                withdrawAmount
+            );
+
+          /*
+           * STEP 2:
+           * Deduct referral withdrawal from Wallet Balance
+           * and synchronize the referral wallet fields.
+           */
+          const {
+            data: updatedUser,
+            error: userUpdateError,
+          } = await supabase
+            .from("users")
+            .update({
+              balance:
+                newBalance,
+
+              referral_bonus:
+                newReferralBonus,
+
+              withdrawable_returns:
+                newWithdrawableReturns,
+            })
+            .eq(
+              "id",
+              currentUser.id
+            )
+            .select(
+              "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus"
+            )
+            .maybeSingle();
+
+          if (userUpdateError) {
+            console.error(
+              "Could not deduct referral withdrawal from Supabase:",
+              userUpdateError
+            );
+
+            setMessage(
+              "Supabase Error while deducting referral withdrawal: " +
+                userUpdateError.message
+            );
+
+            setMessageType(
+              "error"
+            );
+
+            return;
+          }
+
+          const finalBalance =
+            Number(
+              updatedUser?.balance ??
+                newBalance
+            );
+
+          const finalReferralBonus =
+            Number(
+              updatedUser?.referral_bonus ??
+                newReferralBonus
+            );
+
+          const finalReturns =
+            Number(
+              updatedUser?.withdrawable_returns ??
+                newWithdrawableReturns
+            );
+
+          /*
+           * STEP 3:
+           * Update withdrawal request status.
+           */
+          const {
+            error: requestUpdateError,
+          } = await supabase
+            .from("withdraw_requests")
+            .update({
+              status:
+                "Approved",
+
+              updated_at:
+                new Date().toISOString(),
+            })
+            .eq(
+              "id",
+              requestId
+            );
+
+          if (requestUpdateError) {
+            /*
+             * Compensation:
+             * Restore all values if request status
+             * could not be updated.
+             */
+            console.error(
+              "Referral withdrawal status update failed. Restoring balances:",
+              requestUpdateError
+            );
+
+            const {
+              error: restoreError,
+            } = await supabase
+              .from("users")
+              .update({
+                balance:
+                  currentBalance,
+
+                referral_bonus:
+                  currentReferralBonus,
+
+                withdrawable_returns:
+                  currentReturns,
+              })
+              .eq(
+                "id",
+                currentUser.id
+              );
+
+            if (restoreError) {
+              console.error(
+                "CRITICAL: Could not restore referral withdrawal balances:",
+                restoreError
+              );
+            }
+
+            setMessage(
+              "Referral withdrawal approval failed: " +
+                requestUpdateError.message
+            );
+
+            setMessageType(
+              "error"
+            );
+
+            await loadUsers();
+            await loadWithdrawRequests();
+
+            return;
+          }
+
+          /*
+           * STEP 4:
+           * Mirror all updated balances locally.
+           */
+          localStorage.setItem(
+            "transportWithdrawableReturns_" +
+              phone,
+            String(
+              finalReturns
+            )
+          );
+
+          try {
+            const savedUsers =
+              localStorage.getItem(
+                "transportUsers"
+              );
+
+            if (savedUsers) {
+              const parsed =
+                JSON.parse(
+                  savedUsers
+                );
+
+              if (
+                Array.isArray(parsed)
+              ) {
+                const updatedLocalUsers =
+                  parsed.map(
+                    (user) => {
+                      const userPhone =
+                        normalizePhone(
+                          user.phone ||
+                            user.mobile ||
+                            user.mobileNumber ||
+                            user.phoneNumber
+                        );
+
+                      if (
+                        userPhone ===
+                        phone
+                      ) {
+                        return {
+                          ...user,
+
+                          balance:
+                            finalBalance,
+
+                          withdrawableReturns:
+                            finalReturns,
+
+                          withdrawable_returns:
+                            finalReturns,
+
+                          referralBonus:
+                            finalReferralBonus,
+
+                          referral_bonus:
+                            finalReferralBonus,
+                        };
+                      }
+
+                      return user;
+                    }
+                  );
+
+                localStorage.setItem(
+                  "transportUsers",
+                  JSON.stringify(
+                    updatedLocalUsers
+                  )
+                );
+              }
+            }
+          } catch (error) {
+            console.error(
+              "Could not update local users after referral withdrawal approval:",
+              error
+            );
+          }
+
+          /*
+           * STEP 5:
+           * Update existing pending withdrawal transaction.
+           */
+          const withdrawalTransactionId =
+            "withdraw-" +
+            request.id;
+
+          const updatedExistingTransaction =
+            updateSavedTransactionStatus(
+              withdrawalTransactionId,
+              phone,
+              "Approved"
+            );
+
+          const withdrawalTransaction = {
+            id:
+              withdrawalTransactionId,
+
+            type:
+              "Withdrawal",
+
+            amount:
+              withdrawAmount,
+
+            status:
+              "Approved",
+
+            phone:
+              phone,
+
+            transactionId:
+              request.transactionId ||
+              request.txId ||
+              request.transectionId ||
+              request.transactionID ||
+              "",
+
+            number:
+              request.number ||
+              request.withdrawNumber ||
+              request.mobileNumber ||
+              request.withdrawPhone ||
+              "",
+
+            screenshot:
+              request.screenshot ||
+              request.paymentScreenshot ||
+              request.receipt ||
+              "",
+
+            date:
+              request.submittedAt
+                ? new Date(
+                    request.submittedAt
+                  ).toLocaleString()
+                : new Date().toLocaleString(),
+
+            createdAt:
+              request.submittedAt ||
+              new Date().toISOString(),
+
+            returnType:
+              request.returnType ||
+              "Referral",
+
+            description:
+              "Referral Withdrawal Approved",
+          };
+
+          if (
+            !updatedExistingTransaction
+          ) {
+            saveTransaction(
+              withdrawalTransaction,
+              phone
+            );
+          }
+
+          const withdrawalTransactionSavedToSupabase =
+            await saveTransactionToSupabase(
+              withdrawalTransaction,
+              phone
+            );
+
+          /*
+           * STEP 6:
+           * Update request locally.
+           */
+          const updatedRequest = {
+            ...request,
+
+            status:
+              "Approved",
+
+            updatedAt:
+              new Date().toISOString(),
+
+            returnType:
+              request.returnType ||
+              "Referral",
+
+            availableBalanceAtRequest:
+              finalBalance,
+
+            withdrawableBalance:
+              finalReturns,
+          };
+
+          const updatedRequests =
+            withdrawRequests.map(
+              (item) =>
+                item.id ===
+                requestId
+                  ? updatedRequest
+                  : item
+            );
+
+          saveWithdrawRequests(
+            updatedRequests
+          );
+
+          /*
+           * STEP 7:
+           * Refresh central data.
+           */
+          await loadUsers();
+          await loadWithdrawRequests();
+
+          setMessage(
+            "Referral withdrawal of PKR " +
+              withdrawAmount.toLocaleString() +
+              " for " +
+              (
+                request.fullName ||
+                "user"
+              ) +
+              " approved successfully. PKR " +
+              withdrawAmount.toLocaleString() +
+              " has been deducted from Wallet Balance. Remaining Wallet Balance: PKR " +
+              finalBalance.toLocaleString() +
+              "." +
+              (
+                withdrawalTransactionSavedToSupabase
+                  ? " Withdrawal transaction synced to Supabase."
+                  : " Warning: withdrawal transaction could not be synced to Supabase."
+              )
+          );
+
+          setMessageType(
+            withdrawalTransactionSavedToSupabase
+              ? "success"
+              : "error"
+          );
+
+          return;
+        }
+
+        /*
+         * ------------------------------------------------
+         * WEEKLY WITHDRAWAL
+         * ------------------------------------------------
+         *
+         * WEEKLY BEHAVIOR REMAINS THE SAME:
+         * Deduct ONLY from withdrawable_returns.
          */
         if (
           withdrawAmount >
@@ -3336,7 +696,7 @@ export default function Admin() {
 
         /*
          * STEP 2:
-         * Deduct centrally from users table.
+         * Deduct weekly withdrawal centrally.
          */
         const {
           data: updatedUser,
@@ -3352,13 +712,13 @@ export default function Admin() {
             currentUser.id
           )
           .select(
-            "id, phone, withdrawable_returns"
+            "id, phone, balance, withdrawable_returns"
           )
           .maybeSingle();
 
         if (userUpdateError) {
           console.error(
-            "Could not deduct withdrawal from Supabase:",
+            "Could not deduct weekly withdrawal from Supabase:",
             userUpdateError
           );
 
@@ -3382,7 +742,7 @@ export default function Admin() {
 
         /*
          * STEP 3:
-         * Update withdrawal request status in Supabase.
+         * Update withdrawal request status.
          */
         const {
           error: requestUpdateError,
@@ -3403,8 +763,8 @@ export default function Admin() {
         if (requestUpdateError) {
           /*
            * Compensation:
-           * If the request status could not be updated,
-           * restore the deducted balance.
+           * Restore weekly return balance if request
+           * status could not be updated.
            */
           console.error(
             "Withdrawal request status update failed. Restoring balance:",
@@ -3448,12 +808,14 @@ export default function Admin() {
 
         /*
          * STEP 4:
-         * Mirror the new central balance locally.
+         * Mirror weekly balance locally.
          */
         localStorage.setItem(
           "transportWithdrawableReturns_" +
             phone,
-          String(finalReturns)
+          String(
+            finalReturns
+          )
         );
 
         try {
@@ -3518,7 +880,7 @@ export default function Admin() {
 
         /*
          * STEP 5:
-         * Update existing Pending withdrawal transaction locally.
+         * Update existing pending withdrawal transaction.
          */
         const withdrawalTransactionId =
           "withdraw-" +
@@ -3531,10 +893,6 @@ export default function Admin() {
             "Approved"
           );
 
-        /*
-         * If no pending transaction was found,
-         * create the approved transaction.
-         */
         const withdrawalTransaction = {
           id:
             withdrawalTransactionId,
@@ -3607,7 +965,7 @@ export default function Admin() {
 
         /*
          * STEP 6:
-         * Update request locally too.
+         * Update request locally.
          */
         const updatedRequest = {
           ...request,
@@ -3617,6 +975,10 @@ export default function Admin() {
 
           updatedAt:
             new Date().toISOString(),
+
+          returnType:
+            request.returnType ||
+            "Weekly",
 
           withdrawableBalance:
             finalReturns,
@@ -3643,7 +1005,7 @@ export default function Admin() {
         await loadWithdrawRequests();
 
         setMessage(
-          "Withdrawal of PKR " +
+          "Weekly withdrawal of PKR " +
             withdrawAmount.toLocaleString() +
             " for " +
             (
@@ -3691,15 +1053,15 @@ export default function Admin() {
      * --------------------------------------------------
      * REJECTION
      * --------------------------------------------------
+     *
+     * No balance is deducted when a withdrawal is
+     * rejected.
      */
     if (
       newStatus ===
       "Rejected"
     ) {
       try {
-        /*
-         * Do NOT deduct withdrawable_returns.
-         */
         const {
           error: requestUpdateError,
         } = await supabase
@@ -3718,7 +1080,7 @@ export default function Admin() {
 
         if (requestUpdateError) {
           console.error(
-            "Supabase withdrawal rejection error:",
+            "Supabase withdrawal rejection update error:",
             requestUpdateError
           );
 
@@ -3734,9 +1096,6 @@ export default function Admin() {
           return;
         }
 
-        /*
-         * Update local transaction.
-         */
         const withdrawalTransactionId =
           "withdraw-" +
           request.id;
@@ -3818,9 +1177,6 @@ export default function Admin() {
             phone
           );
 
-        /*
-         * Update local withdrawal request.
-         */
         const updatedRequest = {
           ...request,
 
@@ -3850,7 +1206,12 @@ export default function Admin() {
         setMessage(
           "Withdrawal request of PKR " +
             withdrawAmount.toLocaleString() +
-            " rejected. No amount was deducted from the user's withdrawable returns." +
+            " for " +
+            (
+              request.fullName ||
+              "user"
+            ) +
+            " rejected. No amount was deducted from the user's balance." +
             (
               withdrawalTransactionSavedToSupabase
                 ? " Withdrawal transaction synced to Supabase."
@@ -3883,6 +1244,11 @@ export default function Admin() {
       }
     }
 
+    /*
+     * --------------------------------------------------
+     * INVALID STATUS
+     * --------------------------------------------------
+     */
     setMessage(
       "Invalid withdrawal status."
     );
@@ -3891,2608 +1257,3 @@ export default function Admin() {
       "error"
     );
   };
-
-  /*
-   * ----------------------------------------------------
-   * STATS
-   * ----------------------------------------------------
-   */
-  const stats = useMemo(() => {
-    const totalDeposits =
-      depositRequests.reduce(
-        (sum, item) =>
-          sum +
-          Number(
-            item.amount ||
-              item.depositAmount ||
-              item.plan?.amount ||
-              0
-          ),
-        0
-      );
-
-    const approvedDeposits =
-      depositRequests
-        .filter(
-          (item) =>
-            item.status ===
-            "Approved"
-        )
-        .reduce(
-          (sum, item) =>
-            sum +
-            Number(
-              item.amount ||
-                item.depositAmount ||
-                item.plan?.amount ||
-                0
-            ),
-          0
-        );
-
-    const pendingDeposits =
-      depositRequests.filter(
-        (item) =>
-          item.status ===
-          "Pending"
-      ).length;
-
-    const pendingWithdrawals =
-      withdrawRequests.filter(
-        (item) =>
-          String(
-            item.status ||
-              "Pending"
-          ).toLowerCase() ===
-          "pending"
-      ).length;
-
-    const approvedWithdrawals =
-      withdrawRequests
-        .filter(
-          (item) =>
-            String(
-              item.status ||
-                ""
-            ).toLowerCase() ===
-            "approved"
-        )
-        .reduce(
-          (sum, item) =>
-            sum +
-            Number(
-              item.amount || 0
-            ),
-          0
-        );
-
-    return {
-      users:
-        users.length,
-
-      totalDeposits,
-
-      approvedDeposits,
-
-      pendingDeposits,
-
-      pendingWithdrawals,
-
-      approvedWithdrawals,
-
-      totalRequests:
-        depositRequests.length,
-
-      totalWithdrawRequests:
-        withdrawRequests.length,
-    };
-  }, [
-    users,
-    depositRequests,
-    withdrawRequests,
-  ]);
-
-  /*
-   * ----------------------------------------------------
-   * GROUP USERS / TRANSACTIONS
-   * ----------------------------------------------------
-   */
-  const groupedUsers = useMemo(() => {
-    const groups = {};
-
-    depositRequests.forEach(
-      (request, index) => {
-        const phone =
-          normalizePhone(
-            request.phone ||
-              request.mobile ||
-              request.mobileNumber ||
-              request.user?.phone ||
-              ""
-          ) ||
-          "deposit-unknown-" +
-            index;
-
-        if (!groups[phone]) {
-          groups[phone] = {
-            key: phone,
-
-            fullName:
-              request.fullName ||
-              request.name ||
-              request.user?.fullName ||
-              request.user?.name ||
-              "User",
-
-            phone:
-              request.phone ||
-              request.mobile ||
-              request.mobileNumber ||
-              request.user?.phone ||
-              "N/A",
-
-            bankName:
-              request.bankName ||
-              "N/A",
-
-            accountNumber:
-              request.accountNumber ||
-              "N/A",
-
-            deposits: [],
-
-            withdrawals: [],
-          };
-        }
-
-        groups[phone].deposits.push(
-          request
-        );
-
-        if (
-          groups[phone]
-            .fullName ===
-            "User" &&
-          (
-            request.fullName ||
-            request.name ||
-            request.user?.fullName ||
-            request.user?.name
-          )
-        ) {
-          groups[phone].fullName =
-            request.fullName ||
-            request.name ||
-            request.user?.fullName ||
-            request.user?.name;
-        }
-
-        if (
-          groups[phone]
-            .bankName ===
-            "N/A" &&
-          request.bankName
-        ) {
-          groups[phone].bankName =
-            request.bankName;
-        }
-
-        if (
-          groups[phone]
-            .accountNumber ===
-            "N/A" &&
-          request.accountNumber
-        ) {
-          groups[phone].accountNumber =
-            request.accountNumber;
-        }
-      }
-    );
-
-    withdrawRequests.forEach(
-      (request, index) => {
-        const phone =
-          normalizePhone(
-            request.phone ||
-              request.mobile ||
-              request.mobileNumber ||
-              ""
-          ) ||
-          "withdraw-unknown-" +
-            index;
-
-        if (!groups[phone]) {
-          groups[phone] = {
-            key: phone,
-
-            fullName:
-              request.fullName ||
-              request.name ||
-              "User",
-
-            phone:
-              request.phone ||
-              request.mobile ||
-              request.mobileNumber ||
-              "N/A",
-
-            bankName:
-              request.bankName ||
-              "N/A",
-
-            accountNumber:
-              request.accountNumber ||
-              "N/A",
-
-            deposits: [],
-
-            withdrawals: [],
-          };
-        }
-
-        groups[phone].withdrawals.push(
-          request
-        );
-
-        if (
-          groups[phone]
-            .fullName ===
-            "User" &&
-          (
-            request.fullName ||
-            request.name
-          )
-        ) {
-          groups[phone].fullName =
-            request.fullName ||
-            request.name;
-        }
-
-        if (
-          groups[phone]
-            .bankName ===
-            "N/A" &&
-          request.bankName
-        ) {
-          groups[phone].bankName =
-            request.bankName;
-        }
-
-        if (
-          groups[phone]
-            .accountNumber ===
-            "N/A" &&
-          request.accountNumber
-        ) {
-          groups[phone].accountNumber =
-            request.accountNumber;
-        }
-      }
-    );
-
-    return Object.values(
-      groups
-    );
-  }, [
-    depositRequests,
-    withdrawRequests,
-  ]);
-
-  if (loading) {
-    return (
-      <div
-        style={{
-          minHeight:
-            "100vh",
-          background:
-            PAGE_BG,
-          display:
-            "flex",
-          alignItems:
-            "center",
-          justifyContent:
-            "center",
-          color:
-            NAVY,
-          fontFamily:
-            "Arial, sans-serif",
-          fontSize:
-            "18px",
-          fontWeight:
-            "700",
-        }}
-      >
-        Loading Admin Panel...
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        minHeight:
-          "100vh",
-        background:
-          PAGE_BG,
-        color:
-          "#ffffff",
-        fontFamily:
-          "Arial, sans-serif",
-        padding:
-          "25px",
-        boxSizing:
-          "border-box",
-      }}
-    >
-      <div
-        style={{
-          maxWidth:
-            "1250px",
-          margin:
-            "0 auto",
-        }}
-      >
-        <div
-          style={{
-            background:
-              "linear-gradient(135deg, #102A43 0%, #173B5A 100%)",
-            borderRadius:
-              "22px",
-            padding:
-              "25px 28px",
-            boxShadow:
-              "0 14px 35px rgba(16, 42, 67, 0.18)",
-            marginBottom:
-              "20px",
-            display:
-              "flex",
-            alignItems:
-              "center",
-            justifyContent:
-              "space-between",
-            gap:
-              "20px",
-            flexWrap:
-              "wrap",
-          }}
-        >
-          <div
-            style={{
-              display:
-                "flex",
-              alignItems:
-                "center",
-              gap:
-                "16px",
-            }}
-          >
-            <div
-              style={{
-                width:
-                  "60px",
-                height:
-                  "60px",
-                borderRadius:
-                  "18px",
-                background:
-                  "rgba(255,255,255,0.10)",
-                border:
-                  "1px solid rgba(255,255,255,0.12)",
-                display:
-                  "flex",
-                alignItems:
-                  "center",
-                justifyContent:
-                  "center",
-                fontSize:
-                  "29px",
-              }}
-            >
-              🛠️
-            </div>
-
-            <div>
-              <h1
-                style={{
-                  margin:
-                    0,
-                  fontSize:
-                    "29px",
-                  fontWeight:
-                    "800",
-                }}
-              >
-                Admin Panel
-              </h1>
-
-              <p
-                style={{
-                  margin:
-                    "6px 0 0",
-                  color:
-                    LIGHT,
-                  fontSize:
-                    "14px",
-                }}
-              >
-                Manage Transport Hub
-                accounts and requests
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => {
-              window.location.href =
-                "/";
-            }}
-            style={{
-              border:
-                "1px solid #36536D",
-              background:
-                "#173B5A",
-              color:
-                "#ffffff",
-              borderRadius:
-                "11px",
-              padding:
-                "11px 17px",
-              fontSize:
-                "13px",
-              fontWeight:
-                "700",
-              cursor:
-                "pointer",
-            }}
-          >
-            ← Dashboard
-          </button>
-        </div>
-
-        <div
-          style={{
-            display:
-              "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(190px, 1fr))",
-            gap:
-              "14px",
-            marginBottom:
-              "20px",
-          }}
-        >
-          <StatCard
-            icon="👥"
-            title="Total Users"
-            value={
-              stats.users
-            }
-          />
-
-          <StatCard
-            icon="💰"
-            title="Approved Deposits"
-            value={
-              "PKR " +
-              stats.approvedDeposits.toLocaleString()
-            }
-          />
-
-          <StatCard
-            icon="⏳"
-            title="Pending Deposits"
-            value={
-              stats.pendingDeposits
-            }
-          />
-
-          <StatCard
-            icon="💸"
-            title="Pending Withdrawals"
-            value={
-              stats.pendingWithdrawals
-            }
-          />
-
-          <StatCard
-            icon="📤"
-            title="Approved Withdrawals"
-            value={
-              "PKR " +
-              stats.approvedWithdrawals.toLocaleString()
-            }
-          />
-        </div>
-
-        <div
-          style={{
-            background:
-              NAVY,
-            border:
-              "1px solid " +
-              BORDER,
-            borderRadius:
-              "16px",
-            padding:
-              "8px",
-            display:
-              "flex",
-            gap:
-              "7px",
-            marginBottom:
-              "20px",
-            overflowX:
-              "auto",
-          }}
-        >
-          <TabButton
-            active={
-              activeTab ===
-              "overview"
-            }
-            onClick={() =>
-              setActiveTab(
-                "overview"
-              )
-            }
-          >
-            📊 Overview
-          </TabButton>
-
-          <TabButton
-            active={
-              activeTab ===
-              "transactions"
-            }
-            onClick={() =>
-              setActiveTab(
-                "transactions"
-              )
-            }
-          >
-            💳 Transactions
-
-            {(
-              stats.pendingDeposits +
-              stats.pendingWithdrawals
-            ) > 0 && (
-              <Badge>
-                {stats.pendingDeposits +
-                  stats.pendingWithdrawals}
-              </Badge>
-            )}
-          </TabButton>
-
-          <TabButton
-            active={
-              activeTab ===
-              "users"
-            }
-            onClick={() =>
-              setActiveTab(
-                "users"
-              )
-            }
-          >
-            👥 Users
-          </TabButton>
-        </div>
-
-        {message && (
-          <div
-            style={{
-              background:
-                messageType ===
-                "error"
-                  ? "rgba(255,159,150,0.10)"
-                  : "rgba(143,214,148,0.10)",
-
-              border:
-                messageType ===
-                "error"
-                  ? "1px solid rgba(255,159,150,0.25)"
-                  : "1px solid rgba(143,214,148,0.25)",
-
-              color:
-                messageType ===
-                "error"
-                  ? RED
-                  : GREEN,
-
-              borderRadius:
-                "13px",
-
-              padding:
-                "13px 15px",
-
-              marginBottom:
-                "18px",
-
-              fontSize:
-                "14px",
-
-              fontWeight:
-                "600",
-            }}
-          >
-            {messageType ===
-            "error"
-              ? "❌ "
-              : "✅ "}
-            {message}
-
-            <button
-              onClick={() =>
-                setMessage("")
-              }
-              style={{
-                float:
-                  "right",
-                border:
-                  "none",
-                background:
-                  "transparent",
-                color:
-                  messageType ===
-                  "error"
-                    ? RED
-                    : GREEN,
-                cursor:
-                  "pointer",
-                fontSize:
-                  "16px",
-              }}
-            >
-              ×
-            </button>
-          </div>
-        )}
-
-        {activeTab ===
-          "overview" && (
-          <div
-            style={{
-              display:
-                "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(280px, 1fr))",
-              gap:
-                "18px",
-            }}
-          >
-            <AdminCard
-              icon="💳"
-              title="User Transactions"
-              text={
-                "There are " +
-                groupedUsers.length +
-                " user card(s) containing deposit and withdrawal requests."
-              }
-              buttonText="View Transactions"
-              onClick={() =>
-                setActiveTab(
-                  "transactions"
-                )
-              }
-            />
-
-            <AdminCard
-              icon="💰"
-              title="Deposit Management"
-              text={
-                "Total " +
-                stats.totalRequests +
-                " deposit request(s), including " +
-                stats.pendingDeposits +
-                " pending request(s)."
-              }
-              buttonText="View Transactions"
-              onClick={() =>
-                setActiveTab(
-                  "transactions"
-                )
-              }
-            />
-
-            <AdminCard
-              icon="💸"
-              title="Withdrawal Management"
-              text={
-                "Total " +
-                stats.totalWithdrawRequests +
-                " withdrawal request(s), including " +
-                stats.pendingWithdrawals +
-                " pending request(s)."
-              }
-              buttonText="View Transactions"
-              onClick={() =>
-                setActiveTab(
-                  "transactions"
-                )
-              }
-            />
-
-            <AdminCard
-              icon="👥"
-              title="Registered Users"
-              text={
-                "There are " +
-                stats.users +
-                " registered account(s) in Transport Hub."
-              }
-              buttonText="View Users"
-              onClick={() =>
-                setActiveTab(
-                  "users"
-                )
-              }
-            />
-
-            <AdminCard
-              icon="💬"
-              title="Support Chats"
-              text="View customer support messages and reply to users in real time."
-              buttonText="Open Support Chats"
-              onClick={() => {
-                window.location.href =
-                  "/admin-support";
-              }}
-            />
-          </div>
-        )}
-
-        {activeTab ===
-          "transactions" && (
-          <div>
-            <SectionHeader
-              title="User Transactions"
-              subtitle="Each user has one card containing all deposits and withdrawals."
-              icon="💳"
-            />
-
-            {groupedUsers.length >
-            0 ? (
-              <div
-                style={{
-                  display:
-                    "grid",
-                  gap:
-                    "18px",
-                }}
-              >
-                {groupedUsers.map(
-                  (user) => (
-                    <div
-                      key={
-                        user.key
-                      }
-                      style={{
-                        background:
-                          NAVY,
-                        border:
-                          "1px solid " +
-                          BORDER,
-                        borderRadius:
-                          "20px",
-                        padding:
-                          "21px",
-                        boxShadow:
-                          "0 10px 28px rgba(16,42,67,0.13)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display:
-                            "flex",
-                          alignItems:
-                            "center",
-                          justifyContent:
-                            "space-between",
-                          gap:
-                            "15px",
-                          marginBottom:
-                            "18px",
-                          flexWrap:
-                            "wrap",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display:
-                              "flex",
-                            alignItems:
-                              "center",
-                            gap:
-                              "13px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              width:
-                                "50px",
-                              height:
-                                "50px",
-                              borderRadius:
-                                "15px",
-                              background:
-                                NAVY_2,
-                              border:
-                                "1px solid " +
-                                BORDER,
-                              display:
-                                "flex",
-                              alignItems:
-                                "center",
-                              justifyContent:
-                                "center",
-                              fontSize:
-                                "23px",
-                            }}
-                          >
-                            👤
-                          </div>
-
-                          <div>
-                            <h2
-                              style={{
-                                margin:
-                                  0,
-                                color:
-                                  "#ffffff",
-                                fontSize:
-                                  "20px",
-                              }}
-                            >
-                              {
-                                user.fullName
-                              }
-                            </h2>
-
-                            <p
-                              style={{
-                                margin:
-                                  "5px 0 0",
-                                color:
-                                  MUTED,
-                                fontSize:
-                                  "12px",
-                              }}
-                            >
-                              📱{" "}
-                              {
-                                user.phone
-                              }
-                            </p>
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            display:
-                              "flex",
-                            gap:
-                              "8px",
-                            flexWrap:
-                              "wrap",
-                          }}
-                        >
-                          <span
-                            style={{
-                              background:
-                                "rgba(143,214,148,0.12)",
-                              color:
-                                GREEN,
-                              border:
-                                "1px solid rgba(143,214,148,0.22)",
-                              borderRadius:
-                                "20px",
-                              padding:
-                                "7px 11px",
-                              fontSize:
-                                "11px",
-                              fontWeight:
-                                "700",
-                            }}
-                          >
-                            💰{" "}
-                            {
-                              user
-                                .deposits
-                                .length
-                            }{" "}
-                            Deposits
-                          </span>
-
-                          <span
-                            style={{
-                              background:
-                                "rgba(244,215,122,0.12)",
-                              color:
-                                GOLD,
-                              border:
-                                "1px solid rgba(244,215,122,0.22)",
-                              borderRadius:
-                                "20px",
-                              padding:
-                                "7px 11px",
-                              fontSize:
-                                "11px",
-                              fontWeight:
-                                "700",
-                            }}
-                          >
-                            💸{" "}
-                            {
-                              user
-                                .withdrawals
-                                .length
-                            }{" "}
-                            Withdrawals
-                          </span>
-                        </div>
-                      </div>
-
-                      <DetailsGrid>
-                        <Detail
-                          label="Full Name"
-                          value={
-                            user.fullName
-                          }
-                        />
-
-                        <Detail
-                          label="Mobile Number"
-                          value={
-                            user.phone
-                          }
-                        />
-
-                        <Detail
-                          label="Bank Name"
-                          value={
-                            user.bankName
-                          }
-                        />
-
-                        <Detail
-                          label="Account Number"
-                          value={
-                            user.accountNumber
-                          }
-                        />
-                      </DetailsGrid>
-
-                      {user.deposits
-                        .length >
-                        0 && (
-                        <div
-                          style={{
-                            marginTop:
-                              "20px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display:
-                                "flex",
-                              alignItems:
-                                "center",
-                              justifyContent:
-                                "space-between",
-                              gap:
-                                "10px",
-                              marginBottom:
-                                "10px",
-                            }}
-                          >
-                            <h3
-                              style={{
-                                margin:
-                                  0,
-                                color:
-                                  "#ffffff",
-                                fontSize:
-                                  "16px",
-                              }}
-                            >
-                              💰 Deposits
-                            </h3>
-
-                            <span
-                              style={{
-                                color:
-                                  MUTED,
-                                fontSize:
-                                  "11px",
-                              }}
-                            >
-                              {
-                                user
-                                  .deposits
-                                  .length
-                              }{" "}
-                              request(s)
-                            </span>
-                          </div>
-
-                          <div
-                            style={{
-                              display:
-                                "grid",
-                              gap:
-                                "10px",
-                            }}
-                          >
-                            {user.deposits.map(
-                              (
-                                request
-                              ) => {
-                                const requestPlan =
-                                  request.plan ||
-                                  {};
-
-                                const displayPlanName =
-                                  requestPlan.name ||
-                                  request.planName ||
-                                  "Deposit";
-
-                                const displayAmount =
-                                  Number(
-                                    requestPlan.amount ||
-                                      requestPlan.price ||
-                                      request.amount ||
-                                      request.depositAmount ||
-                                      0
-                                  );
-
-                                const displayWeekly =
-                                  Number(
-                                    requestPlan.weekly ||
-                                      request.weeklyReturn ||
-                                      request.dailyReturn ||
-                                      requestPlan.daily ||
-                                      0
-                                  );
-
-                                return (
-                                  <div
-                                    key={
-                                      request.id
-                                    }
-                                    style={{
-                                      background:
-                                        NAVY_2,
-                                      border:
-                                        "1px solid " +
-                                        BORDER,
-                                      borderRadius:
-                                        "14px",
-                                      padding:
-                                        "15px",
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        display:
-                                          "flex",
-                                        justifyContent:
-                                          "space-between",
-                                        alignItems:
-                                          "center",
-                                        gap:
-                                          "10px",
-                                        marginBottom:
-                                          "12px",
-                                        flexWrap:
-                                          "wrap",
-                                      }}
-                                    >
-                                      <div>
-                                        <strong
-                                          style={{
-                                            color:
-                                              "#ffffff",
-                                            fontSize:
-                                              "14px",
-                                          }}
-                                        >
-                                          {
-                                            displayPlanName
-                                          }
-                                        </strong>
-
-                                        <p
-                                          style={{
-                                            margin:
-                                              "4px 0 0",
-                                            color:
-                                              MUTED,
-                                            fontSize:
-                                              "10px",
-                                          }}
-                                        >
-                                          ID:{" "}
-                                          {request.id ||
-                                            "N/A"}
-                                        </p>
-                                      </div>
-
-                                      <StatusBadge
-                                        status={
-                                          request.status ||
-                                          "Pending"
-                                        }
-                                      />
-                                    </div>
-
-                                    <DetailsGrid>
-                                      <Detail
-                                        label="Amount"
-                                        value={
-                                          "PKR " +
-                                          displayAmount.toLocaleString()
-                                        }
-                                        highlight
-                                      />
-
-                                      <Detail
-                                        label="Weekly Return"
-                                        value={
-                                          "PKR " +
-                                          displayWeekly.toLocaleString()
-                                        }
-                                      />
-
-                                      <Detail
-                                        label="Duration"
-                                        value="5 Years"
-                                      />
-
-                                      <Detail
-                                        label="Payment Method"
-                                        value={
-                                          request.paymentMethod ||
-                                          "N/A"
-                                        }
-                                      />
-
-                                      <Detail
-                                        label="Transaction ID"
-                                        value={
-                                          request.transactionId ||
-                                          request.txId ||
-                                          request.transectionId ||
-                                          request.transactionID ||
-                                          "N/A"
-                                        }
-                                      />
-
-                                      <Detail
-                                        label="Deposit Number"
-                                        value={
-                                          request.number ||
-                                          request.depositNumber ||
-                                          request.mobileNumber ||
-                                          request.depositPhone ||
-                                          "N/A"
-                                        }
-                                      />
-
-                                      <Detail
-                                        label="Account Name"
-                                        value={
-                                          request.accountName ||
-                                          "N/A"
-                                        }
-                                      />
-
-                                      <Detail
-                                        label="Account Number"
-                                        value={
-                                          request.accountNumber ||
-                                          "N/A"
-                                        }
-                                      />
-
-                                      <Detail
-                                        label="Bank Name"
-                                        value={
-                                          request.bankName ||
-                                          "N/A"
-                                        }
-                                      />
-
-                                      <Detail
-                                        label="Submitted"
-                                        value={
-                                          request.submittedAt
-                                            ? new Date(
-                                                request.submittedAt
-                                              ).toLocaleString()
-                                            : request.createdAt
-                                            ? new Date(
-                                                request.createdAt
-                                              ).toLocaleString()
-                                            : "N/A"
-                                        }
-                                      />
-                                    </DetailsGrid>
-
-                                    {(request.screenshot ||
-                                      request.paymentScreenshot ||
-                                      request.receipt) && (
-                                      <div
-                                        style={{
-                                          marginTop:
-                                            "12px",
-                                          background:
-                                            "#102A43",
-                                          border:
-                                            "1px solid " +
-                                            BORDER,
-                                          borderRadius:
-                                            "12px",
-                                          padding:
-                                            "12px",
-                                        }}
-                                      >
-                                        <div
-                                          style={{
-                                            color:
-                                              MUTED,
-                                            fontSize:
-                                              "10px",
-                                            textTransform:
-                                              "uppercase",
-                                            marginBottom:
-                                              "8px",
-                                            fontWeight:
-                                              "700",
-                                          }}
-                                        >
-                                          📷 Deposit Screenshot
-                                        </div>
-
-                                        <img
-                                          src={
-                                            request.screenshot ||
-                                            request.paymentScreenshot ||
-                                            request.receipt
-                                          }
-                                          alt="Deposit Screenshot"
-                                          style={{
-                                            width:
-                                              "100%",
-                                            maxWidth:
-                                              "420px",
-                                            maxHeight:
-                                              "500px",
-                                            objectFit:
-                                              "contain",
-                                            display:
-                                              "block",
-                                            borderRadius:
-                                              "9px",
-                                            background:
-                                              "#ffffff",
-                                          }}
-                                        />
-                                      </div>
-                                    )}
-
-                                    {request.status ===
-                                      "Pending" && (
-                                      <div
-                                        style={{
-                                          display:
-                                            "flex",
-                                          gap:
-                                            "10px",
-                                          marginTop:
-                                            "14px",
-                                          flexWrap:
-                                            "wrap",
-                                        }}
-                                      >
-                                        <ActionButton
-                                          type="approve"
-                                          onClick={() =>
-                                            updateDepositStatus(
-                                              request.id,
-                                              "Approved"
-                                            )
-                                          }
-                                        >
-                                          ✅ Approve Deposit
-                                        </ActionButton>
-
-                                        <ActionButton
-                                          type="reject"
-                                          onClick={() =>
-                                            updateDepositStatus(
-                                              request.id,
-                                              "Rejected"
-                                            )
-                                          }
-                                        >
-                                          ❌ Reject Deposit
-                                        </ActionButton>
-                                      </div>
-                                    )}
-
-                                    {request.status ===
-                                      "Approved" && (
-                                      <div
-                                        style={{
-                                          marginTop:
-                                            "12px",
-                                          color:
-                                            GREEN,
-                                          fontSize:
-                                            "12px",
-                                          fontWeight:
-                                            "700",
-                                        }}
-                                      >
-                                        ✅ Plan Activated • First Weekly Return Credited • Referral Bonus Processed
-                                      </div>
-                                    )}
-
-                                    {request.status ===
-                                      "Rejected" && (
-                                      <div
-                                        style={{
-                                          marginTop:
-                                            "12px",
-                                          color:
-                                            RED,
-                                          fontSize:
-                                            "12px",
-                                          fontWeight:
-                                            "700",
-                                        }}
-                                      >
-                                        ❌ Deposit Rejected
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              }
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {user.withdrawals
-                        .length >
-                        0 && (
-                        <div
-                          style={{
-                            marginTop:
-                              "22px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display:
-                                "flex",
-                              alignItems:
-                                "center",
-                              justifyContent:
-                                "space-between",
-                              gap:
-                                "10px",
-                              marginBottom:
-                                "10px",
-                            }}
-                          >
-                            <h3
-                              style={{
-                                margin:
-                                  0,
-                                color:
-                                  "#ffffff",
-                                fontSize:
-                                  "16px",
-                              }}
-                            >
-                              💸 Withdrawals
-                            </h3>
-
-                            <span
-                              style={{
-                                color:
-                                  MUTED,
-                                fontSize:
-                                  "11px",
-                              }}
-                            >
-                              {
-                                user
-                                  .withdrawals
-                                  .length
-                              }{" "}
-                              request(s)
-                            </span>
-                          </div>
-
-                          <div
-                            style={{
-                              display:
-                                "grid",
-                              gap:
-                                "10px",
-                            }}
-                          >
-                            {user.withdrawals.map(
-                              (
-                                request
-                              ) => (
-                                <div
-                                  key={
-                                    request.id
-                                  }
-                                  style={{
-                                    background:
-                                      NAVY_2,
-                                    border:
-                                      "1px solid " +
-                                      BORDER,
-                                    borderRadius:
-                                      "14px",
-                                    padding:
-                                      "15px",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display:
-                                        "flex",
-                                      justifyContent:
-                                        "space-between",
-                                      alignItems:
-                                        "center",
-                                      gap:
-                                        "10px",
-                                      marginBottom:
-                                        "12px",
-                                      flexWrap:
-                                        "wrap",
-                                    }}
-                                  >
-                                    <div>
-                                      <strong
-                                        style={{
-                                          color:
-                                            "#ffffff",
-                                          fontSize:
-                                            "14px",
-                                        }}
-                                      >
-                                        Withdrawal Request
-                                      </strong>
-
-                                      <p
-                                        style={{
-                                          margin:
-                                            "4px 0 0",
-                                          color:
-                                            MUTED,
-                                          fontSize:
-                                            "10px",
-                                        }}
-                                      >
-                                        ID:{" "}
-                                        {request.id ||
-                                          "N/A"}
-                                      </p>
-                                    </div>
-
-                                    <StatusBadge
-                                      status={
-                                        request.status ||
-                                        "Pending"
-                                      }
-                                    />
-                                  </div>
-
-                                  <DetailsGrid>
-                                    <Detail
-                                      label="Withdrawal Amount"
-                                      value={
-                                        "PKR " +
-                                        Number(
-                                          request.amount ||
-                                            0
-                                        ).toLocaleString()
-                                      }
-                                      highlight
-                                    />
-
-                                    <Detail
-                                      label="Return Type"
-                                      value={
-                                        request.returnType ||
-                                        "Weekly"
-                                      }
-                                    />
-
-                                    <Detail
-                                      label="Available at Request"
-                                      value={
-                                        "PKR " +
-                                        Number(
-                                          request.availableBalanceAtRequest ||
-                                            0
-                                        ).toLocaleString()
-                                      }
-                                    />
-
-                                    <Detail
-                                      label="Withdrawable at Request"
-                                      value={
-                                        "PKR " +
-                                        Number(
-                                          request.withdrawableBalance ||
-                                            0
-                                        ).toLocaleString()
-                                      }
-                                    />
-
-                                    <Detail
-                                      label="Transaction ID"
-                                      value={
-                                        request.transactionId ||
-                                        request.txId ||
-                                        request.transectionId ||
-                                        request.transactionID ||
-                                        "N/A"
-                                      }
-                                    />
-
-                                    <Detail
-                                      label="Withdrawal Number"
-                                      value={
-                                        request.number ||
-                                        request.withdrawNumber ||
-                                        request.mobileNumber ||
-                                        request.withdrawPhone ||
-                                        "N/A"
-                                      }
-                                    />
-
-                                    <Detail
-                                      label="Bank Name"
-                                      value={
-                                        request.bankName ||
-                                        user.bankName ||
-                                        "N/A"
-                                      }
-                                    />
-
-                                    <Detail
-                                      label="Account Number"
-                                      value={
-                                        request.accountNumber ||
-                                        user.accountNumber ||
-                                        "N/A"
-                                      }
-                                    />
-
-                                    <Detail
-                                      label="Submitted"
-                                      value={
-                                        request.submittedAt
-                                          ? new Date(
-                                              request.submittedAt
-                                            ).toLocaleString()
-                                          : "N/A"
-                                      }
-                                    />
-                                  </DetailsGrid>
-
-                                  {(request.screenshot ||
-                                    request.paymentScreenshot ||
-                                    request.receipt) && (
-                                    <div
-                                      style={{
-                                        marginTop:
-                                          "12px",
-                                        background:
-                                          "#102A43",
-                                        border:
-                                          "1px solid " +
-                                          BORDER,
-                                        borderRadius:
-                                          "12px",
-                                        padding:
-                                          "12px",
-                                      }}
-                                    >
-                                      <div
-                                        style={{
-                                          color:
-                                            MUTED,
-                                          fontSize:
-                                            "10px",
-                                          textTransform:
-                                            "uppercase",
-                                          marginBottom:
-                                            "8px",
-                                          fontWeight:
-                                            "700",
-                                        }}
-                                      >
-                                        📷 Withdrawal Screenshot
-                                      </div>
-
-                                      <img
-                                        src={
-                                          request.screenshot ||
-                                          request.paymentScreenshot ||
-                                          request.receipt
-                                        }
-                                        alt="Withdrawal Screenshot"
-                                        style={{
-                                          width:
-                                            "100%",
-                                          maxWidth:
-                                            "420px",
-                                          maxHeight:
-                                            "500px",
-                                          objectFit:
-                                            "contain",
-                                          display:
-                                            "block",
-                                          borderRadius:
-                                            "9px",
-                                          background:
-                                            "#ffffff",
-                                        }}
-                                      />
-                                    </div>
-                                  )}
-
-                                  {String(
-                                    request.status ||
-                                      "Pending"
-                                  ).toLowerCase() ===
-                                    "pending" && (
-                                    <div
-                                      style={{
-                                        display:
-                                          "flex",
-                                        gap:
-                                          "10px",
-                                        marginTop:
-                                          "14px",
-                                        flexWrap:
-                                          "wrap",
-                                      }}
-                                    >
-                                      <ActionButton
-                                        type="approve"
-                                        onClick={() =>
-                                          updateWithdrawStatus(
-                                            request.id,
-                                            "Approved"
-                                          )
-                                        }
-                                      >
-                                        ✅ Approve Withdrawal
-                                      </ActionButton>
-
-                                      <ActionButton
-                                        type="reject"
-                                        onClick={() =>
-                                          updateWithdrawStatus(
-                                            request.id,
-                                            "Rejected"
-                                          )
-                                        }
-                                      >
-                                        ❌ Reject Withdrawal
-                                      </ActionButton>
-                                    </div>
-                                  )}
-
-                                  {String(
-                                    request.status ||
-                                      ""
-                                  ).toLowerCase() ===
-                                    "approved" && (
-                                    <div
-                                      style={{
-                                        marginTop:
-                                          "12px",
-                                        color:
-                                          GREEN,
-                                        fontSize:
-                                          "12px",
-                                        fontWeight:
-                                          "700",
-                                      }}
-                                    >
-                                      ✅ Withdrawal Approved • Amount Deducted from Withdrawable Returns
-                                    </div>
-                                  )}
-
-                                  {String(
-                                    request.status ||
-                                      ""
-                                  ).toLowerCase() ===
-                                    "rejected" && (
-                                    <div
-                                      style={{
-                                        marginTop:
-                                          "12px",
-                                        color:
-                                          RED,
-                                        fontSize:
-                                          "12px",
-                                        fontWeight:
-                                          "700",
-                                      }}
-                                    >
-                                      ❌ Withdrawal Rejected • No Balance Deducted
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                )}
-              </div>
-            ) : (
-              <EmptyState
-                icon="📭"
-                title="No Transactions"
-                text="There are currently no deposit or withdrawal requests."
-              />
-            )}
-          </div>
-        )}
-
-        {activeTab ===
-          "users" && (
-          <div>
-            <SectionHeader
-              title="Registered Users"
-              subtitle="Users are now loaded directly from the central Supabase database."
-              icon="👥"
-            />
-
-            {users.length > 0 ? (
-              <div
-                style={{
-                  display:
-                    "grid",
-                  gap:
-                    "14px",
-                }}
-              >
-                {users.map(
-                  (
-                    user,
-                    index
-                  ) => (
-                    <div
-                      key={
-                        user.phone ||
-                        user.id ||
-                        index
-                      }
-                      style={{
-                        background:
-                          NAVY,
-                        border:
-                          "1px solid " +
-                          BORDER,
-                        borderRadius:
-                          "17px",
-                        padding:
-                          "18px",
-                        boxShadow:
-                          "0 8px 22px rgba(16,42,67,0.10)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display:
-                            "flex",
-                          alignItems:
-                            "center",
-                          gap:
-                            "14px",
-                          marginBottom:
-                            "15px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width:
-                              "48px",
-                            height:
-                              "48px",
-                            borderRadius:
-                              "15px",
-                            background:
-                              NAVY_2,
-                            border:
-                              "1px solid " +
-                              BORDER,
-                            display:
-                              "flex",
-                            alignItems:
-                              "center",
-                            justifyContent:
-                              "center",
-                            fontSize:
-                              "22px",
-                          }}
-                        >
-                          👤
-                        </div>
-
-                        <div>
-                          <h3
-                            style={{
-                              margin:
-                                0,
-                              color:
-                                "#ffffff",
-                              fontSize:
-                                "17px",
-                            }}
-                          >
-                            {user.fullName ||
-                              user.name ||
-                              user.username ||
-                              "User"}
-                          </h3>
-
-                          <p
-                            style={{
-                              margin:
-                                "4px 0 0",
-                              color:
-                                MUTED,
-                              fontSize:
-                                "12px",
-                            }}
-                          >
-                            {user.phone ||
-                              "No mobile number"}
-                          </p>
-                        </div>
-                      </div>
-
-                      <DetailsGrid>
-                        <Detail
-                          label="Full Name"
-                          value={
-                            user.fullName ||
-                            user.name ||
-                            user.username ||
-                            "N/A"
-                          }
-                        />
-
-                        <Detail
-                          label="Mobile Number"
-                          value={
-                            user.phone ||
-                            "N/A"
-                          }
-                        />
-
-                        <Detail
-                          label="Balance"
-                          value={
-                            "PKR " +
-                            Number(
-                              user.balance ||
-                                0
-                            ).toLocaleString()
-                          }
-                          highlight
-                        />
-
-                        <Detail
-                          label="Withdrawable Returns"
-                          value={
-                            "PKR " +
-                            Number(
-                              user.withdrawableReturns ||
-                                0
-                            ).toLocaleString()
-                          }
-                        />
-
-                        <Detail
-                          label="Referral Code"
-                          value={
-                            user.referralCode ||
-                            user.referral ||
-                            "N/A"
-                          }
-                        />
-                      </DetailsGrid>
-                    </div>
-                  )
-                )}
-              </div>
-            ) : (
-              <EmptyState
-                icon="👥"
-                title="No Registered Users"
-                text="No Transport Hub users were found in Supabase."
-              />
-            )}
-          </div>
-        )}
-
-        <div
-          style={{
-            marginTop:
-              "25px",
-            textAlign:
-              "center",
-            color:
-              "#71869A",
-            fontSize:
-              "12px",
-          }}
-        >
-          Transport Hub Admin Panel
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  title,
-  value,
-}) {
-  return (
-    <div
-      style={{
-        background:
-          NAVY,
-        border:
-          "1px solid " +
-          BORDER,
-        borderRadius:
-          "17px",
-        padding:
-          "18px",
-        boxShadow:
-          "0 8px 22px rgba(16,42,67,0.12)",
-      }}
-    >
-      <div
-        style={{
-          display:
-            "flex",
-          alignItems:
-            "center",
-          gap:
-            "12px",
-        }}
-      >
-        <div
-          style={{
-            width:
-              "43px",
-            height:
-              "43px",
-            borderRadius:
-              "13px",
-            background:
-              NAVY_2,
-            border:
-              "1px solid " +
-              BORDER,
-            display:
-              "flex",
-            alignItems:
-              "center",
-            justifyContent:
-              "center",
-            fontSize:
-              "20px",
-          }}
-        >
-          {icon}
-        </div>
-
-        <div
-          style={{
-            minWidth:
-              0,
-          }}
-        >
-          <div
-            style={{
-              color:
-                MUTED,
-              fontSize:
-                "11px",
-              marginBottom:
-                "5px",
-              textTransform:
-                "uppercase",
-              letterSpacing:
-                "0.4px",
-            }}
-          >
-            {title}
-          </div>
-
-          <strong
-            style={{
-              color:
-                "#ffffff",
-              fontSize:
-                "18px",
-              wordBreak:
-                "break-word",
-            }}
-          >
-            {value}
-          </strong>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        border:
-          "none",
-        borderRadius:
-          "10px",
-        padding:
-          "10px 14px",
-        background:
-          active
-            ? "#29435A"
-            : "transparent",
-        color:
-          active
-            ? "#ffffff"
-            : MUTED,
-        fontSize:
-          "13px",
-        fontWeight:
-          "700",
-        cursor:
-          "pointer",
-        whiteSpace:
-          "nowrap",
-        display:
-          "flex",
-        alignItems:
-          "center",
-        gap:
-          "7px",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Badge({
-  children,
-}) {
-  return (
-    <span
-      style={{
-        minWidth:
-          "19px",
-        height:
-          "19px",
-        padding:
-          "0 5px",
-        borderRadius:
-          "10px",
-        background:
-          "#8FD694",
-        color:
-          "#102A43",
-        fontSize:
-          "10px",
-        display:
-          "inline-flex",
-        alignItems:
-          "center",
-        justifyContent:
-          "center",
-        fontWeight:
-          "800",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function StatusBadge({
-  status,
-}) {
-  const normalized =
-    String(
-      status || "Pending"
-    ).toLowerCase();
-
-  const style =
-    normalized ===
-    "approved"
-      ? {
-          background:
-            "rgba(143,214,148,0.14)",
-          color:
-            GREEN,
-          border:
-            "1px solid rgba(143,214,148,0.25)",
-        }
-      : normalized ===
-        "rejected"
-      ? {
-          background:
-            "rgba(255,159,150,0.14)",
-          color:
-            RED,
-          border:
-            "1px solid rgba(255,159,150,0.25)",
-        }
-      : {
-          background:
-            "rgba(244,215,122,0.14)",
-          color:
-            GOLD,
-          border:
-            "1px solid rgba(244,215,122,0.25)",
-        };
-
-  return (
-    <span
-      style={{
-        ...style,
-        borderRadius:
-          "20px",
-        padding:
-          "7px 12px",
-        fontSize:
-          "12px",
-        fontWeight:
-          "700",
-        whiteSpace:
-          "nowrap",
-      }}
-    >
-      {status ||
-        "Pending"}
-    </span>
-  );
-}
-
-function DetailsGrid({
-  children,
-}) {
-  return (
-    <div
-      style={{
-        display:
-          "grid",
-        gridTemplateColumns:
-          "repeat(auto-fit, minmax(190px, 1fr))",
-        gap:
-          "10px",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Detail({
-  label,
-  value,
-  highlight,
-}) {
-  return (
-    <div
-      style={{
-        background:
-          NAVY_2,
-        border:
-          "1px solid " +
-          BORDER,
-        borderRadius:
-          "11px",
-        padding:
-          "12px",
-        minWidth:
-          0,
-      }}
-    >
-      <span
-        style={{
-          display:
-            "block",
-          color:
-            MUTED,
-          fontSize:
-            "10px",
-          textTransform:
-            "uppercase",
-          letterSpacing:
-            "0.35px",
-          marginBottom:
-            "5px",
-        }}
-      >
-        {label}
-      </span>
-
-      <strong
-        style={{
-          display:
-            "block",
-          color:
-            highlight
-              ? GREEN
-              : "#ffffff",
-          fontSize:
-            "13px",
-          wordBreak:
-            "break-word",
-          lineHeight:
-            "1.4",
-        }}
-      >
-        {value}
-      </strong>
-    </div>
-  );
-}
-
-function ActionButton({
-  type,
-  onClick,
-  children,
-}) {
-  const isApprove =
-    type ===
-    "approve";
-
-  return (
-    <button
-      onClick={
-        onClick
-      }
-      style={{
-        border:
-          isApprove
-            ? "1px solid rgba(143,214,148,0.35)"
-            : "1px solid rgba(255,159,150,0.30)",
-
-        borderRadius:
-          "10px",
-
-        padding:
-          "11px 15px",
-
-        background:
-          isApprove
-            ? "linear-gradient(135deg, #3E8E5B, #2E6B4A)"
-            : "rgba(255,159,150,0.10)",
-
-        color:
-          isApprove
-            ? "#ffffff"
-            : RED,
-
-        fontSize:
-          "13px",
-
-        fontWeight:
-          "700",
-
-        cursor:
-          "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function SectionHeader({
-  icon,
-  title,
-  subtitle,
-}) {
-  return (
-    <div
-      style={{
-        background:
-          NAVY,
-        border:
-          "1px solid " +
-          BORDER,
-        borderRadius:
-          "17px",
-        padding:
-          "18px 20px",
-        marginBottom:
-          "16px",
-        display:
-          "flex",
-        alignItems:
-          "center",
-        gap:
-          "13px",
-      }}
-    >
-      <div
-        style={{
-          width:
-            "45px",
-          height:
-            "45px",
-          borderRadius:
-            "13px",
-          background:
-            NAVY_2,
-          border:
-            "1px solid " +
-            BORDER,
-          display:
-            "flex",
-          alignItems:
-            "center",
-          justifyContent:
-            "center",
-          fontSize:
-            "21px",
-        }}
-      >
-        {icon}
-      </div>
-
-      <div>
-        <h2
-          style={{
-            margin:
-              0,
-            color:
-              "#ffffff",
-            fontSize:
-              "20px",
-          }}
-        >
-          {title}
-        </h2>
-
-        <p
-          style={{
-            margin:
-              "4px 0 0",
-            color:
-              MUTED,
-            fontSize:
-              "12px",
-          }}
-        >
-          {subtitle}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function AdminCard({
-  icon,
-  title,
-  text,
-  buttonText,
-  onClick,
-}) {
-  return (
-    <div
-      style={{
-        background:
-          NAVY,
-        border:
-          "1px solid " +
-          BORDER,
-        borderRadius:
-          "18px",
-        padding:
-          "22px",
-        boxShadow:
-          "0 9px 25px rgba(16,42,67,0.12)",
-      }}
-    >
-      <div
-        style={{
-          width:
-            "48px",
-          height:
-            "48px",
-          borderRadius:
-            "14px",
-          background:
-            NAVY_2,
-          border:
-            "1px solid " +
-            BORDER,
-          display:
-            "flex",
-          alignItems:
-            "center",
-          justifyContent:
-            "center",
-          fontSize:
-            "22px",
-          marginBottom:
-            "14px",
-        }}
-      >
-        {icon}
-      </div>
-
-      <h3
-        style={{
-          margin:
-            "0 0 7px",
-          color:
-            "#ffffff",
-          fontSize:
-            "18px",
-        }}
-      >
-        {title}
-      </h3>
-
-      <p
-        style={{
-          margin:
-            "0 0 16px",
-          color:
-            MUTED,
-          fontSize:
-            "13px",
-          lineHeight:
-            "1.55",
-        }}
-      >
-        {text}
-      </p>
-
-      <button
-        onClick={
-          onClick
-        }
-        style={{
-          border:
-            "1px solid " +
-            BORDER,
-          background:
-            NAVY_2,
-          color:
-            "#ffffff",
-          borderRadius:
-            "10px",
-          padding:
-            "10px 14px",
-          fontSize:
-            "12px",
-          fontWeight:
-            "700",
-          cursor:
-            "pointer",
-        }}
-      >
-        {buttonText} →
-      </button>
-    </div>
-  );
-}
-
-function EmptyState({
-  icon,
-  title,
-  text,
-}) {
-  return (
-    <div
-      style={{
-        background:
-          NAVY,
-        border:
-          "1px solid " +
-          BORDER,
-        borderRadius:
-          "18px",
-        padding:
-          "45px 25px",
-        textAlign:
-          "center",
-        boxShadow:
-          "0 9px 25px rgba(16,42,67,0.10)",
-      }}
-    >
-      <div
-        style={{
-          width:
-            "65px",
-          height:
-            "65px",
-          borderRadius:
-            "18px",
-          background:
-            NAVY_2,
-          border:
-            "1px solid " +
-            BORDER,
-          display:
-            "flex",
-          alignItems:
-            "center",
-          justifyContent:
-            "center",
-          margin:
-            "0 auto 15px",
-          fontSize:
-            "29px",
-        }}
-      >
-        {icon}
-      </div>
-
-      <h2
-        style={{
-          margin:
-            "0 0 7px",
-          color:
-            "#ffffff",
-          fontSize:
-            "19px",
-        }}
-      >
-        {title}
-      </h2>
-
-      <p
-        style={{
-          margin:
-            0,
-          color:
-            MUTED,
-          fontSize:
-            "13px",
-        }}
-      >
-        {text}
-      </p>
-    </div>
-  );
-}
