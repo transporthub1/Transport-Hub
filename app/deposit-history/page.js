@@ -21,7 +21,13 @@ export default function DepositHistoryPage() {
     return phone;
   };
 
-  const phoneMatches = (value1, value2) => {
+  const normalizeText = (value) => {
+    return String(value || "")
+      .trim()
+      .toLowerCase();
+  };
+
+  const phonesMatch = (value1, value2) => {
     const a = normalizePhone(value1);
     const b = normalizePhone(value2);
 
@@ -45,49 +51,6 @@ export default function DepositHistoryPage() {
     return false;
   };
 
-  const jsonContainsPhone = (value, targetPhone) => {
-    try {
-      const target = normalizePhone(targetPhone);
-
-      const targetDigits = target.replace(/\D/g, "");
-
-      if (!target || !targetDigits) {
-        return false;
-      }
-
-      const text = JSON.stringify(value || {})
-        .replace(/\s+/g, "")
-        .replace(/"/g, "")
-        .replace(/'/g, "");
-
-      const textDigits = text.replace(/\D/g, "");
-
-      if (text.includes(target)) {
-        return true;
-      }
-
-      if (
-        targetDigits.length >= 10 &&
-        textDigits.includes(targetDigits)
-      ) {
-        return true;
-      }
-
-      if (
-        targetDigits.length >= 10 &&
-        textDigits.includes(
-          targetDigits.slice(-10)
-        )
-      ) {
-        return true;
-      }
-
-      return false;
-    } catch {
-      return false;
-    }
-  };
-
   const convertSupabaseRow = (row) => {
     const rowUser =
       row.user_data &&
@@ -103,7 +66,6 @@ export default function DepositHistoryPage() {
 
     return {
       id: row.id,
-
       requestId: row.id,
 
       status:
@@ -182,6 +144,10 @@ export default function DepositHistoryPage() {
         rowUser.mobile ||
         rowUser.phoneNumber ||
         rowUser.username ||
+        row.phone ||
+        row.mobile ||
+        row.phoneNumber ||
+        row.userPhone ||
         "",
 
       user: rowUser,
@@ -224,8 +190,11 @@ export default function DepositHistoryPage() {
           return;
         }
 
+        const normalizedPhone =
+          normalizePhone(phone);
+
         // =========================================================
-        // 1. LOAD LOCAL HISTORY
+        // 1. LOCAL HISTORY
         // =========================================================
 
         const userKey =
@@ -238,12 +207,12 @@ export default function DepositHistoryPage() {
         let oldUserDeposit = null;
 
         try {
-          const savedUserDeposits =
+          const saved =
             localStorage.getItem(userKey);
 
-          if (savedUserDeposits) {
+          if (saved) {
             const parsed =
-              JSON.parse(savedUserDeposits);
+              JSON.parse(saved);
 
             if (Array.isArray(parsed)) {
               userDeposits = parsed;
@@ -251,18 +220,18 @@ export default function DepositHistoryPage() {
           }
         } catch (error) {
           console.error(
-            "Error reading user deposit history:",
+            "Error reading local deposits:",
             error
           );
         }
 
         try {
-          const savedOldDeposit =
+          const saved =
             localStorage.getItem(oldUserKey);
 
-          if (savedOldDeposit) {
+          if (saved) {
             const parsed =
-              JSON.parse(savedOldDeposit);
+              JSON.parse(saved);
 
             if (parsed) {
               oldUserDeposit = parsed;
@@ -270,14 +239,10 @@ export default function DepositHistoryPage() {
           }
         } catch (error) {
           console.error(
-            "Error reading old deposit history:",
+            "Error reading old local deposit:",
             error
           );
         }
-
-        // =========================================================
-        // 2. COLLECT EXACT REQUEST IDS FROM LOCAL HISTORY
-        // =========================================================
 
         const localRecords = [
           ...userDeposits,
@@ -286,58 +251,46 @@ export default function DepositHistoryPage() {
             : []),
         ];
 
-        const requestIds = Array.from(
-          new Set(
-            localRecords
-              .map(
-                (deposit) =>
-                  deposit?.id ||
-                  deposit?.requestId
+        // =========================================================
+        // 2. COLLECT LOCAL IDS + TRANSACTION IDS
+        // =========================================================
+
+        const localIds = new Set();
+
+        const localTransactionIds =
+          new Set();
+
+        localRecords.forEach((deposit) => {
+          if (
+            deposit?.id ||
+            deposit?.requestId
+          ) {
+            localIds.add(
+              String(
+                deposit.id ||
+                  deposit.requestId
               )
-              .filter(Boolean)
-              .map((id) => String(id))
-          )
-        );
-
-        let supabaseDeposits = [];
-
-        // =========================================================
-        // 3. FIRST: FIND SAME RECORD BY EXACT REQUEST ID
-        // =========================================================
-
-        if (requestIds.length > 0) {
-          try {
-            const {
-              data,
-              error,
-            } = await supabase
-              .from("deposit_requests")
-              .select("*")
-              .in("id", requestIds)
-              .order("created_at", {
-                ascending: false,
-              });
-
-            if (error) {
-              console.error(
-                "Supabase ID Match Error:",
-                error
-              );
-            } else if (Array.isArray(data)) {
-              supabaseDeposits =
-                data.map(convertSupabaseRow);
-            }
-          } catch (error) {
-            console.error(
-              "Error matching deposit IDs:",
-              error
             );
           }
-        }
+
+          if (
+            deposit?.transactionId ||
+            deposit?.transaction_id
+          ) {
+            localTransactionIds.add(
+              normalizeText(
+                deposit.transactionId ||
+                  deposit.transaction_id
+              )
+            );
+          }
+        });
 
         // =========================================================
-        // 4. FALLBACK: LOAD ALL AND MATCH USER PHONE
+        // 3. LOAD ALL SUPABASE DEPOSITS
         // =========================================================
+
+        let supabaseDeposits = [];
 
         try {
           const {
@@ -356,63 +309,66 @@ export default function DepositHistoryPage() {
               error
             );
           } else if (Array.isArray(data)) {
-            const existingIds = new Set(
-              supabaseDeposits.map((item) =>
-                String(item.id)
-              )
-            );
-
             data.forEach((row) => {
-              if (
-                !row ||
-                !row.id ||
-                existingIds.has(
-                  String(row.id)
-                )
-              ) {
-                return;
-              }
-
               const rowUser =
                 row.user_data &&
                 typeof row.user_data === "object"
                   ? row.user_data
                   : {};
 
-              const possiblePhones = [
-                rowUser.phone,
-                rowUser.mobile,
-                rowUser.phoneNumber,
-                rowUser.username,
-                row.phone,
-                row.mobile,
-                row.phoneNumber,
-                row.userPhone,
-              ];
+              const rowId =
+                row.id
+                  ? String(row.id)
+                  : "";
 
-              const matchedPhone =
-                possiblePhones.some((value) =>
-                  phoneMatches(
-                    value,
-                    phone
-                  )
+              const rowTransactionId =
+                normalizeText(
+                  row.transaction_id
                 );
 
-              const matchedInsideJson =
-                jsonContainsPhone(
-                  rowUser,
-                  phone
+              const rowPhone =
+                rowUser.phone ||
+                rowUser.mobile ||
+                rowUser.phoneNumber ||
+                rowUser.username ||
+                row.phone ||
+                row.mobile ||
+                row.phoneNumber ||
+                row.userPhone ||
+                "";
+
+              // =====================================================
+              // EXACT MATCHES
+              // =====================================================
+
+              const idMatch =
+                rowId &&
+                localIds.has(rowId);
+
+              const transactionMatch =
+                rowTransactionId &&
+                localTransactionIds.has(
+                  rowTransactionId
                 );
+
+              const phoneMatch =
+                phonesMatch(
+                  rowPhone,
+                  normalizedPhone
+                );
+
+              // =====================================================
+              // IMPORTANT:
+              // ID OR TRANSACTION ID OR PHONE
+              // =====================================================
 
               if (
-                matchedPhone ||
-                matchedInsideJson
+                idMatch ||
+                transactionMatch ||
+                phoneMatch
               ) {
                 supabaseDeposits.push(
                   convertSupabaseRow(row)
-                );
-                existingIds.add(
-                  String(row.id)
                 );
               }
             });
@@ -425,24 +381,52 @@ export default function DepositHistoryPage() {
         }
 
         // =========================================================
-        // 5. MERGE LOCAL + SUPABASE
-        //
-        // SUPABASE ALWAYS WINS.
+        // 4. REMOVE DUPLICATE SUPABASE RECORDS
         // =========================================================
 
-        const mergedMap = new Map();
+        const uniqueSupabaseMap =
+          new Map();
+
+        supabaseDeposits.forEach(
+          (deposit) => {
+            if (!deposit?.id) return;
+
+            uniqueSupabaseMap.set(
+              String(deposit.id),
+              deposit
+            );
+          }
+        );
+
+        supabaseDeposits =
+          Array.from(
+            uniqueSupabaseMap.values()
+          );
+
+        // =========================================================
+        // 5. MERGE LOCAL + SUPABASE
+        //
+        // SUPABASE ALWAYS WINS
+        // =========================================================
+
+        const mergedMap =
+          new Map();
 
         userDeposits.forEach(
           (deposit, index) => {
             const key =
               deposit.id ||
               deposit.requestId ||
-              `${deposit.amount || deposit.price || 0}-${
-                deposit.submittedAt ||
-                deposit.createdAt ||
-                deposit.date ||
-                index
-              }`;
+              (
+                deposit.transactionId ||
+                deposit.transaction_id ||
+                `${deposit.amount || deposit.price || 0}-${
+                  deposit.submittedAt ||
+                  deposit.createdAt ||
+                  deposit.date ||
+                  index
+                }`
+              );
 
             mergedMap.set(
               String(key),
@@ -455,6 +439,8 @@ export default function DepositHistoryPage() {
           const key =
             oldUserDeposit.id ||
             oldUserDeposit.requestId ||
+            oldUserDeposit.transactionId ||
+            oldUserDeposit.transaction_id ||
             `old-${
               oldUserDeposit.amount ||
               oldUserDeposit.price ||
@@ -472,30 +458,74 @@ export default function DepositHistoryPage() {
           );
         }
 
-        // Supabase records overwrite local records
-        supabaseDeposits.forEach(
-          (deposit) => {
-            const key =
-              deposit.id ||
-              deposit.requestId;
+        // =========================================================
+        // 6. OVERWRITE USING SUPABASE
+        // =========================================================
 
-            if (key) {
-              mergedMap.set(
-                String(key),
-                deposit
+        supabaseDeposits.forEach(
+          (supabaseDeposit) => {
+            const supabaseId =
+              supabaseDeposit.id
+                ? String(
+                    supabaseDeposit.id
+                  )
+                : "";
+
+            const supabaseTransaction =
+              normalizeText(
+                supabaseDeposit.transactionId
               );
+
+            // Replace exact ID
+            if (supabaseId) {
+              mergedMap.set(
+                supabaseId,
+                supabaseDeposit
+              );
+            }
+
+            // Also replace matching transaction ID
+            if (
+              supabaseTransaction
+            ) {
+              const keys =
+                Array.from(
+                  mergedMap.keys()
+                );
+
+              keys.forEach((key) => {
+                const existing =
+                  mergedMap.get(key);
+
+                const existingTransaction =
+                  normalizeText(
+                    existing?.transactionId ||
+                      existing?.transaction_id
+                  );
+
+                if (
+                  existingTransaction &&
+                  existingTransaction ===
+                    supabaseTransaction
+                ) {
+                  mergedMap.set(
+                    key,
+                    supabaseDeposit
+                  );
+                }
+              });
             }
           }
         );
+
+        // =========================================================
+        // 7. FINAL DEPOSITS
+        // =========================================================
 
         const finalDeposits =
           Array.from(
             mergedMap.values()
           );
-
-        // =========================================================
-        // 6. SORT NEWEST FIRST
-        // =========================================================
 
         finalDeposits.sort(
           (a, b) => {
@@ -522,7 +552,7 @@ export default function DepositHistoryPage() {
         );
 
         // =========================================================
-        // 7. SAVE THE LATEST STATUS LOCALLY
+        // 8. SAVE LATEST VERSION LOCALLY
         // =========================================================
 
         try {
@@ -534,12 +564,14 @@ export default function DepositHistoryPage() {
           );
         } catch (error) {
           console.error(
-            "Error saving updated deposit history:",
+            "Error saving updated history:",
             error
           );
         }
 
-        setDeposits(finalDeposits);
+        setDeposits(
+          finalDeposits
+        );
       } catch (error) {
         console.error(
           "Error loading deposit history:",
@@ -553,7 +585,9 @@ export default function DepositHistoryPage() {
     loadDepositHistory();
   }, []);
 
-  const getStatusStyle = (status) => {
+  const getStatusStyle = (
+    status
+  ) => {
     const normalizedStatus =
       String(
         status || "Pending"
@@ -591,7 +625,9 @@ export default function DepositHistoryPage() {
     };
   };
 
-  const formatDate = (value) => {
+  const formatDate = (
+    value
+  ) => {
     if (!value) return "—";
 
     try {
@@ -615,7 +651,11 @@ export default function DepositHistoryPage() {
   if (loading) {
     return (
       <div style={styles.page}>
-        <div style={styles.loadingCard}>
+        <div
+          style={
+            styles.loadingCard
+          }
+        >
           Loading deposit history...
         </div>
       </div>
@@ -631,31 +671,59 @@ export default function DepositHistoryPage() {
               Deposit History
             </h1>
 
-            <p style={styles.subtitle}>
+            <p
+              style={
+                styles.subtitle
+              }
+            >
               View your deposit requests and their current status.
             </p>
           </div>
         </div>
 
-        {deposits.length === 0 ? (
-          <div style={styles.emptyCard}>
-            <div style={styles.emptyIcon}>
+        {deposits.length ===
+        0 ? (
+          <div
+            style={
+              styles.emptyCard
+            }
+          >
+            <div
+              style={
+                styles.emptyIcon
+              }
+            >
               💰
             </div>
 
-            <h2 style={styles.emptyTitle}>
+            <h2
+              style={
+                styles.emptyTitle
+              }
+            >
               No Deposit History
             </h2>
 
-            <p style={styles.emptyText}>
+            <p
+              style={
+                styles.emptyText
+              }
+            >
               Your deposit requests will appear here after you
               submit a deposit.
             </p>
           </div>
         ) : (
-          <div style={styles.list}>
+          <div
+            style={
+              styles.list
+            }
+          >
             {deposits.map(
-              (deposit, index) => {
+              (
+                deposit,
+                index
+              ) => {
                 const status =
                   deposit.status ||
                   "Pending";
@@ -690,9 +758,12 @@ export default function DepositHistoryPage() {
                     key={
                       deposit.id ||
                       deposit.requestId ||
+                      deposit.transactionId ||
                       `deposit-${index}`
                     }
-                    style={styles.card}
+                    style={
+                      styles.card
+                    }
                   >
                     <div
                       style={
@@ -760,7 +831,8 @@ export default function DepositHistoryPage() {
                         >
                           PKR{" "}
                           {Number(
-                            amount || 0
+                            amount ||
+                              0
                           ).toLocaleString()}
                         </strong>
                       </div>
@@ -970,7 +1042,8 @@ const styles = {
 
   cardTop: {
     display: "flex",
-    alignItems: "flex-start",
+    alignItems:
+      "flex-start",
     justifyContent:
       "space-between",
     gap: "15px",
@@ -1026,7 +1099,8 @@ const styles = {
     fontSize: "10px",
     fontWeight: 800,
     marginBottom: "5px",
-    textTransform: "uppercase",
+    textTransform:
+      "uppercase",
   },
 
   infoValue: {
@@ -1034,7 +1108,8 @@ const styles = {
     color: "#173b2b",
     fontSize: "13px",
     fontWeight: 800,
-    wordBreak: "break-word",
+    wordBreak:
+      "break-word",
   },
 
   amount: {
@@ -1059,13 +1134,15 @@ const styles = {
     fontSize: "10px",
     fontWeight: 800,
     marginBottom: "5px",
-    textTransform: "uppercase",
+    textTransform:
+      "uppercase",
   },
 
   transactionId: {
     color: "#173b2b",
     fontSize: "13px",
-    wordBreak: "break-all",
+    wordBreak:
+      "break-all",
   },
 
   approvedMessage: {
