@@ -6,6 +6,21 @@ import { supabase } from "./lib/supabase";
 const PLAN_DURATION_WEEKS = 260;
 const PLAN_DURATION_YEARS = 5;
 
+const plans = [
+  { name: "Starter", price: 100, weekly: 15, durationWeeks: 260, durationYears: 5 },
+  { name: "Basic", price: 500, weekly: 75, durationWeeks: 260, durationYears: 5 },
+  { name: "Standard", price: 1500, weekly: 225, durationWeeks: 260, durationYears: 5 },
+  { name: "Premium", price: 3500, weekly: 525, durationWeeks: 260, durationYears: 5 },
+  { name: "Advanced", price: 7500, weekly: 1125, durationWeeks: 260, durationYears: 5 },
+  { name: "Professional", price: 13000, weekly: 1950, durationWeeks: 260, durationYears: 5 },
+  { name: "Elite", price: 25000, weekly: 3750, durationWeeks: 260, durationYears: 5 },
+  { name: "Executive", price: 50000, weekly: 7500, durationWeeks: 260, durationYears: 5 },
+  { name: "Platinum", price: 125000, weekly: 18750, durationWeeks: 260, durationYears: 5 },
+  { name: "Diamond", price: 175000, weekly: 26250, durationWeeks: 260, durationYears: 5 },
+  { name: "Royal", price: 225000, weekly: 33750, durationWeeks: 260, durationYears: 5 },
+  { name: "Grand Royal", price: 300000, weekly: 45000, durationWeeks: 260, durationYears: 5 },
+];
+
 function formatMoney(value) {
   return Number(value || 0).toLocaleString();
 }
@@ -38,7 +53,6 @@ function getUserName(user) {
   const directName =
     user.name ||
     user.fullName ||
-    user.full_name ||
     user.username ||
     user.displayName;
 
@@ -57,44 +71,10 @@ function getWeeklyReturn(plan) {
   return Number(
     plan?.weekly ??
       plan?.weeklyReturn ??
-      plan?.weekly_return ??
       plan?.daily ??
       plan?.dailyReturn ??
       0
   );
-}
-
-function normalizePlan(plan) {
-  return {
-    ...plan,
-
-    name:
-      plan?.name ||
-      plan?.planName ||
-      plan?.plan_name ||
-      "Transport Plan",
-
-    price: Number(
-      plan?.price ??
-        plan?.amount ??
-        plan?.depositAmount ??
-        plan?.deposit_amount ??
-        0
-    ),
-
-    weekly: Number(
-      plan?.weekly ??
-        plan?.weeklyReturn ??
-        plan?.weekly_return ??
-        plan?.daily ??
-        plan?.dailyReturn ??
-        0
-    ),
-
-    durationWeeks: PLAN_DURATION_WEEKS,
-    durationYears: PLAN_DURATION_YEARS,
-    duration: PLAN_DURATION_WEEKS,
-  };
 }
 
 export default function Dashboard() {
@@ -106,7 +86,10 @@ export default function Dashboard() {
   const [withdrawableReturns, setWithdrawableReturns] = useState(0);
 
   const [showFeatures, setShowFeatures] = useState(false);
+
+  /* ===== PRIZE POPUP ===== */
   const [showPrizePopup, setShowPrizePopup] = useState(true);
+
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -127,21 +110,18 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    async function loadDashboard() {
-      const loggedIn =
-        localStorage.getItem("transportLoggedIn");
+    const loadDashboard = async () => {
+      const loggedIn = localStorage.getItem("transportLoggedIn");
 
       if (loggedIn !== "true") {
         window.location.href = "/login";
         return;
       }
 
-      let storedUser =
-        getStorageObject("transportUser");
+      let storedUser = getStorageObject("transportUser");
 
       if (!storedUser) {
-        storedUser =
-          getStorageObject("transportCurrentUser");
+        storedUser = getStorageObject("transportCurrentUser");
       }
 
       if (!storedUser) {
@@ -149,35 +129,38 @@ export default function Dashboard() {
         return;
       }
 
-      const displayName =
-        getUserName(storedUser);
+      const displayName = getUserName(storedUser);
 
       const normalizedUser = {
         ...storedUser,
         name: displayName,
       };
 
-      saveStorage(
-        "transportUser",
-        normalizedUser
-      );
-
+      saveStorage("transportUser", normalizedUser);
       setUser(normalizedUser);
 
-      const phone =
-        normalizedUser.phone ||
-        normalizedUser.mobile ||
-        normalizedUser.username ||
-        "unknown";
+      const phone = normalizedUser.phone || "unknown";
 
-      const storedActivePlans =
-        getStorageArray(
-          "transportActivePlans_" + phone
-        );
+      const storedActivePlans = getStorageArray(
+        "transportActivePlans_" + phone
+      );
 
       if (storedActivePlans.length > 0) {
-        const normalizedPlans =
-          storedActivePlans.map(normalizePlan);
+        const normalizedPlans = storedActivePlans.map((plan) => ({
+          ...plan,
+
+          weekly: Number(
+            plan.weekly ??
+              plan.weeklyReturn ??
+              plan.daily ??
+              plan.dailyReturn ??
+              0
+          ),
+
+          durationWeeks: PLAN_DURATION_WEEKS,
+          durationYears: PLAN_DURATION_YEARS,
+          duration: PLAN_DURATION_WEEKS,
+        }));
 
         setActivePlans(normalizedPlans);
 
@@ -186,103 +169,57 @@ export default function Dashboard() {
           normalizedPlans
         );
       } else {
-        const oldPlan =
-          getStorageObject(
-            "transportActivePlan"
-          );
+        const oldPlan = getStorageObject("transportActivePlan");
 
         if (oldPlan) {
-          setActivePlans([
-            normalizePlan(oldPlan),
-          ]);
+          const normalizedOldPlan = {
+            ...oldPlan,
+
+            weekly: Number(
+              oldPlan.weekly ??
+                oldPlan.weeklyReturn ??
+                oldPlan.daily ??
+                oldPlan.dailyReturn ??
+                0
+            ),
+
+            durationWeeks: PLAN_DURATION_WEEKS,
+            durationYears: PLAN_DURATION_YEARS,
+            duration: PLAN_DURATION_WEEKS,
+          };
+
+          setActivePlans([normalizedOldPlan]);
         }
       }
 
-      const storedWithdrawable =
-        Number(
-          localStorage.getItem(
-            "transportWithdrawableReturns_" +
-              phone
-          ) || 0
-        );
-
-      setWithdrawableReturns(
-        storedWithdrawable
+      const storedWithdrawable = Number(
+        localStorage.getItem(
+          "transportWithdrawableReturns_" + phone
+        ) || 0
       );
 
-      const storedTransactions =
-        getStorageArray(
-          "transportTransactions_" + phone
-        );
+      setWithdrawableReturns(storedWithdrawable);
 
-      setTransactions(
-        storedTransactions
+      const storedTransactions = getStorageArray(
+        "transportTransactions_" + phone
       );
 
-      try {
-        const {
-          data: userRow,
-          error: userError,
-        } = await supabase
-          .from("users")
-          .select("withdrawable_returns")
-          .eq("phone", phone)
-          .maybeSingle();
-
-        if (
-          !userError &&
-          userRow
-        ) {
-          const centralReturns =
-            Number(
-              userRow.withdrawable_returns || 0
-            );
-
-          setWithdrawableReturns(
-            centralReturns
-          );
-
-          localStorage.setItem(
-            "transportWithdrawableReturns_" +
-              phone,
-            String(centralReturns)
-          );
-        }
-      } catch (error) {
-        console.log(
-          "User balance load error:",
-          error
-        );
-      }
+      setTransactions(storedTransactions);
 
       try {
-        const {
-          data: withdrawalRows,
-          error: withdrawalError,
-        } = await supabase
-          .from("withdraw_requests")
-          .select("*")
-          .eq("user_phone", phone)
-          .order("created_at", {
-            ascending: false,
-          });
+        const { data: withdrawalRows, error: withdrawalError } =
+          await supabase
+            .from("withdraw_requests")
+            .select("*")
+            .eq("user_phone", phone)
+            .order("created_at", { ascending: false });
 
-        if (
-          !withdrawalError &&
-          Array.isArray(withdrawalRows)
-        ) {
-          setWithdrawRequests(
-            withdrawalRows
-          );
+        if (!withdrawalError && Array.isArray(withdrawalRows)) {
+          setWithdrawRequests(withdrawalRows);
         } else {
           setWithdrawRequests([]);
         }
       } catch (error) {
-        console.log(
-          "Withdrawal request load error:",
-          error
-        );
-
         setWithdrawRequests([]);
       }
 
@@ -293,19 +230,17 @@ export default function Dashboard() {
       );
 
       setLoading(false);
-    }
+    };
 
     loadDashboard();
   }, []);
 
-  const displayName =
-    getUserName(user);
+  const displayName = getUserName(user);
 
   const totalInvestment = useMemo(() => {
     return activePlans.reduce(
       (total, plan) =>
-        total +
-        Number(plan.price || 0),
+        total + Number(plan.price || 0),
       0
     );
   }, [activePlans]);
@@ -313,27 +248,25 @@ export default function Dashboard() {
   const weeklyReturn = useMemo(() => {
     return activePlans.reduce(
       (total, plan) =>
-        total +
-        getWeeklyReturn(plan),
+        total + getWeeklyReturn(plan),
       0
     );
   }, [activePlans]);
 
   const earnedReturns = useMemo(() => {
-    return activePlans.reduce(
-      (total, plan) => {
-        const earned =
-          Number(
-            plan.earnedReturns ??
-              plan.totalEarned ??
-              plan.total_earned ??
-              0
-          );
+    return activePlans.reduce((total, plan) => {
+      const storedEarned = Number(
+        plan.earnedReturns ??
+          plan.totalEarned ??
+          0
+      );
 
-        return total + earned;
-      },
-      0
-    );
+      if (storedEarned > 0) {
+        return total + storedEarned;
+      }
+
+      return total;
+    }, 0);
   }, [activePlans]);
 
   const expectedReturn = useMemo(() => {
@@ -348,33 +281,16 @@ export default function Dashboard() {
 
   const depositTotal = useMemo(() => {
     return transactions
-      .filter((item) => {
-        const type =
-          String(
-            item.type || ""
-          ).toLowerCase();
-
-        const status =
-          String(
-            item.status || ""
-          ).toLowerCase();
-
-        return (
-          type === "deposit" &&
-          status === "approved" &&
-          !String(
-            item.returnType ||
-              item.return_type ||
-              ""
-          )
-            .toLowerCase()
-            .includes("weekly")
-        );
-      })
+      .filter(
+        (item) =>
+          String(item.type || "").toLowerCase() ===
+            "deposit" &&
+          String(item.status || "").toLowerCase() ===
+            "approved"
+      )
       .reduce(
         (total, item) =>
-          total +
-          Number(item.amount || 0),
+          total + Number(item.amount || 0),
         0
       );
   }, [transactions]);
@@ -383,48 +299,28 @@ export default function Dashboard() {
     return withdrawRequests
       .filter(
         (item) =>
-          String(
-            item.status || ""
-          ).toLowerCase() ===
+          String(item.status || "").toLowerCase() ===
           "approved"
       )
       .reduce(
         (total, item) =>
-          total +
-          Number(item.amount || 0),
+          total + Number(item.amount || 0),
         0
       );
   }, [withdrawRequests]);
 
   const pendingDeposits = useMemo(() => {
     return transactions
-      .filter((item) => {
-        const type =
-          String(
-            item.type || ""
-          ).toLowerCase();
-
-        const status =
-          String(
-            item.status || ""
-          ).toLowerCase();
-
-        return (
-          type === "deposit" &&
-          status === "pending" &&
-          !String(
-            item.returnType ||
-              item.return_type ||
-              ""
-          )
-            .toLowerCase()
-            .includes("weekly")
-        );
-      })
+      .filter(
+        (item) =>
+          String(item.type || "").toLowerCase() ===
+            "deposit" &&
+          String(item.status || "").toLowerCase() ===
+            "pending"
+      )
       .reduce(
         (total, item) =>
-          total +
-          Number(item.amount || 0),
+          total + Number(item.amount || 0),
         0
       );
   }, [transactions]);
@@ -433,15 +329,12 @@ export default function Dashboard() {
     return withdrawRequests
       .filter(
         (item) =>
-          String(
-            item.status || ""
-          ).toLowerCase() ===
+          String(item.status || "").toLowerCase() ===
           "pending"
       )
       .reduce(
         (total, item) =>
-          total +
-          Number(item.amount || 0),
+          total + Number(item.amount || 0),
         0
       );
   }, [withdrawRequests]);
@@ -449,8 +342,7 @@ export default function Dashboard() {
   const teamInvestment = useMemo(() => {
     return teamMembers.reduce(
       (total, member) =>
-        total +
-        Number(member.investment || 0),
+        total + Number(member.investment || 0),
       0
     );
   }, [teamMembers]);
@@ -458,64 +350,40 @@ export default function Dashboard() {
   const paidTeam = useMemo(() => {
     return teamMembers.reduce(
       (total, member) =>
-        total +
-        Number(member.commission || 0),
+        total + Number(member.commission || 0),
       0
     );
   }, [teamMembers]);
 
   const todayTeam = useMemo(() => {
-    return teamMembers.reduce(
-      (total, member) => {
-        if (!member.joinedAt) {
-          return total;
-        }
+    return teamMembers.reduce((total, member) => {
+      if (!member.joinedAt) return total;
 
-        const joined =
-          new Date(
-            member.joinedAt
-          );
+      const joined = new Date(member.joinedAt);
+      const now = new Date();
 
-        const now = new Date();
+      const sameDay =
+        joined.getDate() === now.getDate() &&
+        joined.getMonth() === now.getMonth() &&
+        joined.getFullYear() === now.getFullYear();
 
-        const sameDay =
-          joined.getDate() ===
-            now.getDate() &&
-          joined.getMonth() ===
-            now.getMonth() &&
-          joined.getFullYear() ===
-            now.getFullYear();
-
-        return sameDay
-          ? total +
-              Number(
-                member.commission || 0
-              )
-          : total;
-      },
-      0
-    );
+      return sameDay
+        ? total + Number(member.commission || 0)
+        : total;
+    }, 0);
   }, [teamMembers]);
 
-  const todayProfit =
-    weeklyReturn;
+  const todayProfit = weeklyReturn;
+  const yesterdayProfit = weeklyReturn;
+  const weekProfit = weeklyReturn;
+  const monthProfit = weeklyReturn * 4;
 
-  const yesterdayProfit =
-    weeklyReturn;
-
-  const weekProfit =
-    weeklyReturn;
-
-  const monthProfit =
-    weeklyReturn * 4;
-
-const walletBalance =
-  Number(user?.balance || 0);
+  /* ===== WALLET BALANCE FIX ===== */
+  const walletBalance =
+    Number(withdrawableReturns || 0);
 
   const referralCode = useMemo(() => {
-    if (!user) {
-      return "";
-    }
+    if (!user) return "";
 
     const userKey =
       user.phone ||
@@ -526,21 +394,15 @@ const walletBalance =
       "user";
 
     const storageKey =
-      "transportReferralCode_" +
-      String(userKey);
+      "transportReferralCode_" + String(userKey);
 
-    let savedCode =
-      localStorage.getItem(
-        storageKey
-      );
+    let savedCode = localStorage.getItem(storageKey);
 
     if (!savedCode) {
       savedCode =
         "TH" +
         Math.floor(
-          100000 +
-            Math.random() *
-              900000
+          100000 + Math.random() * 900000
         ).toString();
 
       localStorage.setItem(
@@ -559,155 +421,165 @@ const walletBalance =
         referralCode
       : "";
 
-  const recentTransactions =
-    useMemo(() => {
-      const localItems =
-        transactions
-          .filter((item) => {
-            const type =
-              String(
-                item.type || ""
-              ).toLowerCase();
+  const recentTransactions = useMemo(() => {
+    const withdrawalRecords = withdrawRequests.map((item) => ({
+      id: item.id,
+      type: "withdraw",
+      status: item.status || "Pending",
+      amount: Number(item.amount || 0),
+      date: item.submitted_at || item.created_at || "Recently",
+      createdAt: item.submitted_at || item.created_at || "",
+      returnType: "",
+      withdrawalRequestId: item.id,
+    }));
 
-            return (
-              type !== "withdraw" &&
-              type !== "withdrawal"
-            );
-          })
-          .map((item) => ({
-            ...item,
-            sortDate:
-              item.createdAt ||
-              item.created_at ||
-              item.submittedAt ||
-              item.submitted_at ||
-              item.date ||
-              "",
-          }));
+    const withdrawalAmounts = withdrawalRecords.map((item) =>
+      Number(item.amount || 0)
+    );
 
-      const withdrawalItems =
-        withdrawRequests.map(
-          (item) => ({
-            id: item.id,
-            type: "withdraw",
-            status:
-              item.status ||
-              "Pending",
-            amount:
-              Number(
-                item.amount || 0
-              ),
-            date:
-              item.submitted_at ||
-              item.created_at ||
-              "Recently",
-            createdAt:
-              item.submitted_at ||
-              item.created_at ||
-              "",
-            sortDate:
-              item.submitted_at ||
-              item.created_at ||
-              "",
-            withdrawalRequestId:
-              item.id,
-          })
+    const isLocalWithdrawalDuplicate = (item) => {
+      const type = String(item.type || "").toLowerCase();
+      const title = String(
+        item.title ||
+          item.name ||
+          item.description ||
+          ""
+      ).toLowerCase();
+
+      const itemAmount = Number(item.amount || 0);
+
+      if (
+        type === "withdraw" ||
+        type === "withdrawal"
+      ) {
+        return true;
+      }
+
+      if (title.includes("withdraw")) {
+        return true;
+      }
+
+      if (
+        !withdrawalAmounts.includes(itemAmount) ||
+        itemAmount <= 0
+      ) {
+        return false;
+      }
+
+      const itemDateValue =
+        item.createdAt ||
+        item.created_at ||
+        item.submittedAt ||
+        item.submitted_at ||
+        item.date;
+
+      if (!itemDateValue) return false;
+
+      const itemTime = new Date(itemDateValue).getTime();
+
+      if (!Number.isFinite(itemTime)) {
+        return false;
+      }
+
+      return withdrawalRecords.some((withdrawal) => {
+        if (
+          Number(withdrawal.amount || 0) !==
+          itemAmount
+        ) {
+          return false;
+        }
+
+        const withdrawalTime = new Date(
+          withdrawal.createdAt ||
+            withdrawal.created_at ||
+            0
+        ).getTime();
+
+        if (!Number.isFinite(withdrawalTime)) {
+          return false;
+        }
+
+        return (
+          Math.abs(
+            itemTime - withdrawalTime
+          ) <=
+          2 * 60 * 1000
         );
-
-      return [
-        ...localItems,
-        ...withdrawalItems,
-      ].sort((a, b) => {
-        const aTime =
-          new Date(
-            a.sortDate || 0
-          ).getTime();
-
-        const bTime =
-          new Date(
-            b.sortDate || 0
-          ).getTime();
-
-        return bTime - aTime;
       });
-    }, [
-      transactions,
-      withdrawRequests,
-    ]);
+    };
+
+    const nonWithdrawalTransactions =
+      transactions.filter(
+        (item) =>
+          !isLocalWithdrawalDuplicate(item)
+      );
+
+    const centralWithdrawalTransactions =
+      withdrawalRecords;
+
+    return [
+      ...nonWithdrawalTransactions,
+      ...centralWithdrawalTransactions,
+    ].sort((a, b) => {
+      const aTime = new Date(
+        a.createdAt ||
+          a.created_at ||
+          a.submittedAt ||
+          a.submitted_at ||
+          a.date ||
+          0
+      ).getTime();
+
+      const bTime = new Date(
+        b.createdAt ||
+          b.created_at ||
+          b.submittedAt ||
+          b.submitted_at ||
+          b.date ||
+          0
+      ).getTime();
+
+      return bTime - aTime;
+    });
+  }, [transactions, withdrawRequests]);
 
   function goTo(path) {
     setMenuOpen(false);
-    window.location.href =
-      path;
+    window.location.href = path;
   }
 
   function copyReferral() {
-    if (!referralLink) {
-      return;
-    }
+    if (!referralLink) return;
 
-    navigator.clipboard
-      .writeText(referralLink)
-      .then(() => {
-        setCopied(true);
+    navigator.clipboard.writeText(referralLink);
+    setCopied(true);
 
-        setTimeout(() => {
-          setCopied(false);
-        }, 2000);
-      })
-      .catch(() => {});
+    setTimeout(() => {
+      setCopied(false);
+    }, 2000);
   }
 
   function logout() {
-    localStorage.removeItem(
-      "transportLoggedIn"
-    );
+    localStorage.removeItem("transportLoggedIn");
+    localStorage.removeItem("transportUser");
+    localStorage.removeItem("transportCurrentUser");
 
-    localStorage.removeItem(
-      "transportUser"
-    );
-
-    localStorage.removeItem(
-      "transportCurrentUser"
-    );
-
-    window.location.href =
-      "/login";
+    window.location.href = "/login";
   }
 
   if (loading) {
     return (
-      <div
-        style={
-          styles.loadingScreen
-        }
-      >
-        <div
-          style={
-            styles.loadingCard
-          }
-        >
-          <div
-            style={
-              styles.loadingIcon
-            }
-          >
+      <div style={styles.loadingScreen}>
+        <div style={styles.loadingCard}>
+          <div style={styles.loadingIcon}>
             🚛
           </div>
 
-          <div
-            style={
-              styles.loadingTitle
-            }
-          >
+          <div style={styles.loadingTitle}>
             Transport Hub
           </div>
 
-          <div
-            style={
-              styles.loadingText
-            }
-          >
+          <div style={styles.loadingText}>
             Loading your dashboard...
           </div>
         </div>
@@ -763,37 +635,17 @@ const walletBalance =
           100% {
             box-shadow:
               0 0 15px
-                rgba(
-                  247,
-                  201,
-                  72,
-                  0.12
-                ),
+                rgba(247, 201, 72, 0.12),
               0 0 35px
-                rgba(
-                  44,
-                  130,
-                  201,
-                  0.08
-                );
+                rgba(44, 130, 201, 0.08);
           }
 
           50% {
             box-shadow:
               0 0 28px
-                rgba(
-                  247,
-                  201,
-                  72,
-                  0.25
-                ),
+                rgba(247, 201, 72, 0.25),
               0 0 55px
-                rgba(
-                  44,
-                  130,
-                  201,
-                  0.14
-                );
+                rgba(44, 130, 201, 0.14);
           }
         }
 
@@ -810,8 +662,8 @@ const walletBalance =
 
         .transport-animated-card {
           animation:
-            transportCardFloat 5s
-            ease-in-out infinite;
+            transportCardFloat 5s ease-in-out
+            infinite;
         }
 
         .transport-animated-card:hover {
@@ -819,12 +671,7 @@ const walletBalance =
           transform: translateY(-8px);
           box-shadow:
             0 12px 28px
-              rgba(
-                16,
-                42,
-                67,
-                0.2
-              );
+              rgba(16, 42, 67, 0.2);
         }
 
         .welcome-scroll-wrapper {
@@ -836,8 +683,8 @@ const walletBalance =
         .welcome-scroll-content {
           width: max-content;
           animation:
-            welcomeTextMove 10s
-            linear infinite;
+            welcomeTextMove 10s linear
+            infinite;
           will-change: transform;
         }
 
@@ -854,36 +701,25 @@ const walletBalance =
       `}</style>
 
       {isMobile && (
-        <div
-          style={
-            styles.mobileHeader
-          }
-        >
+        <div style={styles.mobileHeader}>
           <button
-            style={
-              styles.menuButton
-            }
+            style={styles.menuButton}
             onClick={() =>
-              setMenuOpen(
-                !menuOpen
-              )
+              setMenuOpen(!menuOpen)
             }
           >
             ☰
           </button>
 
           <div
-            style={
-              styles.mobileHeaderTitle
-            }
+            style={styles.mobileHeaderTitle}
           >
             Transport Hub
           </div>
         </div>
       )}
 
-      {(!isMobile ||
-        menuOpen) && (
+      {(!isMobile || menuOpen) && (
         <aside
           style={{
             ...styles.sidebar,
@@ -892,76 +728,48 @@ const walletBalance =
               : {}),
           }}
         >
-          <div
-            style={
-              styles.logoArea
-            }
-          >
-            <div
-              style={
-                styles.logoIcon
-              }
-            >
+          <div style={styles.logoArea}>
+            <div style={styles.logoIcon}>
               🚛
             </div>
 
             <div>
-              <div
-                style={
-                  styles.logoTitle
-                }
-              >
+              <div style={styles.logoTitle}>
                 Transport Hub
               </div>
 
               <div
-                style={
-                  styles.logoSubtitle
-                }
+                style={styles.logoSubtitle}
               >
                 Investment Platform
               </div>
             </div>
           </div>
 
-          <nav
-            style={
-              styles.navigation
-            }
-          >
+          <nav style={styles.navigation}>
             <button
               style={{
                 ...styles.navItem,
                 ...styles.activeNavItem,
               }}
-              onClick={() =>
-                goTo("/")
-              }
+              onClick={() => goTo("/")}
             >
               <span>🏠</span>
               <span>Dashboard</span>
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
-                goTo(
-                  "/transport-plans"
-                )
+                goTo("/transport-plans")
               }
             >
               <span>🚛</span>
-              <span>
-                Transport Plans
-              </span>
+              <span>Transport Plans</span>
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
                 goTo("/deposit")
               }
@@ -971,9 +779,7 @@ const walletBalance =
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
                 goTo("/withdraw")
               }
@@ -983,73 +789,47 @@ const walletBalance =
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
-                goTo(
-                  "/transactions"
-                )
+                goTo("/transactions")
               }
             >
               <span>📊</span>
-              <span>
-                Transactions
-              </span>
+              <span>Transactions</span>
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
-                goTo(
-                  "/deposit-history"
-                )
+                goTo("/deposit-history")
               }
             >
               <span>📋</span>
-              <span>
-                Deposit History
-              </span>
+              <span>Deposit History</span>
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
-                goTo(
-                  "/withdraw-history"
-                )
+                goTo("/withdraw-history")
               }
             >
               <span>📋</span>
-              <span>
-                Withdraw History
-              </span>
+              <span>Withdraw History</span>
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
-                goTo(
-                  "/weekly-returns"
-                )
+                goTo("/weekly-returns")
               }
             >
               <span>🎁</span>
-              <span>
-                Weekly Returns
-              </span>
+              <span>Weekly Returns</span>
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
                 goTo("/my-team")
               }
@@ -1059,9 +839,7 @@ const walletBalance =
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
                 goTo("/referral")
               }
@@ -1071,13 +849,9 @@ const walletBalance =
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
-                setShowFeatures(
-                  true
-                )
+                setShowFeatures(true)
               }
             >
               <span>🔐</span>
@@ -1085,9 +859,7 @@ const walletBalance =
             </button>
 
             <button
-              style={
-                styles.navItem
-              }
+              style={styles.navItem}
               onClick={() =>
                 goTo("/support")
               }
@@ -1097,9 +869,7 @@ const walletBalance =
             </button>
 
             <button
-              style={
-                styles.logoutNavItem
-              }
+              style={styles.logoutNavItem}
               onClick={logout}
             >
               <span>🚪</span>
@@ -1109,17 +879,14 @@ const walletBalance =
         </aside>
       )}
 
-      {isMobile &&
-        menuOpen && (
-          <div
-            style={
-              styles.mobileOverlay
-            }
-            onClick={() =>
-              setMenuOpen(false)
-            }
-          />
-        )}
+      {isMobile && menuOpen && (
+        <div
+          style={styles.mobileOverlay}
+          onClick={() =>
+            setMenuOpen(false)
+          }
+        />
+      )}
 
       <main
         style={{
@@ -1137,26 +904,14 @@ const walletBalance =
               : {}),
           }}
         >
-          <div
-            style={{
-              minWidth: 0,
-            }}
-          >
-            <div
-              style={
-                styles.pageTitle
-              }
-            >
+          <div style={{ minWidth: 0 }}>
+            <div style={styles.pageTitle}>
               Dashboard
             </div>
 
-            <div
-              style={
-                styles.pageSubtitle
-              }
-            >
-              Manage your transport
-              investment account
+            <div style={styles.pageSubtitle}>
+              Manage your transport investment
+              account
             </div>
           </div>
         </div>
@@ -1172,39 +927,23 @@ const walletBalance =
         >
           <div className="welcome-scroll-wrapper">
             <div className="welcome-scroll-content">
-              <div
-                style={
-                  styles.welcomeSmall
-                }
-              >
+              <div style={styles.welcomeSmall}>
                 Welcome back
               </div>
 
-              <div
-                style={
-                  styles.welcomeTitle
-                }
-              >
+              <div style={styles.welcomeTitle}>
                 {displayName} 👋
               </div>
 
-              <div
-                style={
-                  styles.welcomeText
-                }
-              >
-                Track your investments,
-                weekly returns and team
-                activity from one place.
+              <div style={styles.welcomeText}>
+                Track your investments, weekly
+                returns and team activity from
+                one place.
               </div>
             </div>
           </div>
 
-          <div
-            style={
-              styles.welcomeTruck
-            }
-          >
+          <div style={styles.welcomeTruck}>
             🚛
           </div>
         </section>
@@ -1219,34 +958,18 @@ const walletBalance =
         >
           <div
             className="transport-animated-card"
-            style={
-              styles.summaryCard
-            }
+            style={styles.summaryCard}
           >
-            <div
-              style={
-                styles.summaryIcon
-              }
-            >
+            <div style={styles.summaryIcon}>
               💼
             </div>
 
-            <div
-              style={
-                styles.summaryLabel
-              }
-            >
+            <div style={styles.summaryLabel}>
               Total Investment
             </div>
 
-            <div
-              style={
-                styles.summaryValue
-              }
-            >
-              {formatMoney(
-                totalInvestment
-              )}
+            <div style={styles.summaryValue}>
+              {formatMoney(totalInvestment)}
             </div>
           </div>
 
@@ -1254,34 +977,19 @@ const walletBalance =
             className="transport-animated-card"
             style={{
               ...styles.summaryCard,
-              animationDelay:
-                "0.5s",
+              animationDelay: "0.5s",
             }}
           >
-            <div
-              style={
-                styles.summaryIcon
-              }
-            >
+            <div style={styles.summaryIcon}>
               📈
             </div>
 
-            <div
-              style={
-                styles.summaryLabel
-              }
-            >
+            <div style={styles.summaryLabel}>
               Weekly Return
             </div>
 
-            <div
-              style={
-                styles.summaryValue
-              }
-            >
-              {formatMoney(
-                weeklyReturn
-              )}
+            <div style={styles.summaryValue}>
+              {formatMoney(weeklyReturn)}
             </div>
           </div>
 
@@ -1289,34 +997,19 @@ const walletBalance =
             className="transport-animated-card"
             style={{
               ...styles.summaryCard,
-              animationDelay:
-                "1s",
+              animationDelay: "1s",
             }}
           >
-            <div
-              style={
-                styles.summaryIcon
-              }
-            >
+            <div style={styles.summaryIcon}>
               💰
             </div>
 
-            <div
-              style={
-                styles.summaryLabel
-              }
-            >
+            <div style={styles.summaryLabel}>
               Wallet Balance
             </div>
 
-            <div
-              style={
-                styles.summaryValue
-              }
-            >
-              {formatMoney(
-                walletBalance
-              )}
+            <div style={styles.summaryValue}>
+              {formatMoney(walletBalance)}
             </div>
           </div>
 
@@ -1324,43 +1017,26 @@ const walletBalance =
             className="transport-animated-card"
             style={{
               ...styles.summaryCard,
-              animationDelay:
-                "1.5s",
+              animationDelay: "1.5s",
             }}
           >
-            <div
-              style={
-                styles.summaryIcon
-              }
-            >
+            <div style={styles.summaryIcon}>
               🎯
             </div>
 
-            <div
-              style={
-                styles.summaryLabel
-              }
-            >
+            <div style={styles.summaryLabel}>
               Expected Return
             </div>
 
-            <div
-              style={
-                styles.summaryValue
-              }
-            >
-              {formatMoney(
-                expectedReturn
-              )}
+            <div style={styles.summaryValue}>
+              {formatMoney(expectedReturn)}
             </div>
           </div>
         </section>
 
         <section
           className="transport-animated-card"
-          style={
-            styles.largeCard
-          }
+          style={styles.largeCard}
         >
           <div
             style={{
@@ -1370,86 +1046,52 @@ const walletBalance =
                 : {}),
             }}
           >
-            <div
-              style={{
-                minWidth: 0,
-              }}
-            >
-              <div
-                style={
-                  styles.sectionTitle
-                }
-              >
-                🚛 Active Transport
-                Plans
+            <div style={{ minWidth: 0 }}>
+              <div style={styles.sectionIcon}>
+                🚛
               </div>
 
-              <div
-                style={
-                  styles.sectionSubtitle
-                }
-              >
-                Your currently active
-                investment plans
+              <div>
+                <div style={styles.sectionTitle}>
+                  Active Transport Plans
+                </div>
+
+                <div style={styles.sectionSubtitle}>
+                  Your currently active investment
+                  plans
+                </div>
               </div>
             </div>
 
             <button
-              style={
-                styles.greenButton
-              }
+              style={styles.addPlanButton}
               onClick={() =>
-                goTo(
-                  "/transport-plans"
-                )
+                goTo("/transport-plans")
               }
             >
               + Add Plan
             </button>
           </div>
 
-          {activePlans.length ===
-          0 ? (
-            <div
-              style={
-                styles.emptyState
-              }
-            >
-              <div
-                style={
-                  styles.emptyIcon
-                }
-              >
+          {activePlans.length === 0 ? (
+            <div style={styles.emptyState}>
+              <div style={styles.emptyIcon}>
                 🚛
               </div>
 
-              <div
-                style={
-                  styles.emptyTitle
-                }
-              >
-                No Active
-                Transport Plans
+              <div style={styles.emptyTitle}>
+                No Active Plans
               </div>
 
-              <div
-                style={
-                  styles.emptyText
-                }
-              >
-                Select a transport
-                plan to start earning
-                weekly returns.
+              <div style={styles.emptyText}>
+                Choose a transport plan to start
+                your investment journey.
               </div>
 
               <button
-                style={
-                  styles.greenButtonLarge
-                }
+                style={styles.emptyButton}
                 onClick={() =>
-                  goTo(
-                    "/transport-plans"
-                  )
+                  goTo("/transport-plans")
                 }
               >
                 View Transport Plans
@@ -1467,45 +1109,46 @@ const walletBalance =
               {activePlans.map(
                 (plan, index) => {
                   const weekly =
-                    getWeeklyReturn(
-                      plan
-                    );
+                    getWeeklyReturn(plan);
 
-                  const totalPlanReturn =
+                  const price = Number(
+                    plan.price || 0
+                  );
+
+                  const totalReturn =
+                    Number(
+                      plan.totalReturn || 0
+                    ) ||
                     weekly *
-                    PLAN_DURATION_WEEKS;
+                      PLAN_DURATION_WEEKS;
 
                   return (
                     <div
+                      key={
+                        plan.id ||
+                        `${plan.name}-${index}`
+                      }
                       className="transport-animated-card"
                       style={{
                         ...styles.planCard,
                         animationDelay:
-                          index *
-                            0.35 +
-                          "s",
+                          `${index * 0.15}s`,
                       }}
-                      key={
-                        plan.id ||
-                        index
-                      }
                     >
                       <div
                         style={
-                          styles.planTop
+                          styles.planCardTop
                         }
                       >
-                        <div
-                          style={{
-                            minWidth: 0,
-                          }}
-                        >
+                        <div>
                           <div
                             style={
                               styles.planName
                             }
                           >
-                            {plan.name}
+                            {plan.name ||
+                              "Transport Plan"}{" "}
+                            Transport Plan
                           </div>
 
                           <div
@@ -1514,7 +1157,7 @@ const walletBalance =
                             }
                           >
                             {formatMoney(
-                              plan.price
+                              price
                             )}
                           </div>
                         </div>
@@ -1530,63 +1173,58 @@ const walletBalance =
 
                       <div
                         style={
+                          styles.planDivider
+                        }
+                      />
+
+                      <div
+                        style={
                           styles.planStats
                         }
                       >
-                        <div>
-                          <span
-                            style={
-                              styles.statLabel
-                            }
-                          >
+                        <div
+                          style={
+                            styles.planStat
+                          }
+                        >
+                          <span>
                             Weekly
                           </span>
 
-                          <strong
-                            style={
-                              styles.statValue
-                            }
-                          >
+                          <strong>
                             {formatMoney(
                               weekly
                             )}
                           </strong>
                         </div>
 
-                        <div>
-                          <span
-                            style={
-                              styles.statLabel
-                            }
-                          >
+                        <div
+                          style={
+                            styles.planStat
+                          }
+                        >
+                          <span>
                             Duration
                           </span>
 
-                          <strong
-                            style={
-                              styles.statValue
-                            }
-                          >
-                            260 Weeks
+                          <strong>
+                            {PLAN_DURATION_WEEKS}{" "}
+                            Weeks
                           </strong>
                         </div>
 
-                        <div>
-                          <span
-                            style={
-                              styles.statLabel
-                            }
-                          >
+                        <div
+                          style={
+                            styles.planStat
+                          }
+                        >
+                          <span>
                             Total Return
                           </span>
 
-                          <strong
-                            style={
-                              styles.statValue
-                            }
-                          >
+                          <strong>
                             {formatMoney(
-                              totalPlanReturn
+                              totalReturn
                             )}
                           </strong>
                         </div>
@@ -1609,45 +1247,43 @@ const walletBalance =
         >
           <div
             className="transport-animated-card"
-            style={{
-              ...styles.sideCard,
-              animationDelay:
-                "0.4s",
-            }}
+            style={styles.largeCard}
           >
-            <div
-              style={
-                styles.sectionTitle
-              }
-            >
-              💰 Wallet Overview
+            <div style={styles.cardHeader}>
+              <div>
+                <div style={styles.cardTitle}>
+                  💰 Wallet Overview
+                </div>
+
+                <div
+                  style={
+                    styles.cardSubtitle
+                  }
+                >
+                  Your current account balance
+                </div>
+              </div>
             </div>
 
-            <div
-              style={
-                styles.walletRows
-              }
-            >
+            <div style={styles.walletMain}>
               <div
-                style={
-                  styles.walletRow
-                }
+                style={styles.walletLabel}
               >
-                <span>
-                  Available Balance
-                </span>
-
-                <strong>
-                  {formatMoney(
-                    walletBalance
-                  )}
-                </strong>
+                Available Balance
               </div>
 
               <div
-                style={
-                  styles.walletRow
-                }
+                style={styles.walletValue}
+              >
+                {formatMoney(
+                  walletBalance
+                )}
+              </div>
+            </div>
+
+            <div style={styles.walletStats}>
+              <div
+                style={styles.walletStatBox}
               >
                 <span>
                   Total Deposits
@@ -1655,15 +1291,14 @@ const walletBalance =
 
                 <strong>
                   {formatMoney(
-                    depositTotal
+                    totalInvestment ||
+                      depositTotal
                   )}
                 </strong>
               </div>
 
               <div
-                style={
-                  styles.walletRow
-                }
+                style={styles.walletStatBox}
               >
                 <span>
                   Total Withdrawals
@@ -1677,9 +1312,7 @@ const walletBalance =
               </div>
 
               <div
-                style={
-                  styles.walletRow
-                }
+                style={styles.walletStatBox}
               >
                 <span>
                   Pending Deposits
@@ -1693,9 +1326,7 @@ const walletBalance =
               </div>
 
               <div
-                style={
-                  styles.walletRow
-                }
+                style={styles.walletStatBox}
               >
                 <span>
                   Pending Withdrawals
@@ -1712,29 +1343,27 @@ const walletBalance =
 
           <div
             className="transport-animated-card"
-            style={{
-              ...styles.sideCard,
-              animationDelay:
-                "0.9s",
-            }}
+            style={styles.largeCard}
           >
-            <div
-              style={
-                styles.sectionTitle
-              }
-            >
-              📈 Return Summary
+            <div style={styles.cardHeader}>
+              <div>
+                <div style={styles.cardTitle}>
+                  📈 Return Summary
+                </div>
+
+                <div
+                  style={
+                    styles.cardSubtitle
+                  }
+                >
+                  Your weekly return performance
+                </div>
+              </div>
             </div>
 
-            <div
-              style={
-                styles.walletRows
-              }
-            >
+            <div style={styles.returnStats}>
               <div
-                style={
-                  styles.walletRow
-                }
+                style={styles.returnStat}
               >
                 <span>
                   Current Weekly Return
@@ -1748,9 +1377,7 @@ const walletBalance =
               </div>
 
               <div
-                style={
-                  styles.walletRow
-                }
+                style={styles.returnStat}
               >
                 <span>
                   Previous Weekly Return
@@ -1764,9 +1391,7 @@ const walletBalance =
               </div>
 
               <div
-                style={
-                  styles.walletRow
-                }
+                style={styles.returnStat}
               >
                 <span>
                   Weekly Total
@@ -1780,9 +1405,7 @@ const walletBalance =
               </div>
 
               <div
-                style={
-                  styles.walletRow
-                }
+                style={styles.returnStat}
               >
                 <span>
                   Approx. 4 Weeks
@@ -1796,9 +1419,7 @@ const walletBalance =
               </div>
 
               <div
-                style={
-                  styles.walletRow
-                }
+                style={styles.returnStat}
               >
                 <span>
                   Total Earned
@@ -1824,45 +1445,48 @@ const walletBalance =
         >
           <div
             className="transport-animated-card"
-            style={{
-              ...styles.sideCard,
-              animationDelay:
-                "0.6s",
-            }}
+            style={styles.largeCard}
           >
-            <div
-              style={
-                styles.sectionTitle
-              }
-            >
-              👥 My Team
+            <div style={styles.cardHeader}>
+              <div>
+                <div style={styles.cardTitle}>
+                  👥 My Team
+                </div>
+
+                <div
+                  style={
+                    styles.cardSubtitle
+                  }
+                >
+                  Your referral team overview
+                </div>
+              </div>
+
+              <button
+                style={styles.textButton}
+                onClick={() =>
+                  goTo("/my-team")
+                }
+              >
+                View My Team
+              </button>
             </div>
 
             <div
-              style={
-                styles.teamMainNumber
-              }
+              style={styles.teamMainNumber}
             >
               {teamMembers.length}
             </div>
 
             <div
-              style={
-                styles.teamLabel
-              }
+              style={styles.teamMainLabel}
             >
               Total Team Members
             </div>
 
-            <div
-              style={
-                styles.teamStats
-              }
-            >
+            <div style={styles.teamStats}>
               <div
-                style={
-                  styles.teamStat
-                }
+                style={styles.teamStat}
               >
                 <span>
                   Team Investment
@@ -1876,9 +1500,7 @@ const walletBalance =
               </div>
 
               <div
-                style={
-                  styles.teamStat
-                }
+                style={styles.teamStat}
               >
                 <span>
                   Paid Commission
@@ -1892,9 +1514,7 @@ const walletBalance =
               </div>
 
               <div
-                style={
-                  styles.teamStat
-                }
+                style={styles.teamStat}
               >
                 <span>
                   Today Commission
@@ -1913,9 +1533,7 @@ const walletBalance =
                 styles.outlineButton
               }
               onClick={() =>
-                goTo(
-                  "/my-team"
-                )
+                goTo("/my-team")
               }
             >
               View My Team
@@ -1924,18 +1542,23 @@ const walletBalance =
 
           <div
             className="transport-animated-card"
-            style={{
-              ...styles.sideCard,
-              animationDelay:
-                "1.1s",
-            }}
+            style={styles.largeCard}
           >
-            <div
-              style={
-                styles.sectionTitle
-              }
-            >
-              🔗 Referral Program
+            <div style={styles.cardHeader}>
+              <div>
+                <div style={styles.cardTitle}>
+                  🔗 Referral Program
+                </div>
+
+                <div
+                  style={
+                    styles.cardSubtitle
+                  }
+                >
+                  Invite friends and grow your
+                  team.
+                </div>
+              </div>
             </div>
 
             <div
@@ -1943,8 +1566,7 @@ const walletBalance =
                 styles.referralText
               }
             >
-              Invite friends and grow
-              your team.
+              Your referral code
             </div>
 
             <div
@@ -1952,29 +1574,16 @@ const walletBalance =
                 styles.referralCodeBox
               }
             >
-              <span
-                style={{
-                  overflow:
-                    "hidden",
-                  textOverflow:
-                    "ellipsis",
-                  whiteSpace:
-                    "nowrap",
-                }}
-              >
+              <span>
                 {referralCode}
               </span>
 
               <button
-                style={
-                  styles.copyButton
-                }
-                onClick={
-                  copyReferral
-                }
+                style={styles.copyButton}
+                onClick={copyReferral}
               >
                 {copied
-                  ? "Copied"
+                  ? "✓ Copied"
                   : "Copy"}
               </button>
             </div>
@@ -1984,18 +1593,15 @@ const walletBalance =
                 styles.referralLinkBox
               }
             >
-              {referralLink ||
-                "Referral link unavailable"}
+              {referralLink}
             </div>
 
             <button
               style={
-                styles.greenButton
+                styles.outlineButton
               }
               onClick={() =>
-                goTo(
-                  "/referral"
-                )
+                goTo("/referral")
               }
             >
               Open Referral
@@ -2005,9 +1611,7 @@ const walletBalance =
 
         <section
           className="transport-animated-card"
-          style={
-            styles.activityCard
-          }
+          style={styles.activityCard}
         >
           <div
             style={{
@@ -2019,16 +1623,14 @@ const walletBalance =
           >
             <div>
               <div
-                style={
-                  styles.sectionTitle
-                }
+                style={styles.cardTitle}
               >
                 📊 Recent Transactions
               </div>
 
               <div
                 style={
-                  styles.sectionSubtitle
+                  styles.cardSubtitle
                 }
               >
                 Latest account activity
@@ -2036,13 +1638,9 @@ const walletBalance =
             </div>
 
             <button
-              style={
-                styles.textButton
-              }
+              style={styles.textButton}
               onClick={() =>
-                goTo(
-                  "/transactions"
-                )
+                goTo("/transactions")
               }
             >
               View All →
@@ -2056,7 +1654,7 @@ const walletBalance =
                 styles.transactionEmpty
               }
             >
-              No transactions yet.
+              No recent transactions yet.
             </div>
           ) : (
             <div
@@ -2066,126 +1664,107 @@ const walletBalance =
             >
               {recentTransactions
                 .slice(0, 5)
-                .map(
-                  (
-                    item,
-                    index
-                  ) => {
-                    const type =
-                      String(
-                        item.type ||
-                          ""
-                      ).toLowerCase();
+                .map((item, index) => {
+                  const type =
+                    String(
+                      item.type ||
+                        ""
+                    ).toLowerCase();
 
-                    const returnType =
-                      String(
-                        item.returnType ||
-                          item.return_type ||
-                          item.transactionType ||
-                          item.transaction_type ||
-                          ""
-                      ).toLowerCase();
+                  const isWithdraw =
+                    type ===
+                      "withdraw" ||
+                    type ===
+                      "withdrawal";
 
-                    const status =
-                      String(
-                        item.status ||
-                          "pending"
-                      ).toLowerCase();
+                  const isReturn =
+                    type === "return" ||
+                    type ===
+                      "weekly return";
 
-                    const isReturn =
-                      type ===
-                        "return" ||
-                      type.includes(
-                        "return"
-                      ) ||
-                      returnType.includes(
-                        "return"
-                      ) ||
-                      returnType.includes(
-                        "weekly"
-                      );
+                  const icon =
+                    isWithdraw
+                      ? "💸"
+                      : isReturn
+                      ? "🎁"
+                      : "💰";
 
-                    const isWithdraw =
-                      type ===
-                        "withdraw" ||
-                      type ===
-                        "withdrawal";
+                  const label =
+                    isWithdraw
+                      ? "Withdraw"
+                      : isReturn
+                      ? "Return"
+                      : "Deposit";
 
-                    let transactionTitle =
-                      "Deposit";
+                  const transactionDate =
+                    item.date ||
+                    item.createdAt ||
+                    item.created_at ||
+                    "";
 
-                    let transactionIcon =
-                      "💰";
+                  let displayDate =
+                    "Recently";
 
-                    if (isReturn) {
-                      transactionTitle =
-                        "Return";
+                  try {
+                    displayDate =
+                      transactionDate
+                        ? new Date(
+                            transactionDate
+                          ).toLocaleString()
+                        : "Recently";
+                  } catch {
+                    displayDate =
+                      "Recently";
+                  }
 
-                      transactionIcon =
-                        "🎁";
-                    } else if (
-                      isWithdraw
-                    ) {
-                      transactionTitle =
-                        "Withdraw";
-
-                      transactionIcon =
-                        "💸";
-                    }
-
-                    return (
+                  return (
+                    <div
+                      key={
+                        item.id ||
+                        `${label}-${index}`
+                      }
+                      style={{
+                        ...styles.transactionRow,
+                        ...(isMobile
+                          ? styles.mobileTransactionRow
+                          : {}),
+                      }}
+                    >
                       <div
-                        style={{
-                          ...styles.transactionRow,
-                          ...(isMobile
-                            ? styles.mobileTransactionRow
-                            : {}),
-                        }}
-                        key={
-                          item.id ||
-                          item.withdrawalRequestId ||
-                          index
+                        style={
+                          styles.transactionIcon
+                        }
+                      >
+                        {icon}
+                      </div>
+
+                      <div
+                        style={
+                          styles.transactionInfo
                         }
                       >
                         <div
                           style={
-                            styles.transactionIcon
+                            styles.transactionTitle
                           }
                         >
-                          {
-                            transactionIcon
-                          }
+                          {label}
                         </div>
 
                         <div
                           style={
-                            styles.transactionInfo
+                            styles.transactionDate
                           }
                         >
-                          <div
-                            style={
-                              styles.transactionTitle
-                            }
-                          >
-                            {
-                              transactionTitle
-                            }
-                          </div>
-
-                          <div
-                            style={
-                              styles.transactionDate
-                            }
-                          >
-                            {item.date ||
-                              item.createdAt ||
-                              item.created_at ||
-                              item.submittedAt ||
-                              item.submitted_at ||
-                              "Recently"}
-                          </div>
+                          {displayDate}
                         </div>
+                      </div>
 
+                      <div
+                        style={
+                          styles.transactionAmountArea
+                        }
+                      >
                         <div
                           style={
                             styles.transactionAmount
@@ -2198,375 +1777,168 @@ const walletBalance =
 
                         <div
                           style={{
-                            ...styles.statusBadge,
-                            ...(status ===
-                              "approved" ||
-                            status ===
-                              "completed"
+                            ...styles.transactionStatus,
+                            ...(String(
+                              item.status ||
+                                ""
+                            ).toLowerCase() ===
+                            "approved"
                               ? styles.approvedStatus
-                              : status ===
-                                "rejected"
-                              ? styles.rejectedStatus
+                              : String(
+                                  item.status ||
+                                    ""
+                                ).toLowerCase() ===
+                                "completed"
+                              ? styles.completedStatus
                               : styles.pendingStatus),
                           }}
                         >
-                          {status.toUpperCase()}
+                          {String(
+                            item.status ||
+                              "Pending"
+                          ).toUpperCase()}
                         </div>
                       </div>
-                    );
-                  }
-                )}
+                    </div>
+                  );
+                })}
             </div>
           )}
         </section>
 
         <section
-          className="transport-animated-card"
           style={{
-            ...styles.dashboardSupport,
+            ...styles.supportCard,
             ...(isMobile
-              ? styles.mobileDashboardSupport
+              ? styles.mobileSupportCard
               : {}),
           }}
         >
           <div
-            style={
-              styles.dashboardSupportIcon
-            }
+            style={styles.supportIcon}
           >
             🎧
           </div>
 
           <div
-            style={
-              styles.dashboardSupportContent
-            }
+            style={styles.supportContent}
           >
             <div
-              style={
-                styles.dashboardSupportTitle
-              }
+              style={styles.supportTitle}
             >
               Need Help?
             </div>
 
             <div
-              style={
-                styles.dashboardSupportText
-              }
+              style={styles.supportText}
             >
-              Have questions about
-              your account, deposits,
-              withdrawals, or transport
-              plans? Our support team is
-              here to help.
+              Have questions about your account,
+              deposits, withdrawals, or transport
+              plans? Our support team is here to
+              help.
             </div>
-          </div>
 
-          <div
-            style={{
-              ...styles.dashboardSupportButtons,
-              ...(isMobile
-                ? styles.mobileSupportButtons
-                : {}),
-            }}
-          >
-            <button
-              style={
-                styles.liveChatButton
-              }
-              onClick={() =>
-                goTo(
-                  "/support"
-                )
-              }
+            <div
+              style={styles.supportActions}
             >
-              💬 Live Chat
-            </button>
+              <button
+                style={
+                  styles.supportButton
+                }
+                onClick={() =>
+                  goTo("/support")
+                }
+              >
+                💬 Live Chat
+              </button>
 
-            <a
-              href="https://wa.me/923263159327?text=Hello%20Transport%20Hub%20Support%2C%20I%20need%20help."
-              target="_blank"
-              rel="noopener noreferrer"
-              style={
-                styles.whatsappButton
-              }
-            >
-              📱 WhatsApp
-            </a>
+              <a
+                href="https://wa.me/923263159327?text=Hello%20Transport%20Hub%20Support%2C%20I%20need%20help."
+                target="_blank"
+                rel="noreferrer"
+                style={
+                  styles.whatsappButton
+                }
+              >
+                📱 WhatsApp
+              </a>
+            </div>
           </div>
         </section>
 
         <section
-          className="transport-animated-card"
           style={{
-            ...styles.appDownloadCard,
+            ...styles.appCard,
             ...(isMobile
-              ? styles.mobileAppDownloadCard
+              ? styles.mobileAppCard
               : {}),
           }}
         >
           <div
-            style={
-              styles.appDownloadIcon
-            }
+            style={styles.appIcon}
           >
             📱
           </div>
 
-          <div
-            style={
-              styles.appDownloadContent
-            }
-          >
+          <div style={styles.appContent}>
             <div
-              style={
-                styles.appDownloadTitle
-              }
+              style={styles.appTitle}
             >
               Transport Hub Mobile App
             </div>
 
             <div
-              style={
-                styles.appDownloadText
-              }
+              style={styles.appText}
             >
-              Download the Transport Hub
-              app for a faster, smoother,
-              and more convenient
-              experience.
+              Download the Transport Hub app
+              for a faster, smoother, and more
+              convenient experience.
             </div>
-          </div>
 
-          <a
-            href="/transport-hub.apk"
-            download="Transport-Hub.apk"
-            style={
-              styles.appDownloadButton
-            }
-          >
-            📥 Download App
-          </a>
+            <a
+              href="/transport-hub.apk"
+              style={styles.appButton}
+            >
+              📥 Download App
+            </a>
+          </div>
         </section>
       </main>
-
-      {showPrizePopup && (
-        <div
-          style={
-            styles.prizePopupOverlay
-          }
-        >
-          <div
-            style={{
-              ...styles.prizePopupCard,
-              animation:
-                "prizePopupIn .35s ease-out forwards",
-            }}
-          >
-            <div
-              style={
-                styles.prizePopupTop
-              }
-            >
-              <div
-                style={
-                  styles.prizeBrandPill
-                }
-              >
-                🚛 TRANSPORT HUB
-              </div>
-
-              <button
-                style={
-                  styles.prizeCloseTop
-                }
-                onClick={() =>
-                  setShowPrizePopup(
-                    false
-                  )
-                }
-                aria-label="Close popup"
-              >
-                ×
-              </button>
-            </div>
-
-            <div
-              style={
-                styles.prizeHero
-              }
-            >
-              <div
-                style={{
-                  ...styles.prizeGlowIcon,
-                  animation:
-                    "prizeIconFloat 2.8s ease-in-out infinite",
-                }}
-              >
-                🏆
-              </div>
-
-              <div
-                style={
-                  styles.prizeSmallTitle
-                }
-              >
-                SPECIAL TEAM REWARD
-              </div>
-
-              <div
-                style={
-                  styles.prizeMainTitle
-                }
-              >
-                WIN 5 LAKH PRIZE
-              </div>
-
-              <div
-                style={
-                  styles.prizeSubtitle
-                }
-              >
-                Build Your Team •
-                Unlock Your Reward
-              </div>
-
-              <div
-                style={
-                  styles.prizeDivider
-                }
-              />
-
-              <div
-                style={
-                  styles.prizeMessage
-                }
-              >
-                When your team crosses
-              </div>
-
-              <div
-                style={
-                  styles.prizeTarget
-                }
-              >
-                50 LAKH
-              </div>
-
-              <div
-                style={
-                  styles.prizeMessage
-                }
-              >
-                you will WIN
-              </div>
-
-              <div
-                style={
-                  styles.prizeAmount
-                }
-              >
-                5 LAKH
-              </div>
-
-              <div
-                style={
-                  styles.prizeBottomGlow
-                }
-              >
-                🏆
-              </div>
-            </div>
-
-            <div
-              style={
-                styles.channelPrizeCard
-              }
-            >
-              <div
-                style={
-                  styles.channelIcon
-                }
-              >
-                📢
-              </div>
-
-              <div
-                style={
-                  styles.channelInfo
-                }
-              >
-                <div
-                  style={
-                    styles.channelTitle
-                  }
-                >
-                  JOIN OUR OFFICIAL
-                  CHANNEL
-                </div>
-
-                <div
-                  style={
-                    styles.channelSubtitle
-                  }
-                >
-                  News • Updates &
-                  Announcements
-                </div>
-              </div>
-
-              <a
-                href="https://whatsapp.com/channel/0029VbDUOmH6xCSQ4ejQlS0R"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={
-                  styles.channelButton
-                }
-              >
-                JOIN CHANNEL →
-              </a>
-            </div>
-
-            <div
-              style={
-                styles.prizeBottomButtons
-              }
-            >
-              <button
-                style={
-                  styles.prizeCloseButton
-                }
-                onClick={() =>
-                  setShowPrizePopup(
-                    false
-                  )
-                }
-              >
-                CLOSE ✕
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showFeatures && (
         <div
           style={
-            styles.modalOverlay
+            styles.modalBackdrop
+          }
+          onClick={() =>
+            setShowFeatures(false)
           }
         >
           <div
             style={
-              styles.modalCard
+              styles.featureModal
+            }
+            onClick={(event) =>
+              event.stopPropagation()
             }
           >
+            <button
+              style={
+                styles.modalClose
+              }
+              onClick={() =>
+                setShowFeatures(false)
+              }
+            >
+              ✕
+            </button>
+
             <div
               style={
                 styles.modalIcon
               }
             >
-              🚧
+              🔐
             </div>
 
             <div
@@ -2574,7 +1946,7 @@ const walletBalance =
                 styles.modalTitle
               }
             >
-              Coming Soon
+              Security
             </div>
 
             <div
@@ -2582,22 +1954,77 @@ const walletBalance =
                 styles.modalText
               }
             >
-              This feature is currently
-              under development and will
-              be available soon.
+              Your Transport Hub account
+              information is protected and
+              managed securely.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPrizePopup && (
+        <div
+          style={
+            styles.prizeBackdrop
+          }
+          onClick={() =>
+            setShowPrizePopup(false)
+          }
+        >
+          <div
+            style={
+              styles.prizePopup
+            }
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <button
+              style={
+                styles.prizeClose
+              }
+              onClick={() =>
+                setShowPrizePopup(false)
+              }
+            >
+              ✕
+            </button>
+
+            <div
+              style={
+                styles.prizeIcon
+              }
+            >
+              🎁
+            </div>
+
+            <div
+              style={
+                styles.prizeTitle
+              }
+            >
+              Special Reward
+            </div>
+
+            <div
+              style={
+                styles.prizeText
+              }
+            >
+              Keep growing your Transport Hub
+              journey and explore your available
+              rewards.
             </div>
 
             <button
               style={
-                styles.greenButtonLarge
+                styles.prizeButton
               }
               onClick={() =>
-                setShowFeatures(
-                  false
-                )
+                setShowPrizePopup(false)
               }
             >
-              Close
+              Continue
             </button>
           </div>
         </div>
@@ -2610,261 +2037,179 @@ const styles = {
   dashboard: {
     minHeight: "100vh",
     display: "flex",
-    background: "#eef3f7",
-    color: "#102A43",
+    background:
+      "radial-gradient(circle at 10% 0%, rgba(111, 226, 91, 0.08), transparent 28%), #f3f7f1",
+    color: "#173b2b",
     fontFamily: "Arial, sans-serif",
   },
 
-  mobileHeader: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    height:
-      "calc(58px + env(safe-area-inset-top, 0px))",
-    paddingTop:
-      "env(safe-area-inset-top, 0px)",
-    background: "#102A43",
-    color: "#ffffff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingLeft: "14px",
-    paddingRight: "14px",
-    boxSizing: "border-box",
-    zIndex: 1100,
-    boxShadow:
-      "0 3px 15px rgba(0,0,0,.15)",
-  },
-
-  menuButton: {
-    width: "38px",
-    height: "38px",
-    border:
-      "1px solid #294B66",
-    borderRadius: "9px",
-    background: "#173B5A",
-    color: "#ffffff",
-    fontSize: "20px",
-    cursor: "pointer",
-  },
-
-  mobileHeaderTitle: {
-    fontSize: "15px",
-    fontWeight: 900,
-  },
-
-  mobileOverlay: {
-    position: "fixed",
-    top:
-      "calc(58px + env(safe-area-inset-top, 0px))",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background:
-      "rgba(0,0,0,.55)",
-    zIndex: 1150,
-  },
-
   sidebar: {
-    width: "245px",
+    width: "260px",
     minHeight: "100vh",
     background: "#102A43",
     color: "#ffffff",
-    padding: "18px 14px",
-    boxSizing: "border-box",
     position: "fixed",
     left: 0,
     top: 0,
     bottom: 0,
-    overflowY: "auto",
     zIndex: 1000,
-  },
-
-  mobileSidebar: {
-    width: "270px",
-    maxWidth: "82vw",
-    top:
-      "calc(58px + env(safe-area-inset-top, 0px))",
-    bottom: 0,
-    height:
-      "calc(100vh - 58px - env(safe-area-inset-top, 0px))",
+    overflowY: "auto",
     boxShadow:
-      "8px 0 25px rgba(0,0,0,.25)",
-    zIndex: 1200,
+      "7px 0 25px rgba(16,42,67,0.16)",
   },
 
   logoArea: {
     display: "flex",
     alignItems: "center",
-    gap: "10px",
-    padding: "8px 8px 18px",
+    gap: "12px",
+    padding: "22px 20px",
+    borderBottom:
+      "1px solid #1E3A56",
   },
 
   logoIcon: {
-    width: "42px",
-    height: "42px",
+    width: "46px",
+    height: "46px",
     borderRadius: "12px",
-    background: "#1E3A56",
+    background:
+      "linear-gradient(135deg, #2f7d53, #173B5A)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "21px",
-    flexShrink: 0,
+    fontSize: "23px",
   },
 
   logoTitle: {
-    fontSize: "16px",
+    fontSize: "17px",
     fontWeight: 900,
     color: "#ffffff",
   },
 
   logoSubtitle: {
-    fontSize: "9px",
+    fontSize: "10px",
     color: "#9FB3C8",
-    marginTop: "2px",
+    marginTop: "3px",
   },
 
   navigation: {
     display: "flex",
     flexDirection: "column",
-    gap: "4px",
+    padding: "16px 12px 20px",
+    gap: "5px",
   },
 
   navItem: {
     width: "100%",
-    border: "none",
-    background: "transparent",
-    color: "#C9D8E6",
-    padding: "10px 11px",
-    borderRadius: "9px",
     display: "flex",
     alignItems: "center",
-    gap: "10px",
-    textAlign: "left",
+    gap: "11px",
+    border: "1px solid transparent",
+    background: "transparent",
+    color: "#C9D8E6",
+    padding: "11px 13px",
+    borderRadius: "9px",
     cursor: "pointer",
-    fontSize: "11px",
+    textAlign: "left",
+    fontSize: "12px",
     fontWeight: 700,
   },
 
   activeNavItem: {
-    background: "#1E3A56",
+    background:
+      "linear-gradient(135deg, #173B5A, #1E3A56)",
     color: "#ffffff",
+    border:
+      "1px solid #2F5874",
+    boxShadow:
+      "0 5px 12px rgba(0,0,0,0.10)",
   },
 
   logoutNavItem: {
     width: "100%",
-    border:
-      "1px solid #294B66",
-    background: "#173B5A",
-    color: "#ffffff",
-    padding: "10px 11px",
-    borderRadius: "9px",
     display: "flex",
     alignItems: "center",
-    gap: "10px",
-    textAlign: "left",
+    gap: "11px",
+    border: "1px solid #5B2B2B",
+    background: "#3B1D1D",
+    color: "#FFD7D7",
+    padding: "11px 13px",
+    borderRadius: "9px",
     cursor: "pointer",
-    fontSize: "11px",
-    fontWeight: 800,
-    marginTop: "10px",
+    textAlign: "left",
+    fontSize: "12px",
+    fontWeight: 700,
+    marginTop: "8px",
   },
 
   mainContent: {
-    marginLeft: "245px",
-    width:
-      "calc(100% - 245px)",
+    marginLeft: "260px",
+    width: "calc(100% - 260px)",
     minHeight: "100vh",
-    padding: "22px",
-    boxSizing: "border-box",
-    minWidth: 0,
-  },
-
-  mobileMainContent: {
-    marginLeft: 0,
-    width: "100%",
-    paddingTop:
-      "calc(76px + env(safe-area-inset-top, 0px))",
-    paddingRight: "12px",
-    paddingBottom: "20px",
-    paddingLeft: "12px",
+    padding: "30px",
     boxSizing: "border-box",
   },
 
   topBar: {
     display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: "20px",
-    marginBottom: "18px",
-  },
-
-  mobileTopBar: {
-    alignItems: "flex-start",
-    gap: "8px",
+    alignItems: "center",
+    marginBottom: "20px",
   },
 
   pageTitle: {
-    fontSize: "24px",
+    fontSize: "26px",
     fontWeight: 900,
     color: "#102A43",
   },
 
   pageSubtitle: {
-    color: "#6B8297",
-    fontSize: "11px",
-    marginTop: "4px",
+    fontSize: "12px",
+    color: "#6B8197",
+    marginTop: "5px",
   },
 
   welcomeCard: {
-    background: "#102A43",
-    borderRadius: "18px",
-    padding: "24px",
-    color: "#ffffff",
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: "15px",
-    marginBottom: "18px",
+    gap: "18px",
+    background:
+      "linear-gradient(135deg, #102A43, #173B5A)",
+    color: "#ffffff",
+    borderRadius: "18px",
+    padding: "22px 24px",
+    marginBottom: "20px",
     border:
       "1px solid #1E3A56",
-    minWidth: 0,
-    boxSizing: "border-box",
+    boxShadow:
+      "0 8px 25px rgba(16,42,67,0.14)",
+    overflow: "hidden",
   },
 
   mobileWelcomeCard: {
+    borderRadius: "15px",
     padding: "18px",
   },
 
   welcomeSmall: {
+    fontSize: "11px",
     color: "#9FB3C8",
-    fontSize: "10px",
-    fontWeight: 700,
     marginBottom: "4px",
   },
 
   welcomeTitle: {
     fontSize: "24px",
     fontWeight: 900,
-    marginBottom: "7px",
+    color: "#ffffff",
   },
 
   welcomeText: {
+    fontSize: "12px",
     color: "#C9D8E6",
-    fontSize: "11px",
-    lineHeight: 1.6,
-    overflowWrap: "anywhere",
+    marginTop: "5px",
   },
 
   welcomeTruck: {
-    width: "65px",
-    height: "65px",
-    borderRadius: "18px",
-    background: "#1E3A56",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "30px",
+    fontSize: "46px",
     flexShrink: 0,
   },
 
@@ -2872,8 +2217,8 @@ const styles = {
     display: "grid",
     gridTemplateColumns:
       "repeat(4, minmax(0, 1fr))",
-    gap: "14px",
-    marginBottom: "18px",
+    gap: "15px",
+    marginBottom: "20px",
   },
 
   mobileSummaryGrid: {
@@ -2884,34 +2229,37 @@ const styles = {
 
   summaryCard: {
     background: "#102A43",
-    borderRadius: "15px",
+    borderRadius: "16px",
     padding: "17px",
     border:
       "1px solid #1E3A56",
+    boxShadow:
+      "0 7px 20px rgba(16,42,67,0.12)",
     minWidth: 0,
-    boxSizing: "border-box",
-    overflow: "hidden",
-    transition:
-      "transform 0.3s ease, box-shadow 0.3s ease",
   },
 
   summaryIcon: {
-    fontSize: "21px",
-    marginBottom: "10px",
+    width: "42px",
+    height: "42px",
+    borderRadius: "11px",
+    background: "#173B5A",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "20px",
+    marginBottom: "11px",
   },
 
   summaryLabel: {
     color: "#9FB3C8",
     fontSize: "10px",
-    fontWeight: 700,
-    overflowWrap: "anywhere",
+    marginBottom: "5px",
   },
 
   summaryValue: {
     color: "#ffffff",
-    fontSize: "19px",
+    fontSize: "21px",
     fontWeight: 900,
-    marginTop: "5px",
     overflowWrap: "anywhere",
   },
 
@@ -2921,229 +2269,266 @@ const styles = {
     padding: "20px",
     border:
       "1px solid #1E3A56",
-    marginBottom: "18px",
+    marginBottom: "20px",
     minWidth: 0,
     boxSizing: "border-box",
     overflow: "hidden",
+    boxShadow:
+      "0 7px 22px rgba(16,42,67,0.12)",
   },
 
   sectionHeader: {
     display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: "12px",
-    marginBottom: "15px",
+    alignItems: "center",
+    gap: "15px",
+    marginBottom: "18px",
+    minWidth: 0,
   },
 
   mobileSectionHeader: {
     alignItems: "flex-start",
   },
 
+  sectionIcon: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "11px",
+    background: "#173B5A",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "20px",
+    flexShrink: 0,
+  },
+
   sectionTitle: {
     color: "#ffffff",
-    fontSize: "15px",
+    fontSize: "18px",
     fontWeight: 900,
-    overflowWrap: "anywhere",
   },
 
   sectionSubtitle: {
     color: "#9FB3C8",
-    fontSize: "9px",
+    fontSize: "11px",
     marginTop: "4px",
-    overflowWrap: "anywhere",
   },
 
-  greenButton: {
-    border: "none",
-    background:
-      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
-    color: "#ffffff",
+  addPlanButton: {
+    border: "1px solid #3E8E5B",
+    background: "#204A34",
+    color: "#8FD694",
     padding: "10px 14px",
     borderRadius: "9px",
-    cursor: "pointer",
-    fontSize: "10px",
     fontWeight: 800,
-    whiteSpace: "nowrap",
-    flexShrink: 0,
-  },
-
-  greenButtonLarge: {
-    border: "none",
-    background:
-      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
-    color: "#ffffff",
-    padding: "11px 18px",
-    borderRadius: "9px",
-    cursor: "pointer",
     fontSize: "11px",
-    fontWeight: 800,
-    maxWidth: "100%",
-  },
-
-  emptyState: {
-    textAlign: "center",
-    padding: "35px 15px",
-    background: "#173B5A",
-    borderRadius: "14px",
-    boxSizing: "border-box",
-  },
-
-  emptyIcon: {
-    fontSize: "32px",
-    marginBottom: "9px",
-  },
-
-  emptyTitle: {
-    color: "#ffffff",
-    fontSize: "15px",
-    fontWeight: 900,
-    overflowWrap: "anywhere",
-  },
-
-  emptyText: {
-    color: "#9FB3C8",
-    fontSize: "10px",
-    margin:
-      "6px 0 14px",
-    overflowWrap: "anywhere",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
   },
 
   planGrid: {
     display: "grid",
     gridTemplateColumns:
-      "repeat(2, minmax(0, 1fr))",
-    gap: "12px",
-    minWidth: 0,
+      "repeat(3, minmax(0, 1fr))",
+    gap: "14px",
   },
 
   mobilePlanGrid: {
     gridTemplateColumns:
-      "minmax(0, 1fr)",
+      "1fr",
   },
 
   planCard: {
     background: "#173B5A",
-    borderRadius: "13px",
+    borderRadius: "14px",
     padding: "15px",
     border:
       "1px solid #294B66",
     minWidth: 0,
-    boxSizing: "border-box",
-    overflow: "hidden",
   },
 
-  planTop: {
+  planCardTop: {
     display: "flex",
     justifyContent: "space-between",
     gap: "10px",
     alignItems: "flex-start",
-    minWidth: 0,
   },
 
   planName: {
     color: "#ffffff",
-    fontWeight: 900,
     fontSize: "14px",
-    overflowWrap: "anywhere",
+    fontWeight: 900,
   },
 
   planPrice: {
     color: "#8FD694",
+    fontSize: "21px",
     fontWeight: 900,
-    fontSize: "17px",
-    marginTop: "3px",
-    overflowWrap: "anywhere",
+    marginTop: "5px",
   },
 
   activeBadge: {
-    background: "#29435A",
-    color: "#8FD694",
     padding: "5px 8px",
     borderRadius: "7px",
+    background: "#2F6F45",
+    color: "#DDF5E1",
     fontSize: "8px",
     fontWeight: 900,
     flexShrink: 0,
   },
 
+  planDivider: {
+    height: "1px",
+    background: "#294B66",
+    margin: "13px 0",
+  },
+
   planStats: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(3, minmax(0, 1fr))",
+    display: "flex",
+    flexDirection: "column",
     gap: "8px",
-    marginTop: "15px",
-    paddingTop: "12px",
-    borderTop:
-      "1px solid #294B66",
-    minWidth: 0,
   },
 
-  statLabel: {
-    display: "block",
-    color: "#9FB3C8",
-    fontSize: "8px",
-    marginBottom: "3px",
-    overflowWrap: "anywhere",
-  },
-
-  statValue: {
-    display: "block",
-    color: "#ffffff",
+  planStat: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "10px",
     fontSize: "10px",
-    overflowWrap: "anywhere",
+  },
+
+  emptyState: {
+    textAlign: "center",
+    background: "#173B5A",
+    borderRadius: "14px",
+    padding: "28px 18px",
+    border: "1px solid #294B66",
+  },
+
+  emptyIcon: {
+    fontSize: "36px",
+    marginBottom: "8px",
+  },
+
+  emptyTitle: {
+    color: "#ffffff",
+    fontWeight: 900,
+    fontSize: "17px",
+  },
+
+  emptyText: {
+    color: "#9FB3C8",
+    fontSize: "11px",
+    marginTop: "6px",
+    marginBottom: "14px",
+  },
+
+  emptyButton: {
+    border: "none",
+    background:
+      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
+    color: "#ffffff",
+    padding: "10px 15px",
+    borderRadius: "9px",
+    fontWeight: 800,
+    fontSize: "11px",
+    cursor: "pointer",
   },
 
   twoColumnGrid: {
     display: "grid",
     gridTemplateColumns:
       "repeat(2, minmax(0, 1fr))",
-    gap: "18px",
-    marginBottom: "18px",
-    minWidth: 0,
+    gap: "15px",
   },
 
   mobileTwoColumnGrid: {
-    gridTemplateColumns:
-      "minmax(0, 1fr)",
+    gridTemplateColumns: "1fr",
     gap: "12px",
   },
 
-  sideCard: {
-    background: "#102A43",
-    borderRadius: "17px",
-    padding: "20px",
-    border:
-      "1px solid #1E3A56",
-    minWidth: 0,
-    boxSizing: "border-box",
-    overflow: "hidden",
-  },
-
-  walletRows: {
-    marginTop: "12px",
-  },
-
-  walletRow: {
+  cardHeader: {
     display: "flex",
-    justifyContent:
-      "space-between",
-    alignItems: "center",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "12px",
+    marginBottom: "15px",
+  },
+
+  cardTitle: {
+    color: "#ffffff",
+    fontSize: "16px",
+    fontWeight: 900,
+  },
+
+  cardSubtitle: {
+    color: "#9FB3C8",
+    fontSize: "10px",
+    marginTop: "4px",
+  },
+
+  walletMain: {
+    background: "#173B5A",
+    borderRadius: "12px",
+    padding: "15px",
+    border: "1px solid #294B66",
+    marginBottom: "12px",
+  },
+
+  walletLabel: {
+    color: "#9FB3C8",
+    fontSize: "10px",
+  },
+
+  walletValue: {
+    color: "#8FD694",
+    fontSize: "28px",
+    fontWeight: 900,
+    marginTop: "5px",
+    overflowWrap: "anywhere",
+  },
+
+  walletStats: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
+    gap: "9px",
+  },
+
+  walletStatBox: {
+    background: "#173B5A",
+    borderRadius: "10px",
+    padding: "10px",
+    border: "1px solid #294B66",
+    display: "flex",
+    flexDirection: "column",
+    gap: "5px",
+    minWidth: 0,
+  },
+
+  returnStats: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+
+  returnStat: {
+    display: "flex",
+    justifyContent: "space-between",
     gap: "10px",
     padding: "10px 0",
     borderBottom:
       "1px solid #1E3A56",
     color: "#C9D8E6",
     fontSize: "10px",
-    minWidth: 0,
   },
 
   teamMainNumber: {
-    color: "#ffffff",
-    fontSize: "30px",
+    color: "#8FD694",
+    fontSize: "36px",
     fontWeight: 900,
-    marginTop: "16px",
   },
 
-  teamLabel: {
+  teamMainLabel: {
     color: "#9FB3C8",
     fontSize: "10px",
     marginTop: "2px",
@@ -3155,8 +2540,7 @@ const styles = {
 
   teamStat: {
     display: "flex",
-    justifyContent:
-      "space-between",
+    justifyContent: "space-between",
     gap: "10px",
     padding: "8px 0",
     borderBottom:
@@ -3168,8 +2552,7 @@ const styles = {
 
   outlineButton: {
     marginTop: "15px",
-    border:
-      "1px solid #3E8E5B",
+    border: "1px solid #3E8E5B",
     background: "transparent",
     color: "#8FD694",
     padding: "9px 13px",
@@ -3190,8 +2573,7 @@ const styles = {
   referralCodeBox: {
     display: "flex",
     alignItems: "center",
-    justifyContent:
-      "space-between",
+    justifyContent: "space-between",
     gap: "10px",
     background: "#173B5A",
     borderRadius: "9px",
@@ -3233,12 +2615,13 @@ const styles = {
     background: "#102A43",
     borderRadius: "17px",
     padding: "20px",
-    border:
-      "1px solid #1E3A56",
+    border: "1px solid #1E3A56",
     marginBottom: "20px",
     minWidth: 0,
     boxSizing: "border-box",
     overflow: "hidden",
+    boxShadow:
+      "0 7px 22px rgba(16,42,67,0.12)",
   },
 
   textButton: {
@@ -3281,581 +2664,350 @@ const styles = {
   },
 
   transactionIcon: {
-    width: "34px",
-    height: "34px",
+    width: "35px",
+    height: "35px",
     borderRadius: "9px",
     background: "#173B5A",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    fontSize: "16px",
     flexShrink: 0,
   },
 
   transactionInfo: {
     flex: 1,
     minWidth: 0,
-    overflow: "hidden",
   },
 
   transactionTitle: {
     color: "#ffffff",
-    fontSize: "10px",
+    fontSize: "11px",
     fontWeight: 800,
   },
 
   transactionDate: {
     color: "#9FB3C8",
     fontSize: "8px",
-    marginTop: "2px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    marginTop: "3px",
+    overflowWrap: "anywhere",
+  },
+
+  transactionAmountArea: {
+    textAlign: "right",
+    flexShrink: 0,
   },
 
   transactionAmount: {
-    color: "#8FD694",
-    fontSize: "10px",
+    color: "#ffffff",
+    fontSize: "11px",
     fontWeight: 900,
-    flexShrink: 0,
   },
 
-  statusBadge: {
-    padding: "5px 7px",
-    borderRadius: "6px",
+  transactionStatus: {
+    display: "inline-block",
+    marginTop: "3px",
     fontSize: "7px",
     fontWeight: 900,
-    flexShrink: 0,
+    padding: "3px 5px",
+    borderRadius: "5px",
   },
 
   approvedStatus: {
-    background: "#294B66",
-    color: "#8FD694",
+    background: "#2F6F45",
+    color: "#DDF5E1",
+  },
+
+  completedStatus: {
+    background: "#2F5874",
+    color: "#D8ECFA",
   },
 
   pendingStatus: {
-    background: "#4C4630",
-    color: "#F4D77A",
+    background: "#705C2F",
+    color: "#FFE8A3",
   },
 
-  rejectedStatus: {
-    background: "#573533",
-    color: "#FF9F96",
-  },
-
-  dashboardSupport: {
-    background: "#102A43",
-    borderRadius: "18px",
-    padding: "22px",
-    marginTop: "20px",
-    marginBottom: "20px",
-    border:
-      "1px solid #1E3A56",
+  supportCard: {
     display: "flex",
     alignItems: "center",
-    gap: "16px",
+    gap: "15px",
+    background:
+      "linear-gradient(135deg, #102A43, #173B5A)",
+    borderRadius: "17px",
+    padding: "20px",
+    border: "1px solid #1E3A56",
+    marginBottom: "20px",
     boxShadow:
-      "0 8px 24px rgba(16,42,67,.12)",
-    minWidth: 0,
-    boxSizing: "border-box",
+      "0 7px 22px rgba(16,42,67,0.12)",
   },
 
-  mobileDashboardSupport: {
-    flexDirection: "column",
-    alignItems: "stretch",
-    textAlign: "center",
+  mobileSupportCard: {
+    alignItems: "flex-start",
   },
 
-  dashboardSupportIcon: {
-    width: "54px",
-    height: "54px",
-    borderRadius: "14px",
+  supportIcon: {
+    width: "50px",
+    height: "50px",
+    borderRadius: "12px",
     background: "#1E3A56",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "25px",
+    fontSize: "22px",
     flexShrink: 0,
-    alignSelf: "center",
   },
 
-  dashboardSupportContent: {
+  supportContent: {
     flex: 1,
     minWidth: 0,
   },
 
-  dashboardSupportTitle: {
+  supportTitle: {
     color: "#ffffff",
-    fontSize: "18px",
+    fontSize: "17px",
     fontWeight: 900,
-    marginBottom: "5px",
   },
 
-  dashboardSupportText: {
-    color: "#C9D8E6",
-    fontSize: "11px",
-    lineHeight: 1.6,
-    overflowWrap: "anywhere",
+  supportText: {
+    color: "#9FB3C8",
+    fontSize: "10px",
+    lineHeight: 1.5,
+    marginTop: "5px",
   },
 
-  dashboardSupportButtons: {
+  supportActions: {
     display: "flex",
-    alignItems: "center",
     gap: "8px",
-    flexShrink: 0,
+    marginTop: "12px",
+    flexWrap: "wrap",
   },
 
-  mobileSupportButtons: {
-    justifyContent: "center",
-    width: "100%",
-  },
-
-  liveChatButton: {
-    border: "none",
-    background:
-      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
-    color: "#ffffff",
-    padding: "11px 15px",
-    borderRadius: "9px",
-    cursor: "pointer",
-    fontSize: "11px",
+  supportButton: {
+    border: "1px solid #3E8E5B",
+    background: "#204A34",
+    color: "#8FD694",
+    padding: "9px 12px",
+    borderRadius: "8px",
     fontWeight: 800,
-    whiteSpace: "nowrap",
+    fontSize: "9px",
+    cursor: "pointer",
   },
 
   whatsappButton: {
-    textDecoration: "none",
-    background: "#1E3A56",
-    color: "#ffffff",
-    border:
-      "1px solid #294B66",
-    padding: "10px 14px",
-    borderRadius: "9px",
-    fontSize: "11px",
+    border: "1px solid #3E8E5B",
+    background: "transparent",
+    color: "#8FD694",
+    padding: "9px 12px",
+    borderRadius: "8px",
     fontWeight: 800,
-    whiteSpace: "nowrap",
+    fontSize: "9px",
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
   },
 
-  appDownloadCard: {
-    background:
-      "linear-gradient(135deg, #102A43, #173B5A)",
-    borderRadius: "18px",
-    padding: "22px",
-    marginTop: "20px",
-    marginBottom: "20px",
-    border:
-      "1px solid #294B66",
+  appCard: {
     display: "flex",
     alignItems: "center",
-    gap: "16px",
+    gap: "15px",
+    background: "#102A43",
+    borderRadius: "17px",
+    padding: "20px",
+    border: "1px solid #1E3A56",
     boxShadow:
-      "0 8px 24px rgba(16,42,67,.12)",
-    minWidth: 0,
-    boxSizing: "border-box",
+      "0 7px 22px rgba(16,42,67,0.12)",
   },
 
-  mobileAppDownloadCard: {
-    flexDirection: "column",
-    alignItems: "stretch",
-    textAlign: "center",
-    padding: "20px 16px",
+  mobileAppCard: {
+    alignItems: "flex-start",
   },
 
-  appDownloadIcon: {
-    width: "58px",
-    height: "58px",
-    borderRadius: "15px",
-    background: "#1E3A56",
+  appIcon: {
+    width: "50px",
+    height: "50px",
+    borderRadius: "12px",
+    background: "#173B5A",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "27px",
+    fontSize: "22px",
     flexShrink: 0,
-    alignSelf: "center",
   },
 
-  appDownloadContent: {
+  appContent: {
     flex: 1,
     minWidth: 0,
   },
 
-  appDownloadTitle: {
+  appTitle: {
     color: "#ffffff",
-    fontSize: "18px",
+    fontSize: "17px",
     fontWeight: 900,
-    marginBottom: "6px",
   },
 
-  appDownloadText: {
-    color: "#C9D8E6",
-    fontSize: "11px",
-    lineHeight: 1.6,
-    overflowWrap: "anywhere",
+  appText: {
+    color: "#9FB3C8",
+    fontSize: "10px",
+    lineHeight: 1.5,
+    marginTop: "5px",
+    marginBottom: "12px",
   },
 
-  appDownloadButton: {
+  appButton: {
     display: "inline-flex",
     alignItems: "center",
-    justifyContent: "center",
-    gap: "6px",
     textDecoration: "none",
+    border: "1px solid #3E8E5B",
     background:
       "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
     color: "#ffffff",
-    padding: "12px 18px",
-    borderRadius: "9px",
-    border:
-      "1px solid #4FA66A",
-    fontSize: "10px",
+    padding: "9px 13px",
+    borderRadius: "8px",
+    fontSize: "9px",
     fontWeight: 900,
-    whiteSpace: "nowrap",
-    cursor: "pointer",
-    boxShadow:
-      "0 5px 14px rgba(46,107,74,.18)",
-    flexShrink: 0,
   },
 
   loadingScreen: {
     minHeight: "100vh",
-    background: "#eef3f7",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    background: "#eef3f7",
     fontFamily: "Arial, sans-serif",
-    padding: "20px",
-    boxSizing: "border-box",
   },
 
   loadingCard: {
+    width: "min(92vw, 360px)",
     background: "#102A43",
     color: "#ffffff",
-    padding: "35px",
     borderRadius: "18px",
+    padding: "30px",
     textAlign: "center",
-    width: "280px",
-    maxWidth: "100%",
-    boxSizing: "border-box",
+    boxShadow:
+      "0 12px 35px rgba(16,42,67,0.18)",
   },
 
   loadingIcon: {
-    fontSize: "35px",
+    fontSize: "44px",
     marginBottom: "10px",
   },
 
   loadingTitle: {
-    fontSize: "18px",
+    fontSize: "21px",
     fontWeight: 900,
   },
 
   loadingText: {
+    fontSize: "11px",
     color: "#9FB3C8",
-    fontSize: "10px",
     marginTop: "6px",
   },
 
-  prizePopupOverlay: {
+  mobileHeader: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "58px",
+    background: "#102A43",
+    color: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    zIndex: 1200,
+    boxShadow:
+      "0 4px 16px rgba(16,42,67,0.18)",
+  },
+
+  menuButton: {
+    width: "58px",
+    height: "58px",
+    border: "none",
+    background: "transparent",
+    color: "#ffffff",
+    fontSize: "24px",
+    cursor: "pointer",
+  },
+
+  mobileHeaderTitle: {
+    fontSize: "16px",
+    fontWeight: 900,
+  },
+
+  mobileSidebar: {
+    width: "270px",
+    zIndex: 1250,
+    top: 0,
+    left: 0,
+  },
+
+  mobileOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background:
+      "rgba(5, 20, 33, 0.55)",
+    zIndex: 1240,
+  },
+
+  mobileMainContent: {
+    marginLeft: 0,
+    width: "100%",
+    padding: "76px 12px 20px",
+  },
+
+  mobileTopBar: {
+    marginBottom: "14px",
+  },
+
+  modalBackdrop: {
     position: "fixed",
     inset: 0,
     background:
-      "rgba(3, 12, 24, 0.82)",
-    backdropFilter: "blur(7px)",
-    WebkitBackdropFilter:
-      "blur(7px)",
+      "rgba(8,20,32,0.62)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 5000,
+    zIndex: 2000,
     padding: "18px",
-    boxSizing: "border-box",
   },
 
-  prizePopupCard: {
-    width: "100%",
-    maxWidth: "445px",
-    maxHeight: "92vh",
-    overflowY: "auto",
-    background:
-      "linear-gradient(145deg, #071d32 0%, #102A43 55%, #081a2d 100%)",
-    borderRadius: "24px",
-    border:
-      "1px solid rgba(66, 150, 211, 0.55)",
-    padding: "16px",
-    boxSizing: "border-box",
-    position: "relative",
-    boxShadow:
-      "0 25px 70px rgba(0,0,0,.55), 0 0 45px rgba(30,120,190,.12)",
-  },
-
-  prizePopupTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "10px",
-    marginBottom: "12px",
-  },
-
-  prizeBrandPill: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "7px 12px",
-    borderRadius: "999px",
-    background:
-      "linear-gradient(135deg, #173B5A, #1E4C70)",
-    border:
-      "1px solid rgba(103, 180, 235, .35)",
-    color: "#ffffff",
-    fontSize: "9px",
-    fontWeight: 900,
-    letterSpacing: ".5px",
-    boxShadow:
-      "0 4px 15px rgba(0,0,0,.18)",
-  },
-
-  prizeCloseTop: {
-    width: "34px",
-    height: "34px",
-    borderRadius: "50%",
-    border:
-      "1px solid rgba(154, 190, 214, .3)",
-    background:
-      "rgba(255,255,255,.08)",
-    color: "#ffffff",
-    fontSize: "22px",
-    lineHeight: 1,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  prizeHero: {
+  featureModal: {
+    width: "min(92vw, 420px)",
+    background: "#102A43",
+    borderRadius: "18px",
+    padding: "30px",
     position: "relative",
     textAlign: "center",
-    borderRadius: "20px",
-    padding: "22px 15px 20px",
-    background:
-      "linear-gradient(160deg, rgba(18,58,88,.96), rgba(7,29,49,.98))",
-    border:
-      "1px solid rgba(68, 142, 193, .42)",
-    overflow: "hidden",
-    animation:
-      "prizeGlow 3.5s ease-in-out infinite",
-  },
-
-  prizeGlowIcon: {
-    width: "66px",
-    height: "66px",
-    margin: "0 auto 10px",
-    borderRadius: "20px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "35px",
-    background:
-      "linear-gradient(145deg, #263F5A, #162D45)",
-    border:
-      "1px solid rgba(247,201,72,.42)",
-    boxShadow:
-      "0 8px 28px rgba(247,201,72,.12)",
-  },
-
-  prizeSmallTitle: {
-    color: "#8FB4CE",
-    fontSize: "9px",
-    fontWeight: 900,
-    letterSpacing: "1.5px",
-    marginBottom: "6px",
-  },
-
-  prizeMainTitle: {
-    color: "#F7C948",
-    fontSize: "28px",
-    lineHeight: 1.1,
-    fontWeight: 1000,
-    letterSpacing: ".3px",
-    textShadow:
-      "0 3px 18px rgba(247,201,72,.2)",
-  },
-
-  prizeSubtitle: {
-    color: "#D7E6F0",
-    fontSize: "10px",
-    fontWeight: 700,
-    marginTop: "8px",
-  },
-
-  prizeDivider: {
-    width: "70%",
-    height: "1px",
-    margin: "16px auto",
-    background:
-      "linear-gradient(90deg, transparent, rgba(247,201,72,.6), transparent)",
-  },
-
-  prizeMessage: {
-    color: "#AFC5D5",
-    fontSize: "10px",
-    fontWeight: 700,
-    lineHeight: 1.5,
-  },
-
-  prizeTarget: {
-    display: "inline-block",
-    margin: "7px 0",
-    padding: "7px 15px",
-    borderRadius: "10px",
-    background:
-      "linear-gradient(135deg, #193C59, #102A43)",
-    border:
-      "1px solid rgba(78,160,215,.4)",
-    color: "#ffffff",
-    fontSize: "20px",
-    fontWeight: 1000,
-    letterSpacing: ".5px",
-    boxShadow:
-      "0 6px 20px rgba(0,0,0,.18)",
-  },
-
-  prizeAmount: {
-    color: "#F7C948",
-    fontSize: "36px",
-    lineHeight: 1,
-    fontWeight: 1000,
-    marginTop: "7px",
-    letterSpacing: ".5px",
-    textShadow:
-      "0 4px 25px rgba(247,201,72,.24)",
-  },
-
-  prizeBottomGlow: {
-    color: "#F7C948",
-    fontSize: "20px",
-    marginTop: "12px",
-    opacity: 0.8,
-  },
-
-  channelPrizeCard: {
-    marginTop: "12px",
-    padding: "13px",
-    borderRadius: "16px",
-    background:
-      "linear-gradient(135deg, rgba(24,58,83,.96), rgba(11,35,55,.98))",
-    border:
-      "1px solid rgba(79,157,207,.38)",
-    display: "flex",
-    alignItems: "center",
-    gap: "11px",
-    boxShadow:
-      "0 8px 24px rgba(0,0,0,.16)",
-  },
-
-  channelIcon: {
-    width: "45px",
-    height: "45px",
-    flexShrink: 0,
-    borderRadius: "13px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "23px",
-    background:
-      "linear-gradient(145deg, #274D6C, #173B5A)",
-    border:
-      "1px solid rgba(247,201,72,.3)",
-  },
-
-  channelInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  channelTitle: {
-    color: "#ffffff",
-    fontSize: "10px",
-    fontWeight: 1000,
-    letterSpacing: ".3px",
-    overflowWrap: "anywhere",
-  },
-
-  channelSubtitle: {
-    color: "#8FAFC4",
-    fontSize: "8px",
-    marginTop: "4px",
-    lineHeight: 1.4,
-  },
-
-  channelButton: {
-    flexShrink: 0,
-    textDecoration: "none",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "9px 11px",
-    borderRadius: "9px",
-    background:
-      "linear-gradient(135deg, #F7C948, #DDAE32)",
-    color: "#102A43",
-    fontSize: "8px",
-    fontWeight: 1000,
-    whiteSpace: "nowrap",
-    boxShadow:
-      "0 5px 16px rgba(247,201,72,.16)",
-  },
-
-  prizeBottomButtons: {
-    marginTop: "12px",
-    display: "flex",
-    gap: "8px",
-  },
-
-  prizeCloseButton: {
-    width: "100%",
-    border:
-      "1px solid rgba(111,153,181,.35)",
-    background:
-      "linear-gradient(135deg, #173B5A, #102A43)",
-    color: "#D8E7F0",
-    padding: "12px",
-    borderRadius: "12px",
-    cursor: "pointer",
-    fontSize: "10px",
-    fontWeight: 900,
-    letterSpacing: ".4px",
-  },
-
-  modalOverlay: {
-    position: "fixed",
-    inset: 0,
-    background:
-      "rgba(7, 24, 38, 0.72)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 6000,
-    padding: "20px",
-    boxSizing: "border-box",
-  },
-
-  modalCard: {
-    width: "100%",
-    maxWidth: "390px",
-    background: "#102A43",
     border:
       "1px solid #1E3A56",
-    borderRadius: "18px",
-    padding: "28px",
-    textAlign: "center",
-    boxSizing: "border-box",
+    boxShadow:
+      "0 18px 45px rgba(0,0,0,0.28)",
+  },
+
+  modalClose: {
+    position: "absolute",
+    top: "10px",
+    right: "10px",
+    width: "32px",
+    height: "32px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#173B5A",
+    color: "#ffffff",
+    cursor: "pointer",
   },
 
   modalIcon: {
-    fontSize: "35px",
+    fontSize: "40px",
     marginBottom: "10px",
   },
 
   modalTitle: {
     color: "#ffffff",
-    fontSize: "19px",
+    fontSize: "22px",
     fontWeight: 900,
   },
 
@@ -3863,6 +3015,89 @@ const styles = {
     color: "#9FB3C8",
     fontSize: "11px",
     lineHeight: 1.6,
-    margin: "8px 0 18px",
+    marginTop: "8px",
+  },
+
+  prizeBackdrop: {
+    position: "fixed",
+    inset: 0,
+    background:
+      "rgba(8,20,32,0.72)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2100,
+    padding: "18px",
+  },
+
+  prizePopup: {
+    width: "min(92vw, 400px)",
+    background:
+      "linear-gradient(135deg, #102A43, #173B5A)",
+    borderRadius: "20px",
+    padding: "32px 25px 25px",
+    position: "relative",
+    textAlign: "center",
+    border:
+      "1px solid #294B66",
+    boxShadow:
+      "0 0 28px rgba(247,201,72,0.16), 0 18px 45px rgba(0,0,0,0.30)",
+    animation:
+      "prizePopupIn 0.35s ease-out",
+  },
+
+  prizeClose: {
+    position: "absolute",
+    top: "11px",
+    right: "11px",
+    width: "33px",
+    height: "33px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#1E3A56",
+    color: "#ffffff",
+    cursor: "pointer",
+    fontSize: "14px",
+    fontWeight: 900,
+  },
+
+  prizeIcon: {
+    width: "68px",
+    height: "68px",
+    borderRadius: "19px",
+    background: "#1E3A56",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "35px",
+    margin: "0 auto 15px",
+    animation:
+      "prizeIconFloat 2.5s ease-in-out infinite",
+  },
+
+  prizeTitle: {
+    color: "#ffffff",
+    fontSize: "23px",
+    fontWeight: 900,
+  },
+
+  prizeText: {
+    color: "#C9D8E6",
+    fontSize: "11px",
+    lineHeight: 1.6,
+    marginTop: "8px",
+  },
+
+  prizeButton: {
+    marginTop: "18px",
+    border: "none",
+    background:
+      "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
+    color: "#ffffff",
+    padding: "12px 22px",
+    borderRadius: "10px",
+    fontWeight: 900,
+    fontSize: "11px",
+    cursor: "pointer",
   },
 };
