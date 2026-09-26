@@ -1,178 +1,335 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export default function DepositHistoryPage() {
   const [deposits, setDeposits] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const normalizePhone = (value) => {
+    return String(value || "").trim();
+  };
+
   useEffect(() => {
-    const loggedIn = localStorage.getItem("transportLoggedIn");
+    const loadDepositHistory = async () => {
+      const loggedIn = localStorage.getItem("transportLoggedIn");
 
-    if (loggedIn !== "true") {
-      window.location.href = "/login";
-      return;
-    }
+      if (loggedIn !== "true") {
+        window.location.href = "/login";
+        return;
+      }
 
-    const userData = localStorage.getItem("transportUser");
+      const userData = localStorage.getItem("transportUser");
 
-    if (!userData) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const user = JSON.parse(userData);
-
-      const phone =
-        user.phone ||
-        user.mobile ||
-        user.phoneNumber ||
-        user.username;
-
-      if (!phone) {
+      if (!userData) {
         setLoading(false);
         return;
       }
 
-      // Current user's deposit requests
-      const userKey = `transportDepositRequests_${phone}`;
-      const oldUserKey = `transportDepositRequest_${phone}`;
-
-      let userDeposits = [];
-      let oldUserDeposit = null;
-
       try {
-        const savedUserDeposits = localStorage.getItem(userKey);
+        const user = JSON.parse(userData);
 
-        if (savedUserDeposits) {
-          const parsed = JSON.parse(savedUserDeposits);
+        const phone =
+          user.phone ||
+          user.mobile ||
+          user.phoneNumber ||
+          user.username;
 
-          if (Array.isArray(parsed)) {
-            userDeposits = parsed;
-          }
+        if (!phone) {
+          setLoading(false);
+          return;
         }
-      } catch (error) {
-        console.error("Error reading user deposit history:", error);
-      }
 
-      try {
-        const savedOldDeposit = localStorage.getItem(oldUserKey);
+        const normalizedPhone = normalizePhone(phone);
 
-        if (savedOldDeposit) {
-          const parsed = JSON.parse(savedOldDeposit);
+        // =========================================================
+        // 1. LOAD EXISTING LOCAL HISTORY
+        // =========================================================
 
-          if (parsed) {
-            oldUserDeposit = parsed;
+        const userKey = `transportDepositRequests_${phone}`;
+        const oldUserKey = `transportDepositRequest_${phone}`;
+
+        let userDeposits = [];
+        let oldUserDeposit = null;
+
+        try {
+          const savedUserDeposits = localStorage.getItem(userKey);
+
+          if (savedUserDeposits) {
+            const parsed = JSON.parse(savedUserDeposits);
+
+            if (Array.isArray(parsed)) {
+              userDeposits = parsed;
+            }
           }
+        } catch (error) {
+          console.error(
+            "Error reading user deposit history:",
+            error
+          );
         }
-      } catch (error) {
-        console.error("Error reading old deposit history:", error);
-      }
 
-      // IMPORTANT:
-      // Admin approval updates the GLOBAL deposit list.
-      // So we read the global list and use its status as the
-      // latest/authoritative status.
-      let globalDeposits = [];
+        try {
+          const savedOldDeposit =
+            localStorage.getItem(oldUserKey);
 
-      try {
-        const savedGlobalDeposits = localStorage.getItem(
-          "transportDepositRequests"
-        );
+          if (savedOldDeposit) {
+            const parsed = JSON.parse(savedOldDeposit);
 
-        if (savedGlobalDeposits) {
-          const parsed = JSON.parse(savedGlobalDeposits);
+            if (parsed) {
+              oldUserDeposit = parsed;
+            }
+          }
+        } catch (error) {
+          console.error(
+            "Error reading old deposit history:",
+            error
+          );
+        }
 
-          if (Array.isArray(parsed)) {
-            globalDeposits = parsed.filter((deposit) => {
-              const depositPhone =
-                deposit.userPhone ||
-                deposit.phone ||
-                deposit.mobile ||
-                deposit.user?.phone;
+        // =========================================================
+        // 2. LOAD CURRENT STATUS FROM SUPABASE
+        // =========================================================
 
-              return String(depositPhone || "") === String(phone);
+        let supabaseDeposits = [];
+
+        try {
+          const { data, error } = await supabase
+            .from("deposit_requests")
+            .select("*")
+            .eq(
+              "user_data->>phone",
+              normalizedPhone
+            )
+            .order("created_at", {
+              ascending: false,
+            });
+
+          if (error) {
+            console.error(
+              "Supabase Deposit History Error:",
+              error
+            );
+          } else if (Array.isArray(data)) {
+            supabaseDeposits = data.map((row) => {
+              const rowUser =
+                row.user_data &&
+                typeof row.user_data === "object"
+                  ? row.user_data
+                  : {};
+
+              const rowPlan =
+                row.plan &&
+                typeof row.plan === "object"
+                  ? row.plan
+                  : {};
+
+              return {
+                id: row.id,
+
+                requestId: row.id,
+
+                status:
+                  row.status ||
+                  "Pending",
+
+                amount:
+                  row.deposit_amount ??
+                  rowPlan.amount ??
+                  rowPlan.price ??
+                  0,
+
+                price:
+                  row.deposit_amount ??
+                  rowPlan.amount ??
+                  rowPlan.price ??
+                  0,
+
+                plan: rowPlan,
+
+                planName:
+                  rowPlan.name ||
+                  row.plan_name ||
+                  "Transport Plan",
+
+                paymentMethod:
+                  row.payment_method ||
+                  "—",
+
+                paymentMethodId:
+                  row.payment_method_id ||
+                  "",
+
+                accountName:
+                  row.account_name ||
+                  "",
+
+                accountNumber:
+                  row.account_number ||
+                  "",
+
+                bankName:
+                  row.bank_name ||
+                  "",
+
+                transactionId:
+                  row.transaction_id ||
+                  "",
+
+                screenshot:
+                  row.screenshot ||
+                  "",
+
+                screenshotName:
+                  row.screenshot_name ||
+                  "",
+
+                submittedAt:
+                  row.created_at ||
+                  "",
+
+                createdAt:
+                  row.created_at ||
+                  "",
+
+                updatedAt:
+                  row.updated_at ||
+                  "",
+
+                userPhone:
+                  rowUser.phone ||
+                  rowUser.mobile ||
+                  normalizedPhone,
+
+                user: rowUser,
+              };
             });
           }
+        } catch (error) {
+          console.error(
+            "Error loading deposits from Supabase:",
+            error
+          );
         }
-      } catch (error) {
-        console.error("Error reading global deposit history:", error);
-      }
 
-      /*
-       * Merge user-specific + global records.
-       *
-       * If the same request exists in both places,
-       * the GLOBAL record wins because Admin updates
-       * the global record from Pending -> Approved/Rejected.
-       */
-      const mergedMap = new Map();
+        // =========================================================
+        // 3. MERGE LOCAL + SUPABASE
+        //
+        // Supabase record ALWAYS wins when the same request exists.
+        // This makes Admin Approved/Rejected status appear here.
+        // =========================================================
 
-      // First add old/user-specific records
-      userDeposits.forEach((deposit, index) => {
-        const key =
-          deposit.id ||
-          deposit.requestId ||
-          `${deposit.amount || deposit.price || 0}-${deposit.submittedAt || deposit.createdAt || deposit.date || index}`;
+        const mergedMap = new Map();
 
-        mergedMap.set(String(key), deposit);
-      });
+        // Local user records
+        userDeposits.forEach((deposit, index) => {
+          const key =
+            deposit.id ||
+            deposit.requestId ||
+            `${deposit.amount || deposit.price || 0}-${
+              deposit.submittedAt ||
+              deposit.createdAt ||
+              deposit.date ||
+              index
+            }`;
 
-      // Add old single-record format if it exists
-      if (oldUserDeposit) {
-        const key =
-          oldUserDeposit.id ||
-          oldUserDeposit.requestId ||
-          `old-${oldUserDeposit.amount || oldUserDeposit.price || 0}-${oldUserDeposit.submittedAt || oldUserDeposit.createdAt || oldUserDeposit.date || "deposit"}`;
+          mergedMap.set(String(key), deposit);
+        });
 
-        mergedMap.set(String(key), oldUserDeposit);
-      }
+        // Old single-record format
+        if (oldUserDeposit) {
+          const key =
+            oldUserDeposit.id ||
+            oldUserDeposit.requestId ||
+            `old-${
+              oldUserDeposit.amount ||
+              oldUserDeposit.price ||
+              0
+            }-${
+              oldUserDeposit.submittedAt ||
+              oldUserDeposit.createdAt ||
+              oldUserDeposit.date ||
+              "deposit"
+            }`;
 
-      // Global records overwrite matching records.
-      // This brings the latest Admin status.
-      globalDeposits.forEach((deposit, index) => {
-        const key =
-          deposit.id ||
-          deposit.requestId ||
-          `${deposit.amount || deposit.price || 0}-${deposit.submittedAt || deposit.createdAt || deposit.date || index}`;
+          mergedMap.set(String(key), oldUserDeposit);
+        }
 
-        mergedMap.set(String(key), deposit);
-      });
+        // Supabase records overwrite local records
+        supabaseDeposits.forEach((deposit, index) => {
+          const key =
+            deposit.id ||
+            deposit.requestId ||
+            `${deposit.amount || deposit.price || 0}-${
+              deposit.submittedAt ||
+              deposit.createdAt ||
+              index
+            }`;
 
-      const finalDeposits = Array.from(mergedMap.values());
+          mergedMap.set(String(key), deposit);
+        });
 
-      // Sort newest first
-      finalDeposits.sort((a, b) => {
-        const dateA = new Date(
-          a.submittedAt ||
-            a.createdAt ||
+        const finalDeposits =
+          Array.from(mergedMap.values());
+
+        // =========================================================
+        // 4. SORT NEWEST FIRST
+        // =========================================================
+
+        finalDeposits.sort((a, b) => {
+          const dateA = new Date(
             a.updatedAt ||
-            a.date ||
-            0
-        ).getTime();
+              a.submittedAt ||
+              a.createdAt ||
+              a.date ||
+              0
+          ).getTime();
 
-        const dateB = new Date(
-          b.submittedAt ||
-            b.createdAt ||
+          const dateB = new Date(
             b.updatedAt ||
-            b.date ||
-            0
-        ).getTime();
+              b.submittedAt ||
+              b.createdAt ||
+              b.date ||
+              0
+          ).getTime();
 
-        return dateB - dateA;
-      });
+          return dateB - dateA;
+        });
 
-      setDeposits(finalDeposits);
-    } catch (error) {
-      console.error("Error loading deposit history:", error);
-    }
+        // =========================================================
+        // 5. SAVE LATEST SUPABASE DATA LOCALLY TOO
+        // =========================================================
 
-    setLoading(false);
+        try {
+          localStorage.setItem(
+            userKey,
+            JSON.stringify(finalDeposits)
+          );
+        } catch (error) {
+          console.error(
+            "Error saving updated deposit history locally:",
+            error
+          );
+        }
+
+        setDeposits(finalDeposits);
+      } catch (error) {
+        console.error(
+          "Error loading deposit history:",
+          error
+        );
+      }
+
+      setLoading(false);
+    };
+
+    loadDepositHistory();
   }, []);
 
   const getStatusStyle = (status) => {
-    const normalizedStatus = String(status || "Pending").toLowerCase();
+    const normalizedStatus =
+      String(status || "Pending").toLowerCase();
 
     if (normalizedStatus === "approved") {
       return {
@@ -216,7 +373,9 @@ export default function DepositHistoryPage() {
   if (loading) {
     return (
       <div style={styles.page}>
-        <div style={styles.loadingCard}>Loading deposit history...</div>
+        <div style={styles.loadingCard}>
+          Loading deposit history...
+        </div>
       </div>
     );
   }
@@ -226,7 +385,10 @@ export default function DepositHistoryPage() {
       <div style={styles.container}>
         <div style={styles.header}>
           <div>
-            <h1 style={styles.title}>Deposit History</h1>
+            <h1 style={styles.title}>
+              Deposit History
+            </h1>
+
             <p style={styles.subtitle}>
               View your deposit requests and their current status.
             </p>
@@ -249,7 +411,8 @@ export default function DepositHistoryPage() {
         ) : (
           <div style={styles.list}>
             {deposits.map((deposit, index) => {
-              const status = deposit.status || "Pending";
+              const status =
+                deposit.status || "Pending";
 
               const planName =
                 deposit.plan?.name ||
@@ -260,6 +423,7 @@ export default function DepositHistoryPage() {
               const amount =
                 deposit.amount ??
                 deposit.price ??
+                deposit.depositAmount ??
                 deposit.plan?.amount ??
                 deposit.plan?.price ??
                 0;
@@ -315,7 +479,9 @@ export default function DepositHistoryPage() {
 
                       <strong style={styles.amount}>
                         PKR{" "}
-                        {Number(amount || 0).toLocaleString()}
+                        {Number(
+                          amount || 0
+                        ).toLocaleString()}
                       </strong>
                     </div>
 
@@ -358,30 +524,43 @@ export default function DepositHistoryPage() {
 
                   {deposit.transactionId ? (
                     <div style={styles.transactionBox}>
-                      <span style={styles.transactionLabel}>
+                      <span
+                        style={styles.transactionLabel}
+                      >
                         Transaction ID
                       </span>
 
-                      <strong style={styles.transactionId}>
+                      <strong
+                        style={styles.transactionId}
+                      >
                         {deposit.transactionId}
                       </strong>
                     </div>
                   ) : null}
 
-                  {status.toLowerCase() === "approved" ? (
-                    <div style={styles.approvedMessage}>
+                  {String(status).toLowerCase() ===
+                  "approved" ? (
+                    <div
+                      style={styles.approvedMessage}
+                    >
                       ✅ Deposit approved successfully.
                     </div>
                   ) : null}
 
-                  {status.toLowerCase() === "rejected" ? (
-                    <div style={styles.rejectedMessage}>
+                  {String(status).toLowerCase() ===
+                  "rejected" ? (
+                    <div
+                      style={styles.rejectedMessage}
+                    >
                       ❌ This deposit request was rejected.
                     </div>
                   ) : null}
 
-                  {status.toLowerCase() === "pending" ? (
-                    <div style={styles.pendingMessage}>
+                  {String(status).toLowerCase() ===
+                  "pending" ? (
+                    <div
+                      style={styles.pendingMessage}
+                    >
                       ⏳ Your deposit is currently under review.
                     </div>
                   ) : null}
