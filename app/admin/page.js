@@ -855,7 +855,7 @@ export default function Admin() {
 
   /*
    * ----------------------------------------------------
-   * TRANSACTIONS
+   * LOCAL TRANSACTIONS
    * ----------------------------------------------------
    */
   const saveTransaction = (
@@ -915,6 +915,175 @@ export default function Admin() {
       );
     }
   };
+
+  /*
+   * ----------------------------------------------------
+   * CENTRAL SUPABASE TRANSACTIONS
+   * ----------------------------------------------------
+   *
+   * Every new Deposit / Return / Withdraw /
+   * Referral Bonus transaction is also stored centrally.
+   * ----------------------------------------------------
+   */
+  const saveTransactionToSupabase =
+    async (
+      transaction,
+      phone
+    ) => {
+      const normalizedPhone =
+        normalizePhone(
+          phone ||
+            transaction?.phone ||
+            transaction?.userPhone ||
+            ""
+        );
+
+      if (
+        !transaction ||
+        !transaction.id ||
+        !normalizedPhone
+      ) {
+        return false;
+      }
+
+      let centralType =
+        String(
+          transaction.type ||
+            ""
+        ).trim();
+
+      let returnType =
+        transaction.returnType ||
+        null;
+
+      let description =
+        transaction.description ||
+        "";
+
+      if (
+        centralType.toLowerCase() ===
+        "weekly return"
+      ) {
+        centralType =
+          "Return";
+
+        returnType =
+          returnType ||
+          "Weekly";
+
+        description =
+          description ||
+          "Weekly Return";
+      } else if (
+        centralType.toLowerCase() ===
+        "withdrawal"
+      ) {
+        centralType =
+          "Withdraw";
+
+        description =
+          description ||
+          "Withdrawal";
+      } else if (
+        centralType.toLowerCase() ===
+        "deposit"
+      ) {
+        centralType =
+          "Deposit";
+
+        description =
+          description ||
+          "Deposit Approved";
+      } else if (
+        centralType.toLowerCase() ===
+        "referral bonus"
+      ) {
+        centralType =
+          "Referral Bonus";
+
+        description =
+          description ||
+          "Referral Bonus";
+      }
+
+      const createdAt =
+        transaction.createdAt ||
+        transaction.created_at ||
+        new Date().toISOString();
+
+      const transactionRow = {
+        id:
+          String(
+            transaction.id
+          ),
+
+        user_phone:
+          normalizedPhone,
+
+        type:
+          centralType,
+
+        amount:
+          Number(
+            transaction.amount || 0
+          ),
+
+        status:
+          transaction.status ||
+          "Pending",
+
+        return_type:
+          returnType,
+
+        description:
+          description,
+
+        plan_name:
+          transaction.planName ||
+          transaction.plan?.name ||
+          null,
+
+        created_at:
+          createdAt,
+      };
+
+      try {
+        const {
+          error,
+        } = await supabase
+          .from("transactions")
+          .upsert(
+            [transactionRow],
+            {
+              onConflict:
+                "id",
+            }
+          );
+
+        if (error) {
+          console.error(
+            "Supabase transaction save error:",
+            error
+          );
+
+          return false;
+        }
+
+        console.log(
+          "Transaction saved to Supabase:",
+          transactionRow
+        );
+
+        return true;
+      } catch (error) {
+        console.error(
+          "Supabase transaction save failed:",
+          error
+        );
+
+        return false;
+      }
+    };
 
   /*
    * Update an existing local transaction status.
@@ -2271,52 +2440,66 @@ export default function Admin() {
         "-L" +
         item.level;
 
+      const referralTransaction = {
+        id:
+          transactionId,
+
+        type:
+          "Referral Bonus",
+
+        amount:
+          bonusAmount,
+
+        depositAmount:
+          depositAmount,
+
+        percentage:
+          percent,
+
+        level:
+          item.level,
+
+        referredPhone:
+          getUserPhone(
+            referredUser
+          ),
+
+        referredName:
+          referredUser.fullName ||
+          referredUser.name ||
+          referredUser.username ||
+          "User",
+
+        status:
+          "Completed",
+
+        phone:
+          referrerPhone,
+
+        transactionId:
+          transactionId,
+
+        number:
+          referrerPhone,
+
+        date:
+          new Date().toLocaleString(),
+
+        createdAt:
+          new Date().toISOString(),
+
+        description:
+          "Referral Bonus - Level " +
+          item.level,
+      };
+
       saveTransaction(
-        {
-          id:
-            transactionId,
+        referralTransaction,
+        referrerPhone
+      );
 
-          type:
-            "Referral Bonus",
-
-          amount:
-            bonusAmount,
-
-          depositAmount:
-            depositAmount,
-
-          percentage:
-            percent,
-
-          level:
-            item.level,
-
-          referredPhone:
-            getUserPhone(
-              referredUser
-            ),
-
-          referredName:
-            referredUser.fullName ||
-            referredUser.name ||
-            referredUser.username ||
-            "User",
-
-          status:
-            "Completed",
-
-          phone:
-            referrerPhone,
-
-          transactionId:
-            transactionId,
-
-          number:
-            referrerPhone,
-
-          date:
-            new Date().toLocaleString(),
-        },
+      await saveTransactionToSupabase(
+        referralTransaction,
         referrerPhone
       );
 
@@ -2745,93 +2928,128 @@ export default function Admin() {
         phone
       );
 
+    const depositTransaction = {
+      id:
+        "deposit-" +
+        request.id,
+
+      type:
+        "Deposit",
+
+      amount:
+        planAmount,
+
+      planName:
+        planName,
+
+      status:
+        "Approved",
+
+      phone:
+        phone,
+
+      transactionId:
+        request.transactionId ||
+        request.txId ||
+        request.transectionId ||
+        request.transactionID ||
+        "",
+
+      number:
+        request.number ||
+        request.depositNumber ||
+        request.mobileNumber ||
+        request.depositPhone ||
+        phone ||
+        "",
+
+      screenshot:
+        request.screenshot ||
+        request.paymentScreenshot ||
+        request.receipt ||
+        "",
+
+      date:
+        request.submittedAt
+          ? new Date(
+              request.submittedAt
+            ).toLocaleString()
+          : new Date().toLocaleString(),
+
+      createdAt:
+        request.submittedAt ||
+        approvedAt,
+
+      description:
+        "Deposit Approved",
+    };
+
     saveTransaction(
-      {
+      depositTransaction,
+      phone
+    );
+
+    const depositTransactionSavedToSupabase =
+      await saveTransactionToSupabase(
+        depositTransaction,
+        phone
+      );
+
+    let weeklyTransactionSavedToSupabase =
+      true;
+
+    if (
+      weeklyReturn > 0
+    ) {
+      const weeklyTransaction = {
         id:
-          "deposit-" +
+          "weekly-return-" +
           request.id,
 
         type:
-          "Deposit",
+          "Weekly Return",
 
         amount:
-          planAmount,
+          weeklyReturn,
 
         planName:
           planName,
 
         status:
-          "Approved",
+          "Completed",
 
         phone:
           phone,
 
         transactionId:
-          request.transactionId ||
-          request.txId ||
-          request.transectionId ||
-          request.transactionID ||
           "",
 
         number:
-          request.number ||
-          request.depositNumber ||
-          request.mobileNumber ||
-          request.depositPhone ||
-          phone ||
-          "",
-
-        screenshot:
-          request.screenshot ||
-          request.paymentScreenshot ||
-          request.receipt ||
-          "",
+          phone,
 
         date:
-          request.submittedAt
-            ? new Date(
-                request.submittedAt
-              ).toLocaleString()
-            : new Date().toLocaleString(),
-      },
-      phone
-    );
+          new Date().toLocaleString(),
 
-    if (
-      weeklyReturn > 0
-    ) {
+        createdAt:
+          approvedAt,
+
+        returnType:
+          "Weekly",
+
+        description:
+          "First Weekly Return",
+      };
+
       saveTransaction(
-        {
-          id:
-            "weekly-return-" +
-            request.id,
-
-          type:
-            "Weekly Return",
-
-          amount:
-            weeklyReturn,
-
-          planName:
-            planName,
-
-          status:
-            "Completed",
-
-          phone:
-            phone,
-
-          transactionId:
-            "",
-
-          number:
-            phone,
-
-          date:
-            new Date().toLocaleString(),
-        },
+        weeklyTransaction,
         phone
       );
+
+      weeklyTransactionSavedToSupabase =
+        await saveTransactionToSupabase(
+          weeklyTransaction,
+          phone
+        );
     }
 
     let referralResult = {
@@ -2884,6 +3102,12 @@ export default function Admin() {
           " synced to Supabase."
         : " Warning: weekly return was not synced to Supabase.";
 
+    const transactionMessage =
+      depositTransactionSavedToSupabase &&
+      weeklyTransactionSavedToSupabase
+        ? " Deposit/Return transactions synced to Supabase."
+        : " Warning: one or more transaction records could not be synced to Supabase.";
+
     setMessage(
       planName +
         " for " +
@@ -2898,12 +3122,15 @@ export default function Admin() {
         " has been credited immediately. Next return will be available in 7 days." +
         weeklyReturnMessage +
         activePlanMessage +
+        transactionMessage +
         referralMessage
     );
 
     setMessageType(
       activePlanSavedToSupabase &&
-        weeklyReturnSavedToSupabase
+        weeklyReturnSavedToSupabase &&
+        depositTransactionSavedToSupabase &&
+        weeklyTransactionSavedToSupabase
         ? "success"
         : "error"
     );
@@ -2922,11 +3149,13 @@ export default function Admin() {
    * - Deducts withdrawal amount centrally
    * - Updates withdraw_requests in Supabase
    * - Updates local transaction status
+   * - Saves transaction centrally in Supabase
    *
    * REJECTION:
    * - Does NOT deduct withdrawable_returns
    * - Only changes withdrawal request status
    * - Updates local transaction to Rejected
+   * - Saves transaction centrally in Supabase
    * ----------------------------------------------------
    */
   const updateWithdrawStatus = async (
@@ -3289,7 +3518,7 @@ export default function Admin() {
 
         /*
          * STEP 5:
-         * Update existing Pending withdrawal transaction.
+         * Update existing Pending withdrawal transaction locally.
          */
         const withdrawalTransactionId =
           "withdraw-" +
@@ -3306,56 +3535,75 @@ export default function Admin() {
          * If no pending transaction was found,
          * create the approved transaction.
          */
+        const withdrawalTransaction = {
+          id:
+            withdrawalTransactionId,
+
+          type:
+            "Withdrawal",
+
+          amount:
+            withdrawAmount,
+
+          status:
+            "Approved",
+
+          phone:
+            phone,
+
+          transactionId:
+            request.transactionId ||
+            request.txId ||
+            request.transectionId ||
+            request.transactionID ||
+            "",
+
+          number:
+            request.number ||
+            request.withdrawNumber ||
+            request.mobileNumber ||
+            request.withdrawPhone ||
+            "",
+
+          screenshot:
+            request.screenshot ||
+            request.paymentScreenshot ||
+            request.receipt ||
+            "",
+
+          date:
+            request.submittedAt
+              ? new Date(
+                  request.submittedAt
+                ).toLocaleString()
+              : new Date().toLocaleString(),
+
+          createdAt:
+            request.submittedAt ||
+            new Date().toISOString(),
+
+          returnType:
+            request.returnType ||
+            "Weekly",
+
+          description:
+            "Withdrawal Approved",
+        };
+
         if (
           !updatedExistingTransaction
         ) {
           saveTransaction(
-            {
-              id:
-                withdrawalTransactionId,
-
-              type:
-                "Withdrawal",
-
-              amount:
-                withdrawAmount,
-
-              status:
-                "Approved",
-
-              phone:
-                phone,
-
-              transactionId:
-                request.transactionId ||
-                request.txId ||
-                request.transectionId ||
-                request.transactionID ||
-                "",
-
-              number:
-                request.number ||
-                request.withdrawNumber ||
-                request.mobileNumber ||
-                request.withdrawPhone ||
-                "",
-
-              screenshot:
-                request.screenshot ||
-                request.paymentScreenshot ||
-                request.receipt ||
-                "",
-
-              date:
-                request.submittedAt
-                  ? new Date(
-                      request.submittedAt
-                    ).toLocaleString()
-                  : new Date().toLocaleString(),
-            },
+            withdrawalTransaction,
             phone
           );
         }
+
+        const withdrawalTransactionSavedToSupabase =
+          await saveTransactionToSupabase(
+            withdrawalTransaction,
+            phone
+          );
 
         /*
          * STEP 6:
@@ -3406,11 +3654,18 @@ export default function Admin() {
             withdrawAmount.toLocaleString() +
             " has been deducted from withdrawable returns. Remaining withdrawable returns: PKR " +
             finalReturns.toLocaleString() +
-            "."
+            "." +
+            (
+              withdrawalTransactionSavedToSupabase
+                ? " Withdrawal transaction synced to Supabase."
+                : " Warning: withdrawal transaction could not be synced to Supabase."
+            )
         );
 
         setMessageType(
-          "success"
+          withdrawalTransactionSavedToSupabase
+            ? "success"
+            : "error"
         );
 
         return;
@@ -3493,56 +3748,75 @@ export default function Admin() {
             "Rejected"
           );
 
+        const withdrawalTransaction = {
+          id:
+            withdrawalTransactionId,
+
+          type:
+            "Withdrawal",
+
+          amount:
+            withdrawAmount,
+
+          status:
+            "Rejected",
+
+          phone:
+            phone,
+
+          transactionId:
+            request.transactionId ||
+            request.txId ||
+            request.transectionId ||
+            request.transactionID ||
+            "",
+
+          number:
+            request.number ||
+            request.withdrawNumber ||
+            request.mobileNumber ||
+            request.withdrawPhone ||
+            "",
+
+          screenshot:
+            request.screenshot ||
+            request.paymentScreenshot ||
+            request.receipt ||
+            "",
+
+          date:
+            request.submittedAt
+              ? new Date(
+                  request.submittedAt
+                ).toLocaleString()
+              : new Date().toLocaleString(),
+
+          createdAt:
+            request.submittedAt ||
+            new Date().toISOString(),
+
+          returnType:
+            request.returnType ||
+            "Weekly",
+
+          description:
+            "Withdrawal Rejected",
+        };
+
         if (
           !updatedExistingTransaction
         ) {
           saveTransaction(
-            {
-              id:
-                withdrawalTransactionId,
-
-              type:
-                "Withdrawal",
-
-              amount:
-                withdrawAmount,
-
-              status:
-                "Rejected",
-
-              phone:
-                phone,
-
-              transactionId:
-                request.transactionId ||
-                request.txId ||
-                request.transectionId ||
-                request.transactionID ||
-                "",
-
-              number:
-                request.number ||
-                request.withdrawNumber ||
-                request.mobileNumber ||
-                request.withdrawPhone ||
-                "",
-
-              screenshot:
-                request.screenshot ||
-                request.paymentScreenshot ||
-                request.receipt ||
-                "",
-
-              date:
-                request.submittedAt
-                  ? new Date(
-                      request.submittedAt
-                    ).toLocaleString()
-                  : new Date().toLocaleString(),
-            },
+            withdrawalTransaction,
             phone
           );
         }
+
+        const withdrawalTransactionSavedToSupabase =
+          await saveTransactionToSupabase(
+            withdrawalTransaction,
+            phone
+          );
 
         /*
          * Update local withdrawal request.
@@ -3576,11 +3850,18 @@ export default function Admin() {
         setMessage(
           "Withdrawal request of PKR " +
             withdrawAmount.toLocaleString() +
-            " rejected. No amount was deducted from the user's withdrawable returns."
+            " rejected. No amount was deducted from the user's withdrawable returns." +
+            (
+              withdrawalTransactionSavedToSupabase
+                ? " Withdrawal transaction synced to Supabase."
+                : " Warning: withdrawal transaction could not be synced to Supabase."
+            )
         );
 
         setMessageType(
-          "success"
+          withdrawalTransactionSavedToSupabase
+            ? "success"
+            : "error"
         );
 
         return;
