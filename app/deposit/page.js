@@ -84,16 +84,10 @@ const plans = [
 
 /* =========================
    PAYMENT METHODS
-   ONLY EASYPaisa + BANK
+   ONLY BANK
 ========================= */
 
 const paymentMethods = [
-  {
-    id: "easypaisa",
-    title: "Easypaisa",
-    accountName: "Fakhar Abbas",
-    accountNumber: "0345-5096922",
-  },
   {
     id: "bank",
     title: "Bank Transfer",
@@ -687,7 +681,7 @@ export default function Deposit() {
       if (fileInput) {
         fileInput.value = "";
       }
-        } catch (error) {
+    } catch (error) {
       console.error(
         "Deposit submission error:",
         error
@@ -931,10 +925,7 @@ export default function Deposit() {
               <div className="infoRow">
 
                 <span>
-                  {selectedPayment.id ===
-                  "bank"
-                    ? "Account Number"
-                    : "Account / Mobile Number"}
+                  Account Number
                 </span>
 
                 <strong>
