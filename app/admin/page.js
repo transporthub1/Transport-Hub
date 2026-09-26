@@ -72,11 +72,6 @@ export default function Admin() {
    * ----------------------------------------------------
    * MIGRATE OLD LOCAL USERS TO SUPABASE
    * ----------------------------------------------------
-   *
-   * Kept for compatibility with the existing system.
-   * Current loadUsers() does not automatically migrate
-   * localStorage users because Supabase is now the
-   * main source of registered users.
    */
   const migrateUsersToSupabase = async (
     oldUsers
@@ -244,15 +239,6 @@ export default function Admin() {
    * ----------------------------------------------------
    * LOAD USERS FROM SUPABASE
    * ----------------------------------------------------
-   *
-   * IMPORTANT:
-   * Supabase is the MAIN and DIRECT source.
-   *
-   * We do NOT fall back to localStorage when the
-   * Supabase request fails, because doing so can make
-   * the Admin Panel display only old local users.
-   *
-   * Password is never selected.
    */
   const loadUsers = async () => {
     try {
@@ -340,17 +326,10 @@ export default function Admin() {
           "",
       }));
 
-      /*
-       * Supabase result is shown directly.
-       */
       setUsers(
         mappedUsers
       );
 
-      /*
-       * Keep local compatibility copy.
-       * This does NOT control the Admin Users list.
-       */
       localStorage.setItem(
         "transportUsers",
         JSON.stringify(
@@ -608,8 +587,6 @@ export default function Admin() {
    * ----------------------------------------------------
    * WITHDRAW REQUESTS
    * ----------------------------------------------------
-   *
-   * Existing withdrawal system is preserved.
    */
   const loadWithdrawRequests = () => {
     let requests = [];
@@ -779,18 +756,39 @@ export default function Admin() {
    * ----------------------------------------------------
    * ACTIVE PLANS
    * ----------------------------------------------------
+   *
+   * Step 2:
+   * Active plan is saved to BOTH:
+   *
+   * 1. Existing localStorage system
+   * 2. Supabase active_plans table
+   *
+   * This keeps existing functionality working while
+   * also making the plan available centrally.
    */
-  const updateActivePlans = (
+  const updateActivePlans = async (
     newPlan,
     phone
   ) => {
-    if (!phone) {
-      return;
+    if (!phone || !newPlan) {
+      return false;
     }
 
+    const normalizedPhone =
+      normalizePhone(phone);
+
+    if (!normalizedPhone) {
+      return false;
+    }
+
+    /*
+     * ------------------------------------------------
+     * EXISTING LOCAL STORAGE LOGIC
+     * ------------------------------------------------
+     */
     const plansKey =
       "transportActivePlans_" +
-      phone;
+      normalizedPhone;
 
     let plans = [];
 
@@ -829,6 +827,108 @@ export default function Admin() {
       plansKey,
       JSON.stringify(plans)
     );
+
+    /*
+     * ------------------------------------------------
+     * NEW SUPABASE ACTIVE PLAN SAVE
+     * ------------------------------------------------
+     */
+    try {
+      const supabasePlanRow = {
+        id:
+          newPlan.id ||
+          "active-plan-" +
+            newPlan.depositRequestId,
+
+        deposit_request_id:
+          newPlan.depositRequestId ||
+          null,
+
+        user_phone:
+          normalizedPhone,
+
+        plan:
+          {
+            ...newPlan,
+          },
+
+        status:
+          newPlan.status ||
+          "Active",
+
+        activated_at:
+          newPlan.activatedAt ||
+          null,
+
+        approved_at:
+          newPlan.approvedAt ||
+          null,
+
+        last_return_at:
+          newPlan.lastReturnAt ||
+          null,
+
+        next_return_at:
+          newPlan.nextReturnAt ||
+          null,
+
+        returns_paid:
+          Number(
+            newPlan.returnsPaid || 0
+          ),
+
+        earned_returns:
+          Number(
+            newPlan.earnedReturns || 0
+          ),
+
+        total_earned:
+          Number(
+            newPlan.totalEarned || 0
+          ),
+
+        remaining_weeks:
+          Number(
+            newPlan.remainingWeeks ??
+              DURATION_WEEKS
+          ),
+      };
+
+      const {
+        error: activePlanError,
+      } = await supabase
+        .from("active_plans")
+        .upsert(
+          [supabasePlanRow],
+          {
+            onConflict:
+              "id",
+          }
+        );
+
+      if (activePlanError) {
+        console.error(
+          "Supabase active plan save error:",
+          activePlanError
+        );
+
+        return false;
+      }
+
+      console.log(
+        "Active plan saved to Supabase:",
+        supabasePlanRow.id
+      );
+
+      return true;
+    } catch (error) {
+      console.error(
+        "Active plan Supabase save error:",
+        error
+      );
+
+      return false;
+    }
   };
 
   /*
@@ -1805,10 +1905,14 @@ export default function Admin() {
         "Active",
     };
 
-    updateActivePlans(
-      activePlan,
-      phone
-    );
+    /*
+     * Save active plan to localStorage AND Supabase.
+     */
+    const activePlanSavedToSupabase =
+      await updateActivePlans(
+        activePlan,
+        phone
+      );
 
     saveTransaction(
       {
@@ -1937,6 +2041,11 @@ export default function Admin() {
         " No eligible referral bonus was found for this user.";
     }
 
+    const activePlanMessage =
+      activePlanSavedToSupabase
+        ? " Active plan saved to Supabase successfully."
+        : " Warning: active plan was saved locally, but could not be saved to Supabase.";
+
     setMessage(
       planName +
         " for " +
@@ -1949,10 +2058,15 @@ export default function Admin() {
         " approved successfully. First weekly return of PKR " +
         weeklyReturn.toLocaleString() +
         " has been credited immediately. Next return will be available in 7 days." +
+        activePlanMessage +
         referralMessage
     );
 
-    setMessageType("success");
+    setMessageType(
+      activePlanSavedToSupabase
+        ? "success"
+        : "error"
+    );
 
     await loadUsers();
   };
