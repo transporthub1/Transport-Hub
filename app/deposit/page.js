@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 /* =========================
    PLANS
@@ -373,7 +374,7 @@ export default function Deposit() {
      SUBMIT
   ========================= */
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     setMessage("");
@@ -548,7 +549,68 @@ export default function Deposit() {
       };
 
       /* =========================
+         SUPABASE
+      ========================= */
+
+      const { error: supabaseError } =
+        await supabase
+          .from("deposit_requests")
+          .insert({
+            id: request.id,
+
+            user_data: request.user,
+
+            payment_method:
+              request.paymentMethod,
+
+            payment_method_id:
+              request.paymentMethodId,
+
+            account_name:
+              request.accountName,
+
+            account_number:
+              request.accountNumber,
+
+            bank_name:
+              request.bankName,
+
+            transaction_id:
+              request.transactionId,
+
+            deposit_amount:
+              request.depositAmount,
+
+            plan:
+              request.plan,
+
+            screenshot:
+              request.screenshot,
+
+            screenshot_name:
+              request.screenshotName,
+
+            status:
+              request.status,
+
+            created_at:
+              request.createdAt,
+          });
+
+      if (supabaseError) {
+        console.error(
+          "Supabase deposit error:",
+          supabaseError
+        );
+
+        throw new Error(
+          supabaseError.message
+        );
+      }
+
+      /* =========================
          USER-SPECIFIC REQUESTS
+         KEEP LOCAL STORAGE
       ========================= */
 
       const userKey =
@@ -626,7 +688,10 @@ export default function Deposit() {
         fileInput.value = "";
       }
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Deposit submission error:",
+        error
+      );
 
       setMessage(
         "Something went wrong while submitting your deposit request."
