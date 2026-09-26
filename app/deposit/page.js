@@ -687,14 +687,16 @@ export default function Deposit() {
       if (fileInput) {
         fileInput.value = "";
       }
-    } catch (error) {
+        } catch (error) {
       console.error(
         "Deposit submission error:",
         error
       );
 
       setMessage(
-        "Something went wrong while submitting your deposit request."
+        error?.message
+          ? "Deposit Error: " + error.message
+          : "Deposit Error: Unknown error occurred."
       );
 
       setMessageType("error");
