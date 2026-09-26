@@ -509,11 +509,8 @@ export default function Dashboard() {
   const monthProfit =
     weeklyReturn * 4;
 
-  const walletBalance =
-    Number(user?.balance || 0) +
-    Number(
-      withdrawableReturns || 0
-    );
+const walletBalance =
+  Number(user?.balance || 0);
 
   const referralCode = useMemo(() => {
     if (!user) {
