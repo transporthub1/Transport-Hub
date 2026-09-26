@@ -62,10 +62,18 @@ export default function Admin() {
       return "";
     }
 
-    return String(value)
+    let phone = String(value)
       .replace(/\s+/g, "")
       .replace(/-/g, "")
       .trim();
+
+    if (phone.startsWith("+92")) {
+      phone = "0" + phone.slice(3);
+    } else if (phone.startsWith("0092")) {
+      phone = "0" + phone.slice(4);
+    }
+
+    return phone;
   };
 
   /*
@@ -756,15 +764,6 @@ export default function Admin() {
    * ----------------------------------------------------
    * ACTIVE PLANS
    * ----------------------------------------------------
-   *
-   * Step 2:
-   * Active plan is saved to BOTH:
-   *
-   * 1. Existing localStorage system
-   * 2. Supabase active_plans table
-   *
-   * This keeps existing functionality working while
-   * also making the plan available centrally.
    */
   const updateActivePlans = async (
     newPlan,
@@ -781,11 +780,6 @@ export default function Admin() {
       return false;
     }
 
-    /*
-     * ------------------------------------------------
-     * EXISTING LOCAL STORAGE LOGIC
-     * ------------------------------------------------
-     */
     const plansKey =
       "transportActivePlans_" +
       normalizedPhone;
@@ -828,11 +822,6 @@ export default function Admin() {
       JSON.stringify(plans)
     );
 
-    /*
-     * ------------------------------------------------
-     * NEW SUPABASE ACTIVE PLAN SAVE
-     * ------------------------------------------------
-     */
     try {
       const supabasePlanRow = {
         id:
@@ -847,10 +836,9 @@ export default function Admin() {
         user_phone:
           normalizedPhone,
 
-        plan:
-          {
-            ...newPlan,
-          },
+        plan: {
+          ...newPlan,
+        },
 
         status:
           newPlan.status ||
@@ -1135,95 +1123,342 @@ export default function Admin() {
     return chain;
   };
 
-  const updateUserBalance = (
+  /*
+   * ----------------------------------------------------
+   * UPDATE USER BALANCE
+   * ----------------------------------------------------
+   *
+   * NEW:
+   * The balance and referral bonus are now written to
+   * Supabase first, then mirrored to localStorage.
+   */
+  const updateUserBalance = async (
     phone,
     bonusAmount
   ) => {
     const normalizedPhone =
       normalizePhone(phone);
 
+    const amountToAdd =
+      Number(bonusAmount || 0);
+
     if (
       !normalizedPhone ||
-      !bonusAmount ||
-      bonusAmount <= 0
+      !Number.isFinite(
+        amountToAdd
+      ) ||
+      amountToAdd <= 0
     ) {
       return null;
     }
 
-    const savedUsers =
-      localStorage.getItem(
-        "transportUsers"
-      );
-
-    if (!savedUsers) {
-      return null;
-    }
-
-    let allUsers = [];
+    /*
+     * ------------------------------------------------
+     * 1. GET CURRENT USER FROM SUPABASE
+     * ------------------------------------------------
+     */
+    let supabaseUser = null;
 
     try {
-      const parsed =
-        JSON.parse(
-          savedUsers
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("users")
+        .select(
+          "id, full_name, phone, balance, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+        )
+        .eq(
+          "phone",
+          normalizedPhone
+        )
+        .maybeSingle();
+
+      if (error) {
+        console.error(
+          "Could not read user from Supabase before balance update:",
+          error
         );
 
-      if (Array.isArray(parsed)) {
-        allUsers = parsed;
+        return null;
       }
+
+      supabaseUser =
+        data || null;
     } catch (error) {
+      console.error(
+        "Supabase balance read error:",
+        error
+      );
+
       return null;
     }
 
-    let updatedUser = null;
+    if (!supabaseUser) {
+      console.error(
+        "User not found in Supabase:",
+        normalizedPhone
+      );
 
-    const updatedUsers =
-      allUsers.map((user) => {
-        const userPhone =
-          getUserPhone(user);
+      return null;
+    }
 
-        if (
-          userPhone !==
-          normalizedPhone
-        ) {
-          return user;
-        }
+    /*
+     * ------------------------------------------------
+     * 2. CALCULATE NEW CENTRAL BALANCE
+     * ------------------------------------------------
+     */
+    const currentBalance =
+      Number(
+        supabaseUser.balance || 0
+      );
 
-        const currentBalance =
-          Number(
-            user.balance || 0
-          );
+    const currentReferralBonus =
+      Number(
+        supabaseUser.referral_bonus || 0
+      );
 
-        const newBalance =
-          currentBalance +
-          bonusAmount;
+    const currentTotalReferralBonus =
+      Number(
+        supabaseUser.total_referral_bonus || 0
+      );
 
-        updatedUser = {
-          ...user,
+    const newBalance =
+      currentBalance +
+      amountToAdd;
+
+    const newReferralBonus =
+      currentReferralBonus +
+      amountToAdd;
+
+    const newTotalReferralBonus =
+      currentTotalReferralBonus +
+      amountToAdd;
+
+    /*
+     * ------------------------------------------------
+     * 3. WRITE TO SUPABASE
+     * ------------------------------------------------
+     */
+    try {
+      const {
+        data: updatedSupabaseUser,
+        error: updateError,
+      } = await supabase
+        .from("users")
+        .update({
           balance:
             newBalance,
-          referralBonus:
-            Number(
-              user.referralBonus ||
-                0
-            ) + bonusAmount,
-          totalReferralBonus:
-            Number(
-              user.totalReferralBonus ||
-                0
-            ) + bonusAmount,
+
+          referral_bonus:
+            newReferralBonus,
+
+          total_referral_bonus:
+            newTotalReferralBonus,
+        })
+        .eq(
+          "id",
+          supabaseUser.id
+        )
+        .select(
+          "id, full_name, phone, balance, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+        )
+        .maybeSingle();
+
+      if (updateError) {
+        console.error(
+          "Supabase user balance update error:",
+          updateError
+        );
+
+        return null;
+      }
+
+      const finalSupabaseUser =
+        updatedSupabaseUser ||
+        {
+          ...supabaseUser,
+
+          balance:
+            newBalance,
+
+          referral_bonus:
+            newReferralBonus,
+
+          total_referral_bonus:
+            newTotalReferralBonus,
         };
 
-        return updatedUser;
-      });
+      /*
+       * ------------------------------------------------
+       * 4. MIRROR CENTRAL DATA TO LOCAL USERS
+       * ------------------------------------------------
+       */
+      let localUsers = [];
 
-    if (updatedUser) {
+      try {
+        const savedUsers =
+          localStorage.getItem(
+            "transportUsers"
+          );
+
+        if (savedUsers) {
+          const parsed =
+            JSON.parse(
+              savedUsers
+            );
+
+          if (Array.isArray(parsed)) {
+            localUsers = parsed;
+          }
+        }
+      } catch {
+        localUsers = [];
+      }
+
+      const mappedUpdatedUser = {
+        id:
+          finalSupabaseUser.id ||
+          "",
+
+        fullName:
+          finalSupabaseUser.full_name ||
+          "",
+
+        phone:
+          normalizePhone(
+            finalSupabaseUser.phone
+          ),
+
+        balance:
+          Number(
+            finalSupabaseUser.balance ||
+              0
+          ),
+
+        referralBonus:
+          Number(
+            finalSupabaseUser.referral_bonus ||
+              0
+          ),
+
+        totalReferralBonus:
+          Number(
+            finalSupabaseUser.total_referral_bonus ||
+              0
+          ),
+
+        referralCode:
+          finalSupabaseUser.referral_code ||
+          "",
+
+        referredBy:
+          finalSupabaseUser.referred_by ||
+          null,
+
+        referrerCode:
+          finalSupabaseUser.referrer_code ||
+          null,
+
+        referrerPhone:
+          finalSupabaseUser.referrer_phone ||
+          null,
+
+        createdAt:
+          finalSupabaseUser.created_at ||
+          "",
+      };
+
+      let localUserFound = false;
+
+      const updatedLocalUsers =
+        localUsers.map(
+          (user) => {
+            const userPhone =
+              getUserPhone(
+                user
+              );
+
+            if (
+              userPhone ===
+              normalizedPhone
+            ) {
+              localUserFound =
+                true;
+
+              return {
+                ...user,
+
+                id:
+                  mappedUpdatedUser.id ||
+                  user.id,
+
+                fullName:
+                  mappedUpdatedUser.fullName ||
+                  user.fullName,
+
+                phone:
+                  normalizedPhone,
+
+                balance:
+                  mappedUpdatedUser.balance,
+
+                referralBonus:
+                  mappedUpdatedUser.referralBonus,
+
+                totalReferralBonus:
+                  mappedUpdatedUser.totalReferralBonus,
+
+                referralCode:
+                  mappedUpdatedUser.referralCode ||
+                  user.referralCode,
+
+                referredBy:
+                  mappedUpdatedUser.referredBy,
+
+                referrerCode:
+                  mappedUpdatedUser.referrerCode,
+
+                referrerPhone:
+                  mappedUpdatedUser.referrerPhone,
+
+                createdAt:
+                  mappedUpdatedUser.createdAt ||
+                  user.createdAt,
+              };
+            }
+
+            return user;
+          }
+        );
+
+      if (!localUserFound) {
+        updatedLocalUsers.push(
+          mappedUpdatedUser
+        );
+      }
+
       localStorage.setItem(
         "transportUsers",
         JSON.stringify(
-          updatedUsers
+          updatedLocalUsers
         )
       );
 
+      /*
+       * ------------------------------------------------
+       * 5. UPDATE CURRENT USERS STATE
+       * ------------------------------------------------
+       */
+      setUsers(
+        updatedLocalUsers
+      );
+
+      /*
+       * ------------------------------------------------
+       * 6. KEEP WITHDRAWABLE BONUS COPY
+       * ------------------------------------------------
+       */
       const withdrawableKey =
         "transportWithdrawableReturns_" +
         normalizedPhone;
@@ -1243,7 +1478,7 @@ export default function Admin() {
 
       const newWithdrawable =
         currentWithdrawable +
-        bonusAmount;
+        amountToAdd;
 
       localStorage.setItem(
         withdrawableKey,
@@ -1251,9 +1486,33 @@ export default function Admin() {
           newWithdrawable
         )
       );
-    }
 
-    return updatedUser;
+      console.log(
+        "Central user balance updated:",
+        {
+          phone:
+            normalizedPhone,
+
+          added:
+            amountToAdd,
+
+          newBalance:
+            finalSupabaseUser.balance,
+
+          newReferralBonus:
+            finalSupabaseUser.referral_bonus,
+        }
+      );
+
+      return mappedUpdatedUser;
+    } catch (error) {
+      console.error(
+        "User balance sync error:",
+        error
+      );
+
+      return null;
+    }
   };
 
   const updateTeamMemberBonus = (
@@ -1335,19 +1594,25 @@ export default function Admin() {
 
           return {
             ...member,
+
             bonusEarned:
               Number(
                 member.bonusEarned ||
                   member.bonus ||
                   0
-              ) + bonusAmount,
+              ) +
+              bonusAmount,
+
             referralBonus:
               Number(
                 member.referralBonus ||
                   0
-              ) + bonusAmount,
+              ) +
+              bonusAmount,
+
             lastReferralBonus:
               bonusAmount,
+
             lastReferralBonusLevel:
               level,
           };
@@ -1415,7 +1680,15 @@ export default function Admin() {
     }
   };
 
-  const creditReferralBonuses = (
+  /*
+   * ----------------------------------------------------
+   * CREDIT REFERRAL BONUSES
+   * ----------------------------------------------------
+   *
+   * NOW ASYNC because user balance is stored centrally
+   * in Supabase.
+   */
+  const creditReferralBonuses = async (
     request,
     referredUser,
     depositAmount
@@ -1449,7 +1722,7 @@ export default function Admin() {
     let totalBonus = 0;
     const details = [];
 
-    chain.forEach((item) => {
+    for (const item of chain) {
       const referrerPhone =
         item.phone;
 
@@ -1462,7 +1735,7 @@ export default function Admin() {
         !referrerPhone ||
         percent <= 0
       ) {
-        return;
+        continue;
       }
 
       const alreadyCredited =
@@ -1472,7 +1745,7 @@ export default function Admin() {
         );
 
       if (alreadyCredited) {
-        return;
+        continue;
       }
 
       const bonusAmount =
@@ -1488,17 +1761,25 @@ export default function Admin() {
         !bonusAmount ||
         bonusAmount <= 0
       ) {
-        return;
+        continue;
       }
 
+      /*
+       * CENTRAL SUPABASE BALANCE UPDATE
+       */
       const referrerUser =
-        updateUserBalance(
+        await updateUserBalance(
           referrerPhone,
           bonusAmount
         );
 
       if (!referrerUser) {
-        return;
+        console.error(
+          "Could not credit referral balance:",
+          referrerPhone
+        );
+
+        continue;
       }
 
       const transactionId =
@@ -1511,33 +1792,45 @@ export default function Admin() {
         {
           id:
             transactionId,
+
           type:
             "Referral Bonus",
+
           amount:
             bonusAmount,
+
           depositAmount:
             depositAmount,
+
           percentage:
             percent,
+
           level:
             item.level,
+
           referredPhone:
             getUserPhone(
               referredUser
             ),
+
           referredName:
             referredUser.fullName ||
             referredUser.name ||
             referredUser.username ||
             "User",
+
           status:
             "Completed",
+
           phone:
             referrerPhone,
+
           transactionId:
             transactionId,
+
           number:
             referrerPhone,
+
           date:
             new Date().toLocaleString(),
         },
@@ -1559,20 +1852,25 @@ export default function Admin() {
       details.push({
         level:
           item.level,
+
         percent:
           percent,
+
         amount:
           bonusAmount,
+
         phone:
           referrerPhone,
       });
-    });
+    }
 
     return {
       credited:
         details.length > 0,
+
       totalBonus:
         totalBonus,
+
       details:
         details,
     };
@@ -1639,10 +1937,14 @@ export default function Admin() {
         .update({
           status:
             newStatus,
+
           updated_at:
             new Date().toISOString(),
         })
-        .eq("id", request.id);
+        .eq(
+          "id",
+          request.id
+        );
 
       if (supabaseUpdateError) {
         console.error(
@@ -1654,18 +1956,24 @@ export default function Admin() {
           "Supabase Error: " +
             supabaseUpdateError.message
         );
-        setMessageType("error");
+
+        setMessageType(
+          "error"
+        );
+
         return;
       }
     }
 
     const phone =
-      request.phone ||
-      request.mobile ||
-      request.mobileNumber ||
-      request.user?.phone ||
-      request.user?.mobile ||
-      "";
+      normalizePhone(
+        request.phone ||
+          request.mobile ||
+          request.mobileNumber ||
+          request.user?.phone ||
+          request.user?.mobile ||
+          ""
+      );
 
     if (
       newStatus ===
@@ -1675,7 +1983,11 @@ export default function Admin() {
       setMessage(
         "User mobile number is missing from this request."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -1797,7 +2109,11 @@ export default function Admin() {
         planName +
           " deposit request rejected."
       );
-      setMessageType("success");
+
+      setMessageType(
+        "success"
+      );
+
       return;
     }
 
@@ -1856,6 +2172,9 @@ export default function Admin() {
         planName,
 
       price:
+        planAmount,
+
+      amount:
         planAmount,
 
       weekly:
@@ -2003,6 +2322,9 @@ export default function Admin() {
       );
     }
 
+    /*
+     * CENTRAL REFERRAL BALANCE
+     */
     let referralResult = {
       credited: false,
       totalBonus: 0,
@@ -2019,7 +2341,7 @@ export default function Admin() {
       planAmount > 0
     ) {
       referralResult =
-        creditReferralBonuses(
+        await creditReferralBonuses(
           request,
           referredUser,
           planAmount
@@ -2035,7 +2357,7 @@ export default function Admin() {
       referralMessage =
         " Referral bonus of PKR " +
         referralResult.totalBonus.toLocaleString() +
-        " credited to eligible referrer(s).";
+        " credited to eligible referrer(s) and synced to Supabase.";
     } else {
       referralMessage =
         " No eligible referral bonus was found for this user.";
@@ -2166,7 +2488,11 @@ export default function Admin() {
         "Insufficient earned returns. Available: PKR " +
           availableReturns.toLocaleString()
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -2180,7 +2506,9 @@ export default function Admin() {
 
       localStorage.setItem(
         returnsKey,
-        String(newBalance)
+        String(
+          newBalance
+        )
       );
 
       saveTransaction(
@@ -2269,12 +2597,18 @@ export default function Admin() {
           ) +
           " approved successfully."
       );
-      setMessageType("success");
+
+      setMessageType(
+        "success"
+      );
     } else {
       setMessage(
         "Withdrawal request rejected."
       );
-      setMessageType("success");
+
+      setMessageType(
+        "success"
+      );
     }
   };
 
@@ -4358,9 +4692,14 @@ function Badge({
 function StatusBadge({
   status,
 }) {
+  const normalized =
+    String(
+      status || "Pending"
+    ).toLowerCase();
+
   const style =
-    status ===
-    "Approved"
+    normalized ===
+    "approved"
       ? {
           background:
             "rgba(143,214,148,0.14)",
@@ -4369,8 +4708,8 @@ function StatusBadge({
           border:
             "1px solid rgba(143,214,148,0.25)",
         }
-      : status ===
-        "Rejected"
+      : normalized ===
+        "rejected"
       ? {
           background:
             "rgba(255,159,150,0.14)",
