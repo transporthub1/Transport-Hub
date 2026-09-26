@@ -6,21 +6,6 @@ import { supabase } from "./lib/supabase";
 const PLAN_DURATION_WEEKS = 260;
 const PLAN_DURATION_YEARS = 5;
 
-const plans = [
-  { name: "Starter", price: 100, weekly: 15, durationWeeks: 260, durationYears: 5 },
-  { name: "Basic", price: 500, weekly: 75, durationWeeks: 260, durationYears: 5 },
-  { name: "Standard", price: 1500, weekly: 225, durationWeeks: 260, durationYears: 5 },
-  { name: "Premium", price: 3500, weekly: 525, durationWeeks: 260, durationYears: 5 },
-  { name: "Advanced", price: 7500, weekly: 1125, durationWeeks: 260, durationYears: 5 },
-  { name: "Professional", price: 13000, weekly: 1950, durationWeeks: 260, durationYears: 5 },
-  { name: "Elite", price: 25000, weekly: 3750, durationWeeks: 260, durationYears: 5 },
-  { name: "Executive", price: 50000, weekly: 7500, durationWeeks: 260, durationYears: 5 },
-  { name: "Platinum", price: 125000, weekly: 18750, durationWeeks: 260, durationYears: 5 },
-  { name: "Diamond", price: 175000, weekly: 26250, durationWeeks: 260, durationYears: 5 },
-  { name: "Royal", price: 225000, weekly: 33750, durationWeeks: 260, durationYears: 5 },
-  { name: "Grand Royal", price: 300000, weekly: 45000, durationWeeks: 260, durationYears: 5 },
-];
-
 function formatMoney(value) {
   return Number(value || 0).toLocaleString();
 }
@@ -53,6 +38,7 @@ function getUserName(user) {
   const directName =
     user.name ||
     user.fullName ||
+    user.full_name ||
     user.username ||
     user.displayName;
 
@@ -71,10 +57,44 @@ function getWeeklyReturn(plan) {
   return Number(
     plan?.weekly ??
       plan?.weeklyReturn ??
+      plan?.weekly_return ??
       plan?.daily ??
       plan?.dailyReturn ??
       0
   );
+}
+
+function normalizePlan(plan) {
+  return {
+    ...plan,
+
+    name:
+      plan?.name ||
+      plan?.planName ||
+      plan?.plan_name ||
+      "Transport Plan",
+
+    price: Number(
+      plan?.price ??
+        plan?.amount ??
+        plan?.depositAmount ??
+        plan?.deposit_amount ??
+        0
+    ),
+
+    weekly: Number(
+      plan?.weekly ??
+        plan?.weeklyReturn ??
+        plan?.weekly_return ??
+        plan?.daily ??
+        plan?.dailyReturn ??
+        0
+    ),
+
+    durationWeeks: PLAN_DURATION_WEEKS,
+    durationYears: PLAN_DURATION_YEARS,
+    duration: PLAN_DURATION_WEEKS,
+  };
 }
 
 export default function Dashboard() {
@@ -86,10 +106,7 @@ export default function Dashboard() {
   const [withdrawableReturns, setWithdrawableReturns] = useState(0);
 
   const [showFeatures, setShowFeatures] = useState(false);
-
-  /* ===== PRIZE POPUP ===== */
   const [showPrizePopup, setShowPrizePopup] = useState(true);
-
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -110,133 +127,185 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem("transportLoggedIn");
+    async function loadDashboard() {
+      const loggedIn =
+        localStorage.getItem("transportLoggedIn");
 
-    if (loggedIn !== "true") {
-      window.location.href = "/login";
-      return;
-    }
+      if (loggedIn !== "true") {
+        window.location.href = "/login";
+        return;
+      }
 
-    let storedUser = getStorageObject("transportUser");
+      let storedUser =
+        getStorageObject("transportUser");
 
-    if (!storedUser) {
-      storedUser = getStorageObject("transportCurrentUser");
-    }
+      if (!storedUser) {
+        storedUser =
+          getStorageObject("transportCurrentUser");
+      }
 
-    if (!storedUser) {
-      window.location.href = "/login";
-      return;
-    }
+      if (!storedUser) {
+        window.location.href = "/login";
+        return;
+      }
 
-    const displayName = getUserName(storedUser);
+      const displayName =
+        getUserName(storedUser);
 
-    const normalizedUser = {
-      ...storedUser,
-      name: displayName,
-    };
-
-    saveStorage("transportUser", normalizedUser);
-    setUser(normalizedUser);
-
-    const phone = normalizedUser.phone || "unknown";
-
-    const storedActivePlans = getStorageArray(
-      "transportActivePlans_" + phone
-    );
-
-    if (storedActivePlans.length > 0) {
-      const normalizedPlans = storedActivePlans.map((plan) => ({
-        ...plan,
-
-        weekly: Number(
-          plan.weekly ??
-            plan.weeklyReturn ??
-            plan.daily ??
-            plan.dailyReturn ??
-            0
-        ),
-
-        durationWeeks: PLAN_DURATION_WEEKS,
-        durationYears: PLAN_DURATION_YEARS,
-        duration: PLAN_DURATION_WEEKS,
-      }));
-
-      setActivePlans(normalizedPlans);
+      const normalizedUser = {
+        ...storedUser,
+        name: displayName,
+      };
 
       saveStorage(
-        "transportActivePlans_" + phone,
-        normalizedPlans
+        "transportUser",
+        normalizedUser
       );
-    } else {
-      const oldPlan = getStorageObject("transportActivePlan");
 
-      if (oldPlan) {
-        const normalizedOldPlan = {
-          ...oldPlan,
+      setUser(normalizedUser);
 
-          weekly: Number(
-            oldPlan.weekly ??
-              oldPlan.weeklyReturn ??
-              oldPlan.daily ??
-              oldPlan.dailyReturn ??
-              0
-          ),
+      const phone =
+        normalizedUser.phone ||
+        normalizedUser.mobile ||
+        normalizedUser.username ||
+        "unknown";
 
-          durationWeeks: PLAN_DURATION_WEEKS,
-          durationYears: PLAN_DURATION_YEARS,
-          duration: PLAN_DURATION_WEEKS,
-        };
+      const storedActivePlans =
+        getStorageArray(
+          "transportActivePlans_" + phone
+        );
 
-        setActivePlans([normalizedOldPlan]);
+      if (storedActivePlans.length > 0) {
+        const normalizedPlans =
+          storedActivePlans.map(normalizePlan);
+
+        setActivePlans(normalizedPlans);
+
+        saveStorage(
+          "transportActivePlans_" + phone,
+          normalizedPlans
+        );
+      } else {
+        const oldPlan =
+          getStorageObject(
+            "transportActivePlan"
+          );
+
+        if (oldPlan) {
+          setActivePlans([
+            normalizePlan(oldPlan),
+          ]);
+        }
       }
-    }
 
-    const storedWithdrawable = Number(
-      localStorage.getItem(
-        "transportWithdrawableReturns_" + phone
-      ) || 0
-    );
+      const storedWithdrawable =
+        Number(
+          localStorage.getItem(
+            "transportWithdrawableReturns_" +
+              phone
+          ) || 0
+        );
 
-    setWithdrawableReturns(storedWithdrawable);
+      setWithdrawableReturns(
+        storedWithdrawable
+      );
 
-    const storedTransactions = getStorageArray(
-      "transportTransactions_" + phone
-    );
+      const storedTransactions =
+        getStorageArray(
+          "transportTransactions_" + phone
+        );
 
-    setTransactions(storedTransactions);
+      setTransactions(
+        storedTransactions
+      );
 
-    try {
-      const { data: withdrawalRows, error: withdrawalError } =
-        await supabase
+      try {
+        const {
+          data: userRow,
+          error: userError,
+        } = await supabase
+          .from("users")
+          .select("withdrawable_returns")
+          .eq("phone", phone)
+          .maybeSingle();
+
+        if (
+          !userError &&
+          userRow
+        ) {
+          const centralReturns =
+            Number(
+              userRow.withdrawable_returns || 0
+            );
+
+          setWithdrawableReturns(
+            centralReturns
+          );
+
+          localStorage.setItem(
+            "transportWithdrawableReturns_" +
+              phone,
+            String(centralReturns)
+          );
+        }
+      } catch (error) {
+        console.log(
+          "User balance load error:",
+          error
+        );
+      }
+
+      try {
+        const {
+          data: withdrawalRows,
+          error: withdrawalError,
+        } = await supabase
           .from("withdraw_requests")
           .select("*")
           .eq("user_phone", phone)
-          .order("created_at", { ascending: false });
+          .order("created_at", {
+            ascending: false,
+          });
 
-      if (!withdrawalError && Array.isArray(withdrawalRows)) {
-        setWithdrawRequests(withdrawalRows);
-      } else {
+        if (
+          !withdrawalError &&
+          Array.isArray(withdrawalRows)
+        ) {
+          setWithdrawRequests(
+            withdrawalRows
+          );
+        } else {
+          setWithdrawRequests([]);
+        }
+      } catch (error) {
+        console.log(
+          "Withdrawal request load error:",
+          error
+        );
+
         setWithdrawRequests([]);
       }
-    } catch (error) {
-      setWithdrawRequests([]);
+
+      setTeamMembers(
+        getStorageArray(
+          "transportTeam_" + phone
+        )
+      );
+
+      setLoading(false);
     }
 
-    setTeamMembers(
-      getStorageArray(
-        "transportTeam_" + phone
-      )
-    );
-
-    setLoading(false);
+    loadDashboard();
   }, []);
 
-  const displayName = getUserName(user);
+  const displayName =
+    getUserName(user);
 
   const totalInvestment = useMemo(() => {
     return activePlans.reduce(
       (total, plan) =>
-        total + Number(plan.price || 0),
+        total +
+        Number(plan.price || 0),
       0
     );
   }, [activePlans]);
@@ -244,25 +313,27 @@ export default function Dashboard() {
   const weeklyReturn = useMemo(() => {
     return activePlans.reduce(
       (total, plan) =>
-        total + getWeeklyReturn(plan),
+        total +
+        getWeeklyReturn(plan),
       0
     );
   }, [activePlans]);
 
   const earnedReturns = useMemo(() => {
-    return activePlans.reduce((total, plan) => {
-      const storedEarned = Number(
-        plan.earnedReturns ??
-          plan.totalEarned ??
-          0
-      );
+    return activePlans.reduce(
+      (total, plan) => {
+        const earned =
+          Number(
+            plan.earnedReturns ??
+              plan.totalEarned ??
+              plan.total_earned ??
+              0
+          );
 
-      if (storedEarned > 0) {
-        return total + storedEarned;
-      }
-
-      return total;
-    }, 0);
+        return total + earned;
+      },
+      0
+    );
   }, [activePlans]);
 
   const expectedReturn = useMemo(() => {
@@ -277,16 +348,33 @@ export default function Dashboard() {
 
   const depositTotal = useMemo(() => {
     return transactions
-      .filter(
-        (item) =>
-          String(item.type || "").toLowerCase() ===
-            "deposit" &&
-          String(item.status || "").toLowerCase() ===
-            "approved"
-      )
+      .filter((item) => {
+        const type =
+          String(
+            item.type || ""
+          ).toLowerCase();
+
+        const status =
+          String(
+            item.status || ""
+          ).toLowerCase();
+
+        return (
+          type === "deposit" &&
+          status === "approved" &&
+          !String(
+            item.returnType ||
+              item.return_type ||
+              ""
+          )
+            .toLowerCase()
+            .includes("weekly")
+        );
+      })
       .reduce(
         (total, item) =>
-          total + Number(item.amount || 0),
+          total +
+          Number(item.amount || 0),
         0
       );
   }, [transactions]);
@@ -295,28 +383,48 @@ export default function Dashboard() {
     return withdrawRequests
       .filter(
         (item) =>
-          String(item.status || "").toLowerCase() ===
+          String(
+            item.status || ""
+          ).toLowerCase() ===
           "approved"
       )
       .reduce(
         (total, item) =>
-          total + Number(item.amount || 0),
+          total +
+          Number(item.amount || 0),
         0
       );
   }, [withdrawRequests]);
 
   const pendingDeposits = useMemo(() => {
     return transactions
-      .filter(
-        (item) =>
-          String(item.type || "").toLowerCase() ===
-            "deposit" &&
-          String(item.status || "").toLowerCase() ===
-            "pending"
-      )
+      .filter((item) => {
+        const type =
+          String(
+            item.type || ""
+          ).toLowerCase();
+
+        const status =
+          String(
+            item.status || ""
+          ).toLowerCase();
+
+        return (
+          type === "deposit" &&
+          status === "pending" &&
+          !String(
+            item.returnType ||
+              item.return_type ||
+              ""
+          )
+            .toLowerCase()
+            .includes("weekly")
+        );
+      })
       .reduce(
         (total, item) =>
-          total + Number(item.amount || 0),
+          total +
+          Number(item.amount || 0),
         0
       );
   }, [transactions]);
@@ -325,12 +433,15 @@ export default function Dashboard() {
     return withdrawRequests
       .filter(
         (item) =>
-          String(item.status || "").toLowerCase() ===
+          String(
+            item.status || ""
+          ).toLowerCase() ===
           "pending"
       )
       .reduce(
         (total, item) =>
-          total + Number(item.amount || 0),
+          total +
+          Number(item.amount || 0),
         0
       );
   }, [withdrawRequests]);
@@ -338,7 +449,8 @@ export default function Dashboard() {
   const teamInvestment = useMemo(() => {
     return teamMembers.reduce(
       (total, member) =>
-        total + Number(member.investment || 0),
+        total +
+        Number(member.investment || 0),
       0
     );
   }, [teamMembers]);
@@ -346,40 +458,67 @@ export default function Dashboard() {
   const paidTeam = useMemo(() => {
     return teamMembers.reduce(
       (total, member) =>
-        total + Number(member.commission || 0),
+        total +
+        Number(member.commission || 0),
       0
     );
   }, [teamMembers]);
 
   const todayTeam = useMemo(() => {
-    return teamMembers.reduce((total, member) => {
-      if (!member.joinedAt) return total;
+    return teamMembers.reduce(
+      (total, member) => {
+        if (!member.joinedAt) {
+          return total;
+        }
 
-      const joined = new Date(member.joinedAt);
-      const now = new Date();
+        const joined =
+          new Date(
+            member.joinedAt
+          );
 
-      const sameDay =
-        joined.getDate() === now.getDate() &&
-        joined.getMonth() === now.getMonth() &&
-        joined.getFullYear() === now.getFullYear();
+        const now = new Date();
 
-      return sameDay
-        ? total + Number(member.commission || 0)
-        : total;
-    }, 0);
+        const sameDay =
+          joined.getDate() ===
+            now.getDate() &&
+          joined.getMonth() ===
+            now.getMonth() &&
+          joined.getFullYear() ===
+            now.getFullYear();
+
+        return sameDay
+          ? total +
+              Number(
+                member.commission || 0
+              )
+          : total;
+      },
+      0
+    );
   }, [teamMembers]);
 
-  const todayProfit = weeklyReturn;
-  const yesterdayProfit = weeklyReturn;
-  const weekProfit = weeklyReturn;
-  const monthProfit = weeklyReturn * 4;
+  const todayProfit =
+    weeklyReturn;
+
+  const yesterdayProfit =
+    weeklyReturn;
+
+  const weekProfit =
+    weeklyReturn;
+
+  const monthProfit =
+    weeklyReturn * 4;
 
   const walletBalance =
     Number(user?.balance || 0) +
-    Number(withdrawableReturns || 0);
+    Number(
+      withdrawableReturns || 0
+    );
 
   const referralCode = useMemo(() => {
-    if (!user) return "";
+    if (!user) {
+      return "";
+    }
 
     const userKey =
       user.phone ||
@@ -390,15 +529,21 @@ export default function Dashboard() {
       "user";
 
     const storageKey =
-      "transportReferralCode_" + String(userKey);
+      "transportReferralCode_" +
+      String(userKey);
 
-    let savedCode = localStorage.getItem(storageKey);
+    let savedCode =
+      localStorage.getItem(
+        storageKey
+      );
 
     if (!savedCode) {
       savedCode =
         "TH" +
         Math.floor(
-          100000 + Math.random() * 900000
+          100000 +
+            Math.random() *
+              900000
         ).toString();
 
       localStorage.setItem(
@@ -417,87 +562,155 @@ export default function Dashboard() {
         referralCode
       : "";
 
-  const recentTransactions = useMemo(() => {
-    const nonWithdrawalTransactions = transactions.filter((item) => {
-      const type = String(item.type || "").toLowerCase();
-      return type !== "withdraw" && type !== "withdrawal";
-    });
+  const recentTransactions =
+    useMemo(() => {
+      const localItems =
+        transactions
+          .filter((item) => {
+            const type =
+              String(
+                item.type || ""
+              ).toLowerCase();
 
-    const centralWithdrawalTransactions = withdrawRequests.map((item) => ({
-      id: item.id,
-      type: "withdraw",
-      status: item.status || "Pending",
-      amount: Number(item.amount || 0),
-      date: item.submitted_at || item.created_at || "Recently",
-      createdAt: item.submitted_at || item.created_at || "",
-      returnType: "",
-      withdrawalRequestId: item.id,
-    }));
+            return (
+              type !== "withdraw" &&
+              type !== "withdrawal"
+            );
+          })
+          .map((item) => ({
+            ...item,
+            sortDate:
+              item.createdAt ||
+              item.created_at ||
+              item.submittedAt ||
+              item.submitted_at ||
+              item.date ||
+              "",
+          }));
 
-    return [
-      ...nonWithdrawalTransactions,
-      ...centralWithdrawalTransactions,
-    ]
-      .sort((a, b) => {
-        const aTime = new Date(
-          a.createdAt ||
-            a.created_at ||
-            a.submittedAt ||
-            a.submitted_at ||
-            a.date ||
-            0
-        ).getTime();
+      const withdrawalItems =
+        withdrawRequests.map(
+          (item) => ({
+            id: item.id,
+            type: "withdraw",
+            status:
+              item.status ||
+              "Pending",
+            amount:
+              Number(
+                item.amount || 0
+              ),
+            date:
+              item.submitted_at ||
+              item.created_at ||
+              "Recently",
+            createdAt:
+              item.submitted_at ||
+              item.created_at ||
+              "",
+            sortDate:
+              item.submitted_at ||
+              item.created_at ||
+              "",
+            withdrawalRequestId:
+              item.id,
+          })
+        );
 
-        const bTime = new Date(
-          b.createdAt ||
-            b.created_at ||
-            b.submittedAt ||
-            b.submitted_at ||
-            b.date ||
-            0
-        ).getTime();
+      return [
+        ...localItems,
+        ...withdrawalItems,
+      ].sort((a, b) => {
+        const aTime =
+          new Date(
+            a.sortDate || 0
+          ).getTime();
+
+        const bTime =
+          new Date(
+            b.sortDate || 0
+          ).getTime();
 
         return bTime - aTime;
       });
-  }, [transactions, withdrawRequests]);
+    }, [
+      transactions,
+      withdrawRequests,
+    ]);
 
   function goTo(path) {
     setMenuOpen(false);
-    window.location.href = path;
+    window.location.href =
+      path;
   }
 
   function copyReferral() {
-    if (!referralLink) return;
+    if (!referralLink) {
+      return;
+    }
 
-    navigator.clipboard.writeText(referralLink);
-    setCopied(true);
+    navigator.clipboard
+      .writeText(referralLink)
+      .then(() => {
+        setCopied(true);
 
-    setTimeout(() => {
-      setCopied(false);
-    }, 2000);
+        setTimeout(() => {
+          setCopied(false);
+        }, 2000);
+      })
+      .catch(() => {});
   }
 
   function logout() {
-    localStorage.removeItem("transportLoggedIn");
-    localStorage.removeItem("transportUser");
-    localStorage.removeItem("transportCurrentUser");
+    localStorage.removeItem(
+      "transportLoggedIn"
+    );
 
-    window.location.href = "/login";
+    localStorage.removeItem(
+      "transportUser"
+    );
+
+    localStorage.removeItem(
+      "transportCurrentUser"
+    );
+
+    window.location.href =
+      "/login";
   }
 
   if (loading) {
     return (
-      <div style={styles.loadingScreen}>
-        <div style={styles.loadingCard}>
-          <div style={styles.loadingIcon}>
+      <div
+        style={
+          styles.loadingScreen
+        }
+      >
+        <div
+          style={
+            styles.loadingCard
+          }
+        >
+          <div
+            style={
+              styles.loadingIcon
+            }
+          >
             🚛
           </div>
 
-          <div style={styles.loadingTitle}>
+          <div
+            style={
+              styles.loadingTitle
+            }
+          >
             Transport Hub
           </div>
 
-          <div style={styles.loadingText}>
+          <div
+            style={
+              styles.loadingText
+            }
+          >
             Loading your dashboard...
           </div>
         </div>
@@ -537,12 +750,14 @@ export default function Dashboard() {
         @keyframes prizePopupIn {
           0% {
             opacity: 0;
-            transform: scale(0.92) translateY(20px);
+            transform: scale(0.92)
+              translateY(20px);
           }
 
           100% {
             opacity: 1;
-            transform: scale(1) translateY(0);
+            transform: scale(1)
+              translateY(0);
           }
         }
 
@@ -550,14 +765,38 @@ export default function Dashboard() {
           0%,
           100% {
             box-shadow:
-              0 0 15px rgba(247, 201, 72, 0.12),
-              0 0 35px rgba(44, 130, 201, 0.08);
+              0 0 15px
+                rgba(
+                  247,
+                  201,
+                  72,
+                  0.12
+                ),
+              0 0 35px
+                rgba(
+                  44,
+                  130,
+                  201,
+                  0.08
+                );
           }
 
           50% {
             box-shadow:
-              0 0 28px rgba(247, 201, 72, 0.25),
-              0 0 55px rgba(44, 130, 201, 0.14);
+              0 0 28px
+                rgba(
+                  247,
+                  201,
+                  72,
+                  0.25
+                ),
+              0 0 55px
+                rgba(
+                  44,
+                  130,
+                  201,
+                  0.14
+                );
           }
         }
 
@@ -573,14 +812,22 @@ export default function Dashboard() {
         }
 
         .transport-animated-card {
-          animation: transportCardFloat 5s ease-in-out infinite;
+          animation:
+            transportCardFloat 5s
+            ease-in-out infinite;
         }
 
         .transport-animated-card:hover {
           animation-play-state: paused;
           transform: translateY(-8px);
           box-shadow:
-            0 12px 28px rgba(16, 42, 67, 0.2);
+            0 12px 28px
+              rgba(
+                16,
+                42,
+                67,
+                0.2
+              );
         }
 
         .welcome-scroll-wrapper {
@@ -592,7 +839,8 @@ export default function Dashboard() {
         .welcome-scroll-content {
           width: max-content;
           animation:
-            welcomeTextMove 10s linear infinite;
+            welcomeTextMove 10s
+            linear infinite;
           will-change: transform;
         }
 
@@ -609,23 +857,36 @@ export default function Dashboard() {
       `}</style>
 
       {isMobile && (
-        <div style={styles.mobileHeader}>
+        <div
+          style={
+            styles.mobileHeader
+          }
+        >
           <button
-            style={styles.menuButton}
+            style={
+              styles.menuButton
+            }
             onClick={() =>
-              setMenuOpen(!menuOpen)
+              setMenuOpen(
+                !menuOpen
+              )
             }
           >
             ☰
           </button>
 
-          <div style={styles.mobileHeaderTitle}>
+          <div
+            style={
+              styles.mobileHeaderTitle
+            }
+          >
             Transport Hub
           </div>
         </div>
       )}
 
-      {(!isMobile || menuOpen) && (
+      {(!isMobile ||
+        menuOpen) && (
         <aside
           style={{
             ...styles.sidebar,
@@ -634,102 +895,164 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={styles.logoArea}>
-            <div style={styles.logoIcon}>
+          <div
+            style={
+              styles.logoArea
+            }
+          >
+            <div
+              style={
+                styles.logoIcon
+              }
+            >
               🚛
             </div>
 
             <div>
-              <div style={styles.logoTitle}>
+              <div
+                style={
+                  styles.logoTitle
+                }
+              >
                 Transport Hub
               </div>
 
-              <div style={styles.logoSubtitle}>
+              <div
+                style={
+                  styles.logoSubtitle
+                }
+              >
                 Investment Platform
               </div>
             </div>
           </div>
 
-          <nav style={styles.navigation}>
+          <nav
+            style={
+              styles.navigation
+            }
+          >
             <button
               style={{
                 ...styles.navItem,
                 ...styles.activeNavItem,
               }}
-              onClick={() => goTo("/")}
+              onClick={() =>
+                goTo("/")
+              }
             >
               <span>🏠</span>
               <span>Dashboard</span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/transport-plans")
+                goTo(
+                  "/transport-plans"
+                )
               }
             >
               <span>🚛</span>
-              <span>Transport Plans</span>
+              <span>
+                Transport Plans
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
-              onClick={() => goTo("/deposit")}
+              style={
+                styles.navItem
+              }
+              onClick={() =>
+                goTo("/deposit")
+              }
             >
               <span>💰</span>
               <span>Deposit</span>
             </button>
 
             <button
-              style={styles.navItem}
-              onClick={() => goTo("/withdraw")}
+              style={
+                styles.navItem
+              }
+              onClick={() =>
+                goTo("/withdraw")
+              }
             >
               <span>💸</span>
               <span>Withdraw</span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/transactions")
+                goTo(
+                  "/transactions"
+                )
               }
             >
               <span>📊</span>
-              <span>Transactions</span>
+              <span>
+                Transactions
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/deposit-history")
+                goTo(
+                  "/deposit-history"
+                )
               }
             >
               <span>📋</span>
-              <span>Deposit History</span>
+              <span>
+                Deposit History
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/withdraw-history")
+                goTo(
+                  "/withdraw-history"
+                )
               }
             >
               <span>📋</span>
-              <span>Withdraw History</span>
+              <span>
+                Withdraw History
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                goTo("/weekly-returns")
+                goTo(
+                  "/weekly-returns"
+                )
               }
             >
               <span>🎁</span>
-              <span>Weekly Returns</span>
+              <span>
+                Weekly Returns
+              </span>
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
                 goTo("/my-team")
               }
@@ -739,7 +1062,9 @@ export default function Dashboard() {
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
                 goTo("/referral")
               }
@@ -749,9 +1074,13 @@ export default function Dashboard() {
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
-                setShowFeatures(true)
+                setShowFeatures(
+                  true
+                )
               }
             >
               <span>🔐</span>
@@ -759,7 +1088,9 @@ export default function Dashboard() {
             </button>
 
             <button
-              style={styles.navItem}
+              style={
+                styles.navItem
+              }
               onClick={() =>
                 goTo("/support")
               }
@@ -769,7 +1100,9 @@ export default function Dashboard() {
             </button>
 
             <button
-              style={styles.logoutNavItem}
+              style={
+                styles.logoutNavItem
+              }
               onClick={logout}
             >
               <span>🚪</span>
@@ -779,14 +1112,17 @@ export default function Dashboard() {
         </aside>
       )}
 
-      {isMobile && menuOpen && (
-        <div
-          style={styles.mobileOverlay}
-          onClick={() =>
-            setMenuOpen(false)
-          }
-        />
-      )}
+      {isMobile &&
+        menuOpen && (
+          <div
+            style={
+              styles.mobileOverlay
+            }
+            onClick={() =>
+              setMenuOpen(false)
+            }
+          />
+        )}
 
       <main
         style={{
@@ -804,13 +1140,26 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div style={styles.pageTitle}>
+          <div
+            style={{
+              minWidth: 0,
+            }}
+          >
+            <div
+              style={
+                styles.pageTitle
+              }
+            >
               Dashboard
             </div>
 
-            <div style={styles.pageSubtitle}>
-              Manage your transport investment account
+            <div
+              style={
+                styles.pageSubtitle
+              }
+            >
+              Manage your transport
+              investment account
             </div>
           </div>
         </div>
@@ -826,22 +1175,39 @@ export default function Dashboard() {
         >
           <div className="welcome-scroll-wrapper">
             <div className="welcome-scroll-content">
-              <div style={styles.welcomeSmall}>
+              <div
+                style={
+                  styles.welcomeSmall
+                }
+              >
                 Welcome back
               </div>
 
-              <div style={styles.welcomeTitle}>
+              <div
+                style={
+                  styles.welcomeTitle
+                }
+              >
                 {displayName} 👋
               </div>
 
-              <div style={styles.welcomeText}>
-                Track your investments, weekly returns
-                and team activity from one place.
+              <div
+                style={
+                  styles.welcomeText
+                }
+              >
+                Track your investments,
+                weekly returns and team
+                activity from one place.
               </div>
             </div>
           </div>
 
-          <div style={styles.welcomeTruck}>
+          <div
+            style={
+              styles.welcomeTruck
+            }
+          >
             🚛
           </div>
         </section>
@@ -856,18 +1222,34 @@ export default function Dashboard() {
         >
           <div
             className="transport-animated-card"
-            style={styles.summaryCard}
+            style={
+              styles.summaryCard
+            }
           >
-            <div style={styles.summaryIcon}>
+            <div
+              style={
+                styles.summaryIcon
+              }
+            >
               💼
             </div>
 
-            <div style={styles.summaryLabel}>
+            <div
+              style={
+                styles.summaryLabel
+              }
+            >
               Total Investment
             </div>
 
-            <div style={styles.summaryValue}>
-              {formatMoney(totalInvestment)}
+            <div
+              style={
+                styles.summaryValue
+              }
+            >
+              {formatMoney(
+                totalInvestment
+              )}
             </div>
           </div>
 
@@ -875,19 +1257,34 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.summaryCard,
-              animationDelay: "0.5s",
+              animationDelay:
+                "0.5s",
             }}
           >
-            <div style={styles.summaryIcon}>
+            <div
+              style={
+                styles.summaryIcon
+              }
+            >
               📈
             </div>
 
-            <div style={styles.summaryLabel}>
+            <div
+              style={
+                styles.summaryLabel
+              }
+            >
               Weekly Return
             </div>
 
-            <div style={styles.summaryValue}>
-              {formatMoney(weeklyReturn)}
+            <div
+              style={
+                styles.summaryValue
+              }
+            >
+              {formatMoney(
+                weeklyReturn
+              )}
             </div>
           </div>
 
@@ -895,19 +1292,34 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.summaryCard,
-              animationDelay: "1s",
+              animationDelay:
+                "1s",
             }}
           >
-            <div style={styles.summaryIcon}>
+            <div
+              style={
+                styles.summaryIcon
+              }
+            >
               💰
             </div>
 
-            <div style={styles.summaryLabel}>
+            <div
+              style={
+                styles.summaryLabel
+              }
+            >
               Wallet Balance
             </div>
 
-            <div style={styles.summaryValue}>
-              {formatMoney(walletBalance)}
+            <div
+              style={
+                styles.summaryValue
+              }
+            >
+              {formatMoney(
+                walletBalance
+              )}
             </div>
           </div>
 
@@ -915,26 +1327,43 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.summaryCard,
-              animationDelay: "1.5s",
+              animationDelay:
+                "1.5s",
             }}
           >
-            <div style={styles.summaryIcon}>
+            <div
+              style={
+                styles.summaryIcon
+              }
+            >
               🎯
             </div>
 
-            <div style={styles.summaryLabel}>
+            <div
+              style={
+                styles.summaryLabel
+              }
+            >
               Expected Return
             </div>
 
-            <div style={styles.summaryValue}>
-              {formatMoney(expectedReturn)}
+            <div
+              style={
+                styles.summaryValue
+              }
+            >
+              {formatMoney(
+                expectedReturn
+              )}
             </div>
           </div>
         </section>
 
         <section
           className="transport-animated-card"
-          style={styles.largeCard}
+          style={
+            styles.largeCard
+          }
         >
           <div
             style={{
@@ -944,45 +1373,86 @@ export default function Dashboard() {
                 : {}),
             }}
           >
-            <div style={{ minWidth: 0 }}>
-              <div style={styles.sectionTitle}>
-                🚛 Active Transport Plans
+            <div
+              style={{
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={
+                  styles.sectionTitle
+                }
+              >
+                🚛 Active Transport
+                Plans
               </div>
 
-              <div style={styles.sectionSubtitle}>
-                Your currently active investment plans
+              <div
+                style={
+                  styles.sectionSubtitle
+                }
+              >
+                Your currently active
+                investment plans
               </div>
             </div>
 
             <button
-              style={styles.greenButton}
+              style={
+                styles.greenButton
+              }
               onClick={() =>
-                goTo("/transport-plans")
+                goTo(
+                  "/transport-plans"
+                )
               }
             >
               + Add Plan
             </button>
           </div>
 
-          {activePlans.length === 0 ? (
-            <div style={styles.emptyState}>
-              <div style={styles.emptyIcon}>
+          {activePlans.length ===
+          0 ? (
+            <div
+              style={
+                styles.emptyState
+              }
+            >
+              <div
+                style={
+                  styles.emptyIcon
+                }
+              >
                 🚛
               </div>
 
-              <div style={styles.emptyTitle}>
-                No Active Transport Plans
+              <div
+                style={
+                  styles.emptyTitle
+                }
+              >
+                No Active
+                Transport Plans
               </div>
 
-              <div style={styles.emptyText}>
-                Select a transport plan to start
-                earning weekly returns.
+              <div
+                style={
+                  styles.emptyText
+                }
+              >
+                Select a transport
+                plan to start earning
+                weekly returns.
               </div>
 
               <button
-                style={styles.greenButtonLarge}
+                style={
+                  styles.greenButtonLarge
+                }
                 onClick={() =>
-                  goTo("/transport-plans")
+                  goTo(
+                    "/transport-plans"
+                  )
                 }
               >
                 View Transport Plans
@@ -1000,13 +1470,13 @@ export default function Dashboard() {
               {activePlans.map(
                 (plan, index) => {
                   const weekly =
-                    getWeeklyReturn(plan);
-
-                  const durationWeeks =
-                    PLAN_DURATION_WEEKS;
+                    getWeeklyReturn(
+                      plan
+                    );
 
                   const totalPlanReturn =
-                    weekly * durationWeeks;
+                    weekly *
+                    PLAN_DURATION_WEEKS;
 
                   return (
                     <div
@@ -1014,68 +1484,109 @@ export default function Dashboard() {
                       style={{
                         ...styles.planCard,
                         animationDelay:
-                          index * 0.35 + "s",
+                          index *
+                            0.35 +
+                          "s",
                       }}
-                      key={index}
+                      key={
+                        plan.id ||
+                        index
+                      }
                     >
-                      <div style={styles.planTop}>
+                      <div
+                        style={
+                          styles.planTop
+                        }
+                      >
                         <div
                           style={{
                             minWidth: 0,
                           }}
                         >
-                          <div style={styles.planName}>
+                          <div
+                            style={
+                              styles.planName
+                            }
+                          >
                             {plan.name}
                           </div>
 
-                          <div style={styles.planPrice}>
-                            {formatMoney(plan.price)}
+                          <div
+                            style={
+                              styles.planPrice
+                            }
+                          >
+                            {formatMoney(
+                              plan.price
+                            )}
                           </div>
                         </div>
 
-                        <div style={styles.activeBadge}>
+                        <div
+                          style={
+                            styles.activeBadge
+                          }
+                        >
                           ACTIVE
                         </div>
                       </div>
 
-                      <div style={styles.planStats}>
+                      <div
+                        style={
+                          styles.planStats
+                        }
+                      >
                         <div>
                           <span
-                            style={styles.statLabel}
+                            style={
+                              styles.statLabel
+                            }
                           >
                             Weekly
                           </span>
 
                           <strong
-                            style={styles.statValue}
+                            style={
+                              styles.statValue
+                            }
                           >
-                            {formatMoney(weekly)}
+                            {formatMoney(
+                              weekly
+                            )}
                           </strong>
                         </div>
 
                         <div>
                           <span
-                            style={styles.statLabel}
+                            style={
+                              styles.statLabel
+                            }
                           >
                             Duration
                           </span>
 
                           <strong
-                            style={styles.statValue}
+                            style={
+                              styles.statValue
+                            }
                           >
-                            {durationWeeks} Weeks
+                            260 Weeks
                           </strong>
                         </div>
 
                         <div>
                           <span
-                            style={styles.statLabel}
+                            style={
+                              styles.statLabel
+                            }
                           >
                             Total Return
                           </span>
 
                           <strong
-                            style={styles.statValue}
+                            style={
+                              styles.statValue
+                            }
                           >
                             {formatMoney(
                               totalPlanReturn
@@ -1103,51 +1614,100 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.sideCard,
-              animationDelay: "0.4s",
+              animationDelay:
+                "0.4s",
             }}
           >
-            <div style={styles.sectionTitle}>
+            <div
+              style={
+                styles.sectionTitle
+              }
+            >
               💰 Wallet Overview
             </div>
 
-            <div style={styles.walletRows}>
-              <div style={styles.walletRow}>
-                <span>Available Balance</span>
+            <div
+              style={
+                styles.walletRows
+              }
+            >
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Available Balance
+                </span>
 
                 <strong>
-                  {formatMoney(walletBalance)}
+                  {formatMoney(
+                    walletBalance
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Total Deposits</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Total Deposits
+                </span>
 
                 <strong>
-                  {formatMoney(depositTotal)}
+                  {formatMoney(
+                    depositTotal
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Total Withdrawals</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Total Withdrawals
+                </span>
 
                 <strong>
-                  {formatMoney(withdrawalTotal)}
+                  {formatMoney(
+                    withdrawalTotal
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Pending Deposits</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Pending Deposits
+                </span>
 
                 <strong>
-                  {formatMoney(pendingDeposits)}
+                  {formatMoney(
+                    pendingDeposits
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Pending Withdrawals</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Pending Withdrawals
+                </span>
 
                 <strong>
-                  {formatMoney(pendingWithdrawals)}
+                  {formatMoney(
+                    pendingWithdrawals
+                  )}
                 </strong>
               </div>
             </div>
@@ -1157,55 +1717,100 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.sideCard,
-              animationDelay: "0.9s",
+              animationDelay:
+                "0.9s",
             }}
           >
-            <div style={styles.sectionTitle}>
+            <div
+              style={
+                styles.sectionTitle
+              }
+            >
               📈 Return Summary
             </div>
 
-            <div style={styles.walletRows}>
-              <div style={styles.walletRow}>
+            <div
+              style={
+                styles.walletRows
+              }
+            >
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
                 <span>
                   Current Weekly Return
                 </span>
 
                 <strong>
-                  {formatMoney(todayProfit)}
+                  {formatMoney(
+                    todayProfit
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
                 <span>
                   Previous Weekly Return
                 </span>
 
                 <strong>
-                  {formatMoney(yesterdayProfit)}
+                  {formatMoney(
+                    yesterdayProfit
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Weekly Total</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Weekly Total
+                </span>
 
                 <strong>
-                  {formatMoney(weekProfit)}
+                  {formatMoney(
+                    weekProfit
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Approx. 4 Weeks</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Approx. 4 Weeks
+                </span>
 
                 <strong>
-                  {formatMoney(monthProfit)}
+                  {formatMoney(
+                    monthProfit
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.walletRow}>
-                <span>Total Earned</span>
+              <div
+                style={
+                  styles.walletRow
+                }
+              >
+                <span>
+                  Total Earned
+                </span>
 
                 <strong>
-                  {formatMoney(earnedReturns)}
+                  {formatMoney(
+                    earnedReturns
+                  )}
                 </strong>
               </div>
             </div>
@@ -1224,51 +1829,96 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.sideCard,
-              animationDelay: "0.6s",
+              animationDelay:
+                "0.6s",
             }}
           >
-            <div style={styles.sectionTitle}>
+            <div
+              style={
+                styles.sectionTitle
+              }
+            >
               👥 My Team
             </div>
 
-            <div style={styles.teamMainNumber}>
+            <div
+              style={
+                styles.teamMainNumber
+              }
+            >
               {teamMembers.length}
             </div>
 
-            <div style={styles.teamLabel}>
+            <div
+              style={
+                styles.teamLabel
+              }
+            >
               Total Team Members
             </div>
 
-            <div style={styles.teamStats}>
-              <div style={styles.teamStat}>
-                <span>Team Investment</span>
+            <div
+              style={
+                styles.teamStats
+              }
+            >
+              <div
+                style={
+                  styles.teamStat
+                }
+              >
+                <span>
+                  Team Investment
+                </span>
 
                 <strong>
-                  {formatMoney(teamInvestment)}
+                  {formatMoney(
+                    teamInvestment
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.teamStat}>
-                <span>Paid Commission</span>
+              <div
+                style={
+                  styles.teamStat
+                }
+              >
+                <span>
+                  Paid Commission
+                </span>
 
                 <strong>
-                  {formatMoney(paidTeam)}
+                  {formatMoney(
+                    paidTeam
+                  )}
                 </strong>
               </div>
 
-              <div style={styles.teamStat}>
-                <span>Today Commission</span>
+              <div
+                style={
+                  styles.teamStat
+                }
+              >
+                <span>
+                  Today Commission
+                </span>
 
                 <strong>
-                  {formatMoney(todayTeam)}
+                  {formatMoney(
+                    todayTeam
+                  )}
                 </strong>
               </div>
             </div>
 
             <button
-              style={styles.outlineButton}
+              style={
+                styles.outlineButton
+              }
               onClick={() =>
-                goTo("/my-team")
+                goTo(
+                  "/my-team"
+                )
               }
             >
               View My Team
@@ -1279,45 +1929,76 @@ export default function Dashboard() {
             className="transport-animated-card"
             style={{
               ...styles.sideCard,
-              animationDelay: "1.1s",
+              animationDelay:
+                "1.1s",
             }}
           >
-            <div style={styles.sectionTitle}>
+            <div
+              style={
+                styles.sectionTitle
+              }
+            >
               🔗 Referral Program
             </div>
 
-            <div style={styles.referralText}>
-              Invite friends and grow your team.
+            <div
+              style={
+                styles.referralText
+              }
+            >
+              Invite friends and grow
+              your team.
             </div>
 
-            <div style={styles.referralCodeBox}>
+            <div
+              style={
+                styles.referralCodeBox
+              }
+            >
               <span
                 style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  overflow:
+                    "hidden",
+                  textOverflow:
+                    "ellipsis",
+                  whiteSpace:
+                    "nowrap",
                 }}
               >
                 {referralCode}
               </span>
 
               <button
-                style={styles.copyButton}
-                onClick={copyReferral}
+                style={
+                  styles.copyButton
+                }
+                onClick={
+                  copyReferral
+                }
               >
-                {copied ? "Copied" : "Copy"}
+                {copied
+                  ? "Copied"
+                  : "Copy"}
               </button>
             </div>
 
-            <div style={styles.referralLinkBox}>
+            <div
+              style={
+                styles.referralLinkBox
+              }
+            >
               {referralLink ||
                 "Referral link unavailable"}
             </div>
 
             <button
-              style={styles.greenButton}
+              style={
+                styles.greenButton
+              }
               onClick={() =>
-                goTo("/referral")
+                goTo(
+                  "/referral"
+                )
               }
             >
               Open Referral
@@ -1327,7 +2008,9 @@ export default function Dashboard() {
 
         <section
           className="transport-animated-card"
-          style={styles.activityCard}
+          style={
+            styles.activityCard
+          }
         >
           <div
             style={{
@@ -1338,134 +2021,204 @@ export default function Dashboard() {
             }}
           >
             <div>
-              <div style={styles.sectionTitle}>
+              <div
+                style={
+                  styles.sectionTitle
+                }
+              >
                 📊 Recent Transactions
               </div>
 
-              <div style={styles.sectionSubtitle}>
+              <div
+                style={
+                  styles.sectionSubtitle
+                }
+              >
                 Latest account activity
               </div>
             </div>
 
             <button
-              style={styles.textButton}
+              style={
+                styles.textButton
+              }
               onClick={() =>
-                goTo("/transactions")
+                goTo(
+                  "/transactions"
+                )
               }
             >
               View All →
             </button>
           </div>
 
-          {recentTransactions.length === 0 ? (
-            <div style={styles.transactionEmpty}>
+          {recentTransactions.length ===
+          0 ? (
+            <div
+              style={
+                styles.transactionEmpty
+              }
+            >
               No transactions yet.
             </div>
           ) : (
-            <div style={styles.transactionList}>
+            <div
+              style={
+                styles.transactionList
+              }
+            >
               {recentTransactions
                 .slice(0, 5)
-                .map((item, index) => {
-                  const type = String(
-                    item.type || ""
-                  ).toLowerCase();
+                .map(
+                  (
+                    item,
+                    index
+                  ) => {
+                    const type =
+                      String(
+                        item.type ||
+                          ""
+                      ).toLowerCase();
 
-                  const returnType = String(
-                    item.returnType ||
-                      item.return_type ||
-                      item.transactionType ||
-                      item.transaction_type ||
-                      ""
-                  ).toLowerCase();
+                    const returnType =
+                      String(
+                        item.returnType ||
+                          item.return_type ||
+                          item.transactionType ||
+                          item.transaction_type ||
+                          ""
+                      ).toLowerCase();
 
-                  const status = String(
-                    item.status || "pending"
-                  ).toLowerCase();
+                    const status =
+                      String(
+                        item.status ||
+                          "pending"
+                      ).toLowerCase();
 
-                  const isReturn =
-                    type === "return" ||
-                    type.includes("return") ||
-                    returnType.includes("return") ||
-                    returnType.includes("weekly");
+                    const isReturn =
+                      type ===
+                        "return" ||
+                      type.includes(
+                        "return"
+                      ) ||
+                      returnType.includes(
+                        "return"
+                      ) ||
+                      returnType.includes(
+                        "weekly"
+                      );
 
-                  const isWithdraw =
-                    type === "withdraw" ||
-                    type === "withdrawal";
+                    const isWithdraw =
+                      type ===
+                        "withdraw" ||
+                      type ===
+                        "withdrawal";
 
-                  let transactionTitle = "Deposit";
-                  let transactionIcon = "💰";
+                    let transactionTitle =
+                      "Deposit";
 
-                  if (isReturn) {
-                    transactionTitle = "Return";
-                    transactionIcon = "🎁";
-                  } else if (isWithdraw) {
-                    transactionTitle = "Withdraw";
-                    transactionIcon = "💸";
-                  }
+                    let transactionIcon =
+                      "💰";
 
-                  return (
-                    <div
-                      style={{
-                        ...styles.transactionRow,
-                        ...(isMobile
-                          ? styles.mobileTransactionRow
-                          : {}),
-                      }}
-                      key={
-                        item.id ||
-                        item.withdrawalRequestId ||
-                        index
-                      }
-                    >
-                      <div
-                        style={styles.transactionIcon}
-                      >
-                        {transactionIcon}
-                      </div>
+                    if (isReturn) {
+                      transactionTitle =
+                        "Return";
 
-                      <div
-                        style={styles.transactionInfo}
-                      >
-                        <div
-                          style={styles.transactionTitle}
-                        >
-                          {transactionTitle}
-                        </div>
+                      transactionIcon =
+                        "🎁";
+                    } else if (
+                      isWithdraw
+                    ) {
+                      transactionTitle =
+                        "Withdraw";
 
-                        <div
-                          style={styles.transactionDate}
-                        >
-                          {item.date ||
-                            item.createdAt ||
-                            item.created_at ||
-                            item.submittedAt ||
-                            item.submitted_at ||
-                            "Recently"}
-                        </div>
-                      </div>
+                      transactionIcon =
+                        "💸";
+                    }
 
-                      <div
-                        style={styles.transactionAmount}
-                      >
-                        {formatMoney(item.amount)}
-                      </div>
-
+                    return (
                       <div
                         style={{
-                          ...styles.statusBadge,
-                          ...(status === "approved" ||
-                          status === "completed"
-                            ? styles.approvedStatus
-                            : status === "rejected"
-                            ? styles.rejectedStatus
-                            : styles.pendingStatus),
+                          ...styles.transactionRow,
+                          ...(isMobile
+                            ? styles.mobileTransactionRow
+                            : {}),
                         }}
+                        key={
+                          item.id ||
+                          item.withdrawalRequestId ||
+                          index
+                        }
                       >
-                        {status.toUpperCase()}
+                        <div
+                          style={
+                            styles.transactionIcon
+                          }
+                        >
+                          {
+                            transactionIcon
+                          }
+                        </div>
+
+                        <div
+                          style={
+                            styles.transactionInfo
+                          }
+                        >
+                          <div
+                            style={
+                              styles.transactionTitle
+                            }
+                          >
+                            {
+                              transactionTitle
+                            }
+                          </div>
+
+                          <div
+                            style={
+                              styles.transactionDate
+                            }
+                          >
+                            {item.date ||
+                              item.createdAt ||
+                              item.created_at ||
+                              item.submittedAt ||
+                              item.submitted_at ||
+                              "Recently"}
+                          </div>
+                        </div>
+
+                        <div
+                          style={
+                            styles.transactionAmount
+                          }
+                        >
+                          {formatMoney(
+                            item.amount
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            ...styles.statusBadge,
+                            ...(status ===
+                              "approved" ||
+                            status ===
+                              "completed"
+                              ? styles.approvedStatus
+                              : status ===
+                                "rejected"
+                              ? styles.rejectedStatus
+                              : styles.pendingStatus),
+                          }}
+                        >
+                          {status.toUpperCase()}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  }
+                )}
             </div>
           )}
         </section>
@@ -1479,19 +2232,37 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={styles.dashboardSupportIcon}>
+          <div
+            style={
+              styles.dashboardSupportIcon
+            }
+          >
             🎧
           </div>
 
-          <div style={styles.dashboardSupportContent}>
-            <div style={styles.dashboardSupportTitle}>
+          <div
+            style={
+              styles.dashboardSupportContent
+            }
+          >
+            <div
+              style={
+                styles.dashboardSupportTitle
+              }
+            >
               Need Help?
             </div>
 
-            <div style={styles.dashboardSupportText}>
-              Have questions about your account,
-              deposits, withdrawals, or transport
-              plans? Our support team is here to help.
+            <div
+              style={
+                styles.dashboardSupportText
+              }
+            >
+              Have questions about
+              your account, deposits,
+              withdrawals, or transport
+              plans? Our support team is
+              here to help.
             </div>
           </div>
 
@@ -1504,9 +2275,13 @@ export default function Dashboard() {
             }}
           >
             <button
-              style={styles.liveChatButton}
+              style={
+                styles.liveChatButton
+              }
               onClick={() =>
-                goTo("/support")
+                goTo(
+                  "/support"
+                )
               }
             >
               💬 Live Chat
@@ -1516,14 +2291,15 @@ export default function Dashboard() {
               href="https://wa.me/923263159327?text=Hello%20Transport%20Hub%20Support%2C%20I%20need%20help."
               target="_blank"
               rel="noopener noreferrer"
-              style={styles.whatsappButton}
+              style={
+                styles.whatsappButton
+              }
             >
               📱 WhatsApp
             </a>
           </div>
         </section>
 
-        {/* ===== MOBILE APP DOWNLOAD CARD ===== */}
         <section
           className="transport-animated-card"
           style={{
@@ -1533,25 +2309,45 @@ export default function Dashboard() {
               : {}),
           }}
         >
-          <div style={styles.appDownloadIcon}>
+          <div
+            style={
+              styles.appDownloadIcon
+            }
+          >
             📱
           </div>
 
-          <div style={styles.appDownloadContent}>
-            <div style={styles.appDownloadTitle}>
+          <div
+            style={
+              styles.appDownloadContent
+            }
+          >
+            <div
+              style={
+                styles.appDownloadTitle
+              }
+            >
               Transport Hub Mobile App
             </div>
 
-            <div style={styles.appDownloadText}>
-              Download the Transport Hub app for a faster,
-              smoother, and more convenient experience.
+            <div
+              style={
+                styles.appDownloadText
+              }
+            >
+              Download the Transport Hub
+              app for a faster, smoother,
+              and more convenient
+              experience.
             </div>
           </div>
 
           <a
             href="/transport-hub.apk"
             download="Transport-Hub.apk"
-            style={styles.appDownloadButton}
+            style={
+              styles.appDownloadButton
+            }
           >
             📥 Download App
           </a>
@@ -1559,7 +2355,11 @@ export default function Dashboard() {
       </main>
 
       {showPrizePopup && (
-        <div style={styles.prizePopupOverlay}>
+        <div
+          style={
+            styles.prizePopupOverlay
+          }
+        >
           <div
             style={{
               ...styles.prizePopupCard,
@@ -1567,15 +2367,27 @@ export default function Dashboard() {
                 "prizePopupIn .35s ease-out forwards",
             }}
           >
-            <div style={styles.prizePopupTop}>
-              <div style={styles.prizeBrandPill}>
+            <div
+              style={
+                styles.prizePopupTop
+              }
+            >
+              <div
+                style={
+                  styles.prizeBrandPill
+                }
+              >
                 🚛 TRANSPORT HUB
               </div>
 
               <button
-                style={styles.prizeCloseTop}
+                style={
+                  styles.prizeCloseTop
+                }
                 onClick={() =>
-                  setShowPrizePopup(false)
+                  setShowPrizePopup(
+                    false
+                  )
                 }
                 aria-label="Close popup"
               >
@@ -1583,7 +2395,11 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div style={styles.prizeHero}>
+            <div
+              style={
+                styles.prizeHero
+              }
+            >
               <div
                 style={{
                   ...styles.prizeGlowIcon,
@@ -1594,53 +2410,112 @@ export default function Dashboard() {
                 🏆
               </div>
 
-              <div style={styles.prizeSmallTitle}>
+              <div
+                style={
+                  styles.prizeSmallTitle
+                }
+              >
                 SPECIAL TEAM REWARD
               </div>
 
-              <div style={styles.prizeMainTitle}>
+              <div
+                style={
+                  styles.prizeMainTitle
+                }
+              >
                 WIN 5 LAKH PRIZE
               </div>
 
-              <div style={styles.prizeSubtitle}>
-                Build Your Team • Unlock Your Reward
+              <div
+                style={
+                  styles.prizeSubtitle
+                }
+              >
+                Build Your Team •
+                Unlock Your Reward
               </div>
 
-              <div style={styles.prizeDivider} />
+              <div
+                style={
+                  styles.prizeDivider
+                }
+              />
 
-              <div style={styles.prizeMessage}>
+              <div
+                style={
+                  styles.prizeMessage
+                }
+              >
                 When your team crosses
               </div>
 
-              <div style={styles.prizeTarget}>
+              <div
+                style={
+                  styles.prizeTarget
+                }
+              >
                 50 LAKH
               </div>
 
-              <div style={styles.prizeMessage}>
+              <div
+                style={
+                  styles.prizeMessage
+                }
+              >
                 you will WIN
               </div>
 
-              <div style={styles.prizeAmount}>
+              <div
+                style={
+                  styles.prizeAmount
+                }
+              >
                 5 LAKH
               </div>
 
-              <div style={styles.prizeBottomGlow}>
+              <div
+                style={
+                  styles.prizeBottomGlow
+                }
+              >
                 🏆
               </div>
             </div>
 
-            <div style={styles.channelPrizeCard}>
-              <div style={styles.channelIcon}>
+            <div
+              style={
+                styles.channelPrizeCard
+              }
+            >
+              <div
+                style={
+                  styles.channelIcon
+                }
+              >
                 📢
               </div>
 
-              <div style={styles.channelInfo}>
-                <div style={styles.channelTitle}>
-                  JOIN OUR OFFICIAL CHANNEL
+              <div
+                style={
+                  styles.channelInfo
+                }
+              >
+                <div
+                  style={
+                    styles.channelTitle
+                  }
+                >
+                  JOIN OUR OFFICIAL
+                  CHANNEL
                 </div>
 
-                <div style={styles.channelSubtitle}>
-                  News • Updates & Announcements
+                <div
+                  style={
+                    styles.channelSubtitle
+                  }
+                >
+                  News • Updates &
+                  Announcements
                 </div>
               </div>
 
@@ -1648,17 +2523,27 @@ export default function Dashboard() {
                 href="https://whatsapp.com/channel/0029VbDUOmH6xCSQ4ejQlS0R"
                 target="_blank"
                 rel="noopener noreferrer"
-                style={styles.channelButton}
+                style={
+                  styles.channelButton
+                }
               >
                 JOIN CHANNEL →
               </a>
             </div>
 
-            <div style={styles.prizeBottomButtons}>
+            <div
+              style={
+                styles.prizeBottomButtons
+              }
+            >
               <button
-                style={styles.prizeCloseButton}
+                style={
+                  styles.prizeCloseButton
+                }
                 onClick={() =>
-                  setShowPrizePopup(false)
+                  setShowPrizePopup(
+                    false
+                  )
                 }
               >
                 CLOSE ✕
@@ -1669,25 +2554,50 @@ export default function Dashboard() {
       )}
 
       {showFeatures && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalCard}>
-            <div style={styles.modalIcon}>
+        <div
+          style={
+            styles.modalOverlay
+          }
+        >
+          <div
+            style={
+              styles.modalCard
+            }
+          >
+            <div
+              style={
+                styles.modalIcon
+              }
+            >
               🚧
             </div>
 
-            <div style={styles.modalTitle}>
+            <div
+              style={
+                styles.modalTitle
+              }
+            >
               Coming Soon
             </div>
 
-            <div style={styles.modalText}>
-              This feature is currently under
-              development and will be available soon.
+            <div
+              style={
+                styles.modalText
+              }
+            >
+              This feature is currently
+              under development and will
+              be available soon.
             </div>
 
             <button
-              style={styles.greenButtonLarge}
+              style={
+                styles.greenButtonLarge
+              }
               onClick={() =>
-                setShowFeatures(false)
+                setShowFeatures(
+                  false
+                )
               }
             >
               Close
@@ -1713,8 +2623,10 @@ const styles = {
     top: 0,
     left: 0,
     right: 0,
-    height: "calc(58px + env(safe-area-inset-top, 0px))",
-    paddingTop: "env(safe-area-inset-top, 0px)",
+    height:
+      "calc(58px + env(safe-area-inset-top, 0px))",
+    paddingTop:
+      "env(safe-area-inset-top, 0px)",
     background: "#102A43",
     color: "#ffffff",
     display: "flex",
@@ -1724,13 +2636,15 @@ const styles = {
     paddingRight: "14px",
     boxSizing: "border-box",
     zIndex: 1100,
-    boxShadow: "0 3px 15px rgba(0,0,0,.15)",
+    boxShadow:
+      "0 3px 15px rgba(0,0,0,.15)",
   },
 
   menuButton: {
     width: "38px",
     height: "38px",
-    border: "1px solid #294B66",
+    border:
+      "1px solid #294B66",
     borderRadius: "9px",
     background: "#173B5A",
     color: "#ffffff",
@@ -1745,11 +2659,13 @@ const styles = {
 
   mobileOverlay: {
     position: "fixed",
-    top: "calc(58px + env(safe-area-inset-top, 0px))",
+    top:
+      "calc(58px + env(safe-area-inset-top, 0px))",
     left: 0,
     right: 0,
     bottom: 0,
-    background: "rgba(0,0,0,.55)",
+    background:
+      "rgba(0,0,0,.55)",
     zIndex: 1150,
   },
 
@@ -1771,10 +2687,13 @@ const styles = {
   mobileSidebar: {
     width: "270px",
     maxWidth: "82vw",
-    top: "calc(58px + env(safe-area-inset-top, 0px))",
+    top:
+      "calc(58px + env(safe-area-inset-top, 0px))",
     bottom: 0,
-    height: "calc(100vh - 58px - env(safe-area-inset-top, 0px))",
-    boxShadow: "8px 0 25px rgba(0,0,0,.25)",
+    height:
+      "calc(100vh - 58px - env(safe-area-inset-top, 0px))",
+    boxShadow:
+      "8px 0 25px rgba(0,0,0,.25)",
     zIndex: 1200,
   },
 
@@ -1838,7 +2757,8 @@ const styles = {
 
   logoutNavItem: {
     width: "100%",
-    border: "1px solid #294B66",
+    border:
+      "1px solid #294B66",
     background: "#173B5A",
     color: "#ffffff",
     padding: "10px 11px",
@@ -1855,7 +2775,8 @@ const styles = {
 
   mainContent: {
     marginLeft: "245px",
-    width: "calc(100% - 245px)",
+    width:
+      "calc(100% - 245px)",
     minHeight: "100vh",
     padding: "22px",
     boxSizing: "border-box",
@@ -1865,7 +2786,8 @@ const styles = {
   mobileMainContent: {
     marginLeft: 0,
     width: "100%",
-    paddingTop: "calc(76px + env(safe-area-inset-top, 0px))",
+    paddingTop:
+      "calc(76px + env(safe-area-inset-top, 0px))",
     paddingRight: "12px",
     paddingBottom: "20px",
     paddingLeft: "12px",
@@ -1897,45 +2819,6 @@ const styles = {
     marginTop: "4px",
   },
 
-  topUser: {
-    display: "flex",
-    alignItems: "center",
-    gap: "9px",
-    background: "#ffffff",
-    padding: "8px 12px",
-    borderRadius: "12px",
-    border: "1px solid #dce5ec",
-    flexShrink: 0,
-  },
-
-  mobileTopUser: {
-    padding: "6px 8px",
-  },
-
-  topAvatar: {
-    width: "34px",
-    height: "34px",
-    borderRadius: "50%",
-    background: "#102A43",
-    color: "#ffffff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-
-  topUserName: {
-    fontSize: "11px",
-    fontWeight: 900,
-    color: "#102A43",
-  },
-
-  topUserBalance: {
-    fontSize: "9px",
-    color: "#6B8297",
-    marginTop: "2px",
-  },
-
   welcomeCard: {
     background: "#102A43",
     borderRadius: "18px",
@@ -1946,7 +2829,8 @@ const styles = {
     justifyContent: "space-between",
     gap: "15px",
     marginBottom: "18px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     minWidth: 0,
     boxSizing: "border-box",
   },
@@ -2005,7 +2889,8 @@ const styles = {
     background: "#102A43",
     borderRadius: "15px",
     padding: "17px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     minWidth: 0,
     boxSizing: "border-box",
     overflow: "hidden",
@@ -2037,7 +2922,8 @@ const styles = {
     background: "#102A43",
     borderRadius: "17px",
     padding: "20px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     marginBottom: "18px",
     minWidth: 0,
     boxSizing: "border-box",
@@ -2120,7 +3006,8 @@ const styles = {
   emptyText: {
     color: "#9FB3C8",
     fontSize: "10px",
-    margin: "6px 0 14px",
+    margin:
+      "6px 0 14px",
     overflowWrap: "anywhere",
   },
 
@@ -2141,7 +3028,8 @@ const styles = {
     background: "#173B5A",
     borderRadius: "13px",
     padding: "15px",
-    border: "1px solid #294B66",
+    border:
+      "1px solid #294B66",
     minWidth: 0,
     boxSizing: "border-box",
     overflow: "hidden",
@@ -2187,7 +3075,8 @@ const styles = {
     gap: "8px",
     marginTop: "15px",
     paddingTop: "12px",
-    borderTop: "1px solid #294B66",
+    borderTop:
+      "1px solid #294B66",
     minWidth: 0,
   },
 
@@ -2225,7 +3114,8 @@ const styles = {
     background: "#102A43",
     borderRadius: "17px",
     padding: "20px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     minWidth: 0,
     boxSizing: "border-box",
     overflow: "hidden",
@@ -2237,11 +3127,13 @@ const styles = {
 
   walletRow: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     alignItems: "center",
     gap: "10px",
     padding: "10px 0",
-    borderBottom: "1px solid #1E3A56",
+    borderBottom:
+      "1px solid #1E3A56",
     color: "#C9D8E6",
     fontSize: "10px",
     minWidth: 0,
@@ -2266,10 +3158,12 @@ const styles = {
 
   teamStat: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "10px",
     padding: "8px 0",
-    borderBottom: "1px solid #1E3A56",
+    borderBottom:
+      "1px solid #1E3A56",
     color: "#C9D8E6",
     fontSize: "10px",
     overflowWrap: "anywhere",
@@ -2277,7 +3171,8 @@ const styles = {
 
   outlineButton: {
     marginTop: "15px",
-    border: "1px solid #3E8E5B",
+    border:
+      "1px solid #3E8E5B",
     background: "transparent",
     color: "#8FD694",
     padding: "9px 13px",
@@ -2298,7 +3193,8 @@ const styles = {
   referralCodeBox: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "10px",
     background: "#173B5A",
     borderRadius: "9px",
@@ -2340,7 +3236,8 @@ const styles = {
     background: "#102A43",
     borderRadius: "17px",
     padding: "20px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     marginBottom: "20px",
     minWidth: 0,
     boxSizing: "border-box",
@@ -2377,7 +3274,8 @@ const styles = {
     alignItems: "center",
     gap: "10px",
     padding: "11px 0",
-    borderBottom: "1px solid #1E3A56",
+    borderBottom:
+      "1px solid #1E3A56",
     minWidth: 0,
   },
 
@@ -2453,7 +3351,8 @@ const styles = {
     padding: "22px",
     marginTop: "20px",
     marginBottom: "20px",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     display: "flex",
     alignItems: "center",
     gap: "16px",
@@ -2530,7 +3429,8 @@ const styles = {
     textDecoration: "none",
     background: "#1E3A56",
     color: "#ffffff",
-    border: "1px solid #294B66",
+    border:
+      "1px solid #294B66",
     padding: "10px 14px",
     borderRadius: "9px",
     fontSize: "11px",
@@ -2545,7 +3445,8 @@ const styles = {
     padding: "22px",
     marginTop: "20px",
     marginBottom: "20px",
-    border: "1px solid #294B66",
+    border:
+      "1px solid #294B66",
     display: "flex",
     alignItems: "center",
     gap: "16px",
@@ -2605,7 +3506,8 @@ const styles = {
     color: "#ffffff",
     padding: "12px 18px",
     borderRadius: "9px",
-    border: "1px solid #4FA66A",
+    border:
+      "1px solid #4FA66A",
     fontSize: "10px",
     fontWeight: 900,
     whiteSpace: "nowrap",
@@ -2659,7 +3561,8 @@ const styles = {
     background:
       "rgba(3, 12, 24, 0.82)",
     backdropFilter: "blur(7px)",
-    WebkitBackdropFilter: "blur(7px)",
+    WebkitBackdropFilter:
+      "blur(7px)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -2926,7 +3829,8 @@ const styles = {
   modalOverlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(7, 24, 38, 0.72)",
+    background:
+      "rgba(7, 24, 38, 0.72)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -2939,7 +3843,8 @@ const styles = {
     width: "100%",
     maxWidth: "390px",
     background: "#102A43",
-    border: "1px solid #1E3A56",
+    border:
+      "1px solid #1E3A56",
     borderRadius: "18px",
     padding: "28px",
     textAlign: "center",
