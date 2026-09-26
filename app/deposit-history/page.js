@@ -21,7 +21,7 @@ export default function DepositHistoryPage() {
     return phone;
   };
 
-  const phonesMatch = (value1, value2) => {
+  const phoneMatches = (value1, value2) => {
     const a = normalizePhone(value1);
     const b = normalizePhone(value2);
 
@@ -45,16 +45,165 @@ export default function DepositHistoryPage() {
     return false;
   };
 
+  const jsonContainsPhone = (value, targetPhone) => {
+    try {
+      const target = normalizePhone(targetPhone);
+
+      const targetDigits = target.replace(/\D/g, "");
+
+      if (!target || !targetDigits) {
+        return false;
+      }
+
+      const text = JSON.stringify(value || {})
+        .replace(/\s+/g, "")
+        .replace(/"/g, "")
+        .replace(/'/g, "");
+
+      const textDigits = text.replace(/\D/g, "");
+
+      if (text.includes(target)) {
+        return true;
+      }
+
+      if (
+        targetDigits.length >= 10 &&
+        textDigits.includes(targetDigits)
+      ) {
+        return true;
+      }
+
+      if (
+        targetDigits.length >= 10 &&
+        textDigits.includes(
+          targetDigits.slice(-10)
+        )
+      ) {
+        return true;
+      }
+
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  const convertSupabaseRow = (row) => {
+    const rowUser =
+      row.user_data &&
+      typeof row.user_data === "object"
+        ? row.user_data
+        : {};
+
+    const rowPlan =
+      row.plan &&
+      typeof row.plan === "object"
+        ? row.plan
+        : {};
+
+    return {
+      id: row.id,
+
+      requestId: row.id,
+
+      status:
+        row.status ||
+        "Pending",
+
+      amount:
+        row.deposit_amount ??
+        rowPlan.amount ??
+        rowPlan.price ??
+        0,
+
+      price:
+        row.deposit_amount ??
+        rowPlan.amount ??
+        rowPlan.price ??
+        0,
+
+      depositAmount:
+        row.deposit_amount ??
+        0,
+
+      plan: rowPlan,
+
+      planName:
+        rowPlan.name ||
+        row.plan_name ||
+        "Transport Plan",
+
+      paymentMethod:
+        row.payment_method ||
+        "—",
+
+      paymentMethodId:
+        row.payment_method_id ||
+        "",
+
+      accountName:
+        row.account_name ||
+        "",
+
+      accountNumber:
+        row.account_number ||
+        "",
+
+      bankName:
+        row.bank_name ||
+        "",
+
+      transactionId:
+        row.transaction_id ||
+        "",
+
+      screenshot:
+        row.screenshot ||
+        "",
+
+      screenshotName:
+        row.screenshot_name ||
+        "",
+
+      submittedAt:
+        row.created_at ||
+        "",
+
+      createdAt:
+        row.created_at ||
+        "",
+
+      updatedAt:
+        row.updated_at ||
+        "",
+
+      userPhone:
+        rowUser.phone ||
+        rowUser.mobile ||
+        rowUser.phoneNumber ||
+        rowUser.username ||
+        "",
+
+      user: rowUser,
+    };
+  };
+
   useEffect(() => {
     const loadDepositHistory = async () => {
-      const loggedIn = localStorage.getItem("transportLoggedIn");
+      const loggedIn =
+        localStorage.getItem(
+          "transportLoggedIn"
+        );
 
       if (loggedIn !== "true") {
         window.location.href = "/login";
         return;
       }
 
-      const userData = localStorage.getItem("transportUser");
+      const userData =
+        localStorage.getItem(
+          "transportUser"
+        );
 
       if (!userData) {
         setLoading(false);
@@ -74,8 +223,6 @@ export default function DepositHistoryPage() {
           setLoading(false);
           return;
         }
-
-        const normalizedPhone = normalizePhone(phone);
 
         // =========================================================
         // 1. LOAD LOCAL HISTORY
@@ -129,14 +276,68 @@ export default function DepositHistoryPage() {
         }
 
         // =========================================================
-        // 2. LOAD ALL DEPOSITS FROM SUPABASE
-        //
-        // We intentionally load the rows and match the current
-        // user in JavaScript so different phone field formats
-        // cannot cause Approved records to be missed.
+        // 2. COLLECT EXACT REQUEST IDS FROM LOCAL HISTORY
         // =========================================================
 
+        const localRecords = [
+          ...userDeposits,
+          ...(oldUserDeposit
+            ? [oldUserDeposit]
+            : []),
+        ];
+
+        const requestIds = Array.from(
+          new Set(
+            localRecords
+              .map(
+                (deposit) =>
+                  deposit?.id ||
+                  deposit?.requestId
+              )
+              .filter(Boolean)
+              .map((id) => String(id))
+          )
+        );
+
         let supabaseDeposits = [];
+
+        // =========================================================
+        // 3. FIRST: FIND SAME RECORD BY EXACT REQUEST ID
+        // =========================================================
+
+        if (requestIds.length > 0) {
+          try {
+            const {
+              data,
+              error,
+            } = await supabase
+              .from("deposit_requests")
+              .select("*")
+              .in("id", requestIds)
+              .order("created_at", {
+                ascending: false,
+              });
+
+            if (error) {
+              console.error(
+                "Supabase ID Match Error:",
+                error
+              );
+            } else if (Array.isArray(data)) {
+              supabaseDeposits =
+                data.map(convertSupabaseRow);
+            }
+          } catch (error) {
+            console.error(
+              "Error matching deposit IDs:",
+              error
+            );
+          }
+        }
+
+        // =========================================================
+        // 4. FALLBACK: LOAD ALL AND MATCH USER PHONE
+        // =========================================================
 
         try {
           const {
@@ -155,155 +356,100 @@ export default function DepositHistoryPage() {
               error
             );
           } else if (Array.isArray(data)) {
-            supabaseDeposits = data
-              .filter((row) => {
-                const rowUser =
-                  row.user_data &&
-                  typeof row.user_data === "object"
-                    ? row.user_data
-                    : {};
+            const existingIds = new Set(
+              supabaseDeposits.map((item) =>
+                String(item.id)
+              )
+            );
 
-                const rowPhone =
-                  rowUser.phone ||
-                  rowUser.mobile ||
-                  rowUser.phoneNumber ||
-                  rowUser.username ||
-                  row.phone ||
-                  row.mobile ||
-                  row.phoneNumber ||
-                  row.userPhone ||
-                  "";
+            data.forEach((row) => {
+              if (
+                !row ||
+                !row.id ||
+                existingIds.has(
+                  String(row.id)
+                )
+              ) {
+                return;
+              }
 
-                return phonesMatch(
-                  rowPhone,
-                  normalizedPhone
+              const rowUser =
+                row.user_data &&
+                typeof row.user_data === "object"
+                  ? row.user_data
+                  : {};
+
+              const possiblePhones = [
+                rowUser.phone,
+                rowUser.mobile,
+                rowUser.phoneNumber,
+                rowUser.username,
+                row.phone,
+                row.mobile,
+                row.phoneNumber,
+                row.userPhone,
+              ];
+
+              const matchedPhone =
+                possiblePhones.some((value) =>
+                  phoneMatches(
+                    value,
+                    phone
+                  )
                 );
-              })
-              .map((row) => {
-                const rowUser =
-                  row.user_data &&
-                  typeof row.user_data === "object"
-                    ? row.user_data
-                    : {};
 
-                const rowPlan =
-                  row.plan &&
-                  typeof row.plan === "object"
-                    ? row.plan
-                    : {};
+              const matchedInsideJson =
+                jsonContainsPhone(
+                  rowUser,
+                  phone
+                );
 
-                return {
-                  id: row.id,
-
-                  requestId: row.id,
-
-                  status:
-                    row.status ||
-                    "Pending",
-
-                  amount:
-                    row.deposit_amount ??
-                    rowPlan.amount ??
-                    rowPlan.price ??
-                    0,
-
-                  price:
-                    row.deposit_amount ??
-                    rowPlan.amount ??
-                    rowPlan.price ??
-                    0,
-
-                  plan: rowPlan,
-
-                  planName:
-                    rowPlan.name ||
-                    row.plan_name ||
-                    "Transport Plan",
-
-                  paymentMethod:
-                    row.payment_method ||
-                    "—",
-
-                  paymentMethodId:
-                    row.payment_method_id ||
-                    "",
-
-                  accountName:
-                    row.account_name ||
-                    "",
-
-                  accountNumber:
-                    row.account_number ||
-                    "",
-
-                  bankName:
-                    row.bank_name ||
-                    "",
-
-                  transactionId:
-                    row.transaction_id ||
-                    "",
-
-                  screenshot:
-                    row.screenshot ||
-                    "",
-
-                  screenshotName:
-                    row.screenshot_name ||
-                    "",
-
-                  submittedAt:
-                    row.created_at ||
-                    "",
-
-                  createdAt:
-                    row.created_at ||
-                    "",
-
-                  updatedAt:
-                    row.updated_at ||
-                    "",
-
-                  userPhone:
-                    rowUser.phone ||
-                    rowUser.mobile ||
-                    rowUser.phoneNumber ||
-                    rowUser.username ||
-                    "",
-
-                  user: rowUser,
-                };
-              });
+              if (
+                matchedPhone ||
+                matchedInsideJson
+              ) {
+                supabaseDeposits.push(
+                  convertSupabaseRow(row)
+                );
+                existingIds.add(
+                  String(row.id)
+                );
+              }
+            });
           }
         } catch (error) {
           console.error(
-            "Error loading deposits from Supabase:",
+            "Error loading Supabase deposits:",
             error
           );
         }
 
         // =========================================================
-        // 3. MERGE LOCAL + SUPABASE
+        // 5. MERGE LOCAL + SUPABASE
         //
-        // Supabase ALWAYS wins.
-        // Therefore Approved/Rejected status from Admin is shown.
+        // SUPABASE ALWAYS WINS.
         // =========================================================
 
         const mergedMap = new Map();
 
-        userDeposits.forEach((deposit, index) => {
-          const key =
-            deposit.id ||
-            deposit.requestId ||
-            `${deposit.amount || deposit.price || 0}-${
-              deposit.submittedAt ||
-              deposit.createdAt ||
-              deposit.date ||
-              index
-            }`;
+        userDeposits.forEach(
+          (deposit, index) => {
+            const key =
+              deposit.id ||
+              deposit.requestId ||
+              `${deposit.amount || deposit.price || 0}-${
+                deposit.submittedAt ||
+                deposit.createdAt ||
+                deposit.date ||
+                index
+              }`;
 
-          mergedMap.set(String(key), deposit);
-        });
+            mergedMap.set(
+              String(key),
+              deposit
+            );
+          }
+        );
 
         if (oldUserDeposit) {
           const key =
@@ -326,63 +472,69 @@ export default function DepositHistoryPage() {
           );
         }
 
+        // Supabase records overwrite local records
         supabaseDeposits.forEach(
-          (deposit, index) => {
+          (deposit) => {
             const key =
               deposit.id ||
-              deposit.requestId ||
-              `${deposit.amount || deposit.price || 0}-${
-                deposit.submittedAt ||
-                deposit.createdAt ||
-                index
-              }`;
+              deposit.requestId;
 
-            mergedMap.set(
-              String(key),
-              deposit
-            );
+            if (key) {
+              mergedMap.set(
+                String(key),
+                deposit
+              );
+            }
           }
         );
 
         const finalDeposits =
-          Array.from(mergedMap.values());
+          Array.from(
+            mergedMap.values()
+          );
 
         // =========================================================
-        // 4. SORT NEWEST FIRST
+        // 6. SORT NEWEST FIRST
         // =========================================================
 
-        finalDeposits.sort((a, b) => {
-          const dateA = new Date(
-            a.updatedAt ||
-              a.submittedAt ||
-              a.createdAt ||
-              a.date ||
-              0
-          ).getTime();
+        finalDeposits.sort(
+          (a, b) => {
+            const dateA =
+              new Date(
+                a.updatedAt ||
+                  a.submittedAt ||
+                  a.createdAt ||
+                  a.date ||
+                  0
+              ).getTime();
 
-          const dateB = new Date(
-            b.updatedAt ||
-              b.submittedAt ||
-              b.createdAt ||
-              b.date ||
-              0
-          ).getTime();
+            const dateB =
+              new Date(
+                b.updatedAt ||
+                  b.submittedAt ||
+                  b.createdAt ||
+                  b.date ||
+                  0
+              ).getTime();
 
-          return dateB - dateA;
-        });
+            return dateB - dateA;
+          }
+        );
 
         // =========================================================
-        // 5. SAVE LATEST DATA LOCALLY
+        // 7. SAVE THE LATEST STATUS LOCALLY
         // =========================================================
 
         try {
           localStorage.setItem(
             userKey,
-            JSON.stringify(finalDeposits)
+            JSON.stringify(
+              finalDeposits
+            )
           );
         } catch (error) {
           console.error(
-            "Error saving updated deposit history locally:",
+            "Error saving updated deposit history:",
             error
           );
         }
@@ -403,28 +555,39 @@ export default function DepositHistoryPage() {
 
   const getStatusStyle = (status) => {
     const normalizedStatus =
-      String(status || "Pending").toLowerCase();
+      String(
+        status || "Pending"
+      ).toLowerCase();
 
-    if (normalizedStatus === "approved") {
+    if (
+      normalizedStatus ===
+      "approved"
+    ) {
       return {
         background: "#dcfce7",
         color: "#166534",
-        border: "1px solid #86efac",
+        border:
+          "1px solid #86efac",
       };
     }
 
-    if (normalizedStatus === "rejected") {
+    if (
+      normalizedStatus ===
+      "rejected"
+    ) {
       return {
         background: "#fee2e2",
         color: "#991b1b",
-        border: "1px solid #fca5a5",
+        border:
+          "1px solid #fca5a5",
       };
     }
 
     return {
       background: "#fef3c7",
       color: "#92400e",
-      border: "1px solid #fcd34d",
+      border:
+        "1px solid #fcd34d",
     };
   };
 
@@ -432,9 +595,14 @@ export default function DepositHistoryPage() {
     if (!value) return "—";
 
     try {
-      const date = new Date(value);
+      const date =
+        new Date(value);
 
-      if (Number.isNaN(date.getTime())) {
+      if (
+        Number.isNaN(
+          date.getTime()
+        )
+      ) {
         return String(value);
       }
 
@@ -471,7 +639,9 @@ export default function DepositHistoryPage() {
 
         {deposits.length === 0 ? (
           <div style={styles.emptyCard}>
-            <div style={styles.emptyIcon}>💰</div>
+            <div style={styles.emptyIcon}>
+              💰
+            </div>
 
             <h2 style={styles.emptyTitle}>
               No Deposit History
@@ -484,163 +654,258 @@ export default function DepositHistoryPage() {
           </div>
         ) : (
           <div style={styles.list}>
-            {deposits.map((deposit, index) => {
-              const status =
-                deposit.status || "Pending";
+            {deposits.map(
+              (deposit, index) => {
+                const status =
+                  deposit.status ||
+                  "Pending";
 
-              const planName =
-                deposit.plan?.name ||
-                deposit.planName ||
-                deposit.name ||
-                "Transport Plan";
+                const planName =
+                  deposit.plan?.name ||
+                  deposit.planName ||
+                  deposit.name ||
+                  "Transport Plan";
 
-              const amount =
-                deposit.amount ??
-                deposit.price ??
-                deposit.depositAmount ??
-                deposit.plan?.amount ??
-                deposit.plan?.price ??
-                0;
+                const amount =
+                  deposit.amount ??
+                  deposit.price ??
+                  deposit.depositAmount ??
+                  deposit.plan?.amount ??
+                  deposit.plan?.price ??
+                  0;
 
-              const paymentMethod =
-                deposit.paymentMethod ||
-                deposit.method ||
-                deposit.paymentType ||
-                "—";
+                const paymentMethod =
+                  deposit.paymentMethod ||
+                  deposit.method ||
+                  deposit.paymentType ||
+                  "—";
 
-              const bankName =
-                deposit.bankName ||
-                deposit.bank ||
-                "";
+                const bankName =
+                  deposit.bankName ||
+                  deposit.bank ||
+                  "";
 
-              return (
-                <div
-                  key={
-                    deposit.id ||
-                    deposit.requestId ||
-                    `deposit-${index}`
-                  }
-                  style={styles.card}
-                >
-                  <div style={styles.cardTop}>
-                    <div>
-                      <div style={styles.planLabel}>
-                        TRANSPORT PLAN
+                return (
+                  <div
+                    key={
+                      deposit.id ||
+                      deposit.requestId ||
+                      `deposit-${index}`
+                    }
+                    style={styles.card}
+                  >
+                    <div
+                      style={
+                        styles.cardTop
+                      }
+                    >
+                      <div>
+                        <div
+                          style={
+                            styles.planLabel
+                          }
+                        >
+                          TRANSPORT PLAN
+                        </div>
+
+                        <h2
+                          style={
+                            styles.planName
+                          }
+                        >
+                          {planName}
+                        </h2>
                       </div>
 
-                      <h2 style={styles.planName}>
-                        {planName}
-                      </h2>
+                      <div
+                        style={{
+                          ...styles.status,
+                          ...getStatusStyle(
+                            status
+                          ),
+                        }}
+                      >
+                        {status}
+                      </div>
                     </div>
 
                     <div
-                      style={{
-                        ...styles.status,
-                        ...getStatusStyle(status),
-                      }}
+                      style={
+                        styles.divider
+                      }
+                    />
+
+                    <div
+                      style={
+                        styles.infoGrid
+                      }
                     >
-                      {status}
-                    </div>
-                  </div>
-
-                  <div style={styles.divider} />
-
-                  <div style={styles.infoGrid}>
-                    <div style={styles.infoBox}>
-                      <span style={styles.infoLabel}>
-                        Amount
-                      </span>
-
-                      <strong style={styles.amount}>
-                        PKR{" "}
-                        {Number(
-                          amount || 0
-                        ).toLocaleString()}
-                      </strong>
-                    </div>
-
-                    <div style={styles.infoBox}>
-                      <span style={styles.infoLabel}>
-                        Payment Method
-                      </span>
-
-                      <strong style={styles.infoValue}>
-                        {paymentMethod}
-                      </strong>
-                    </div>
-
-                    {bankName ? (
-                      <div style={styles.infoBox}>
-                        <span style={styles.infoLabel}>
-                          Bank
+                      <div
+                        style={
+                          styles.infoBox
+                        }
+                      >
+                        <span
+                          style={
+                            styles.infoLabel
+                          }
+                        >
+                          Amount
                         </span>
 
-                        <strong style={styles.infoValue}>
-                          {bankName}
+                        <strong
+                          style={
+                            styles.amount
+                          }
+                        >
+                          PKR{" "}
+                          {Number(
+                            amount || 0
+                          ).toLocaleString()}
+                        </strong>
+                      </div>
+
+                      <div
+                        style={
+                          styles.infoBox
+                        }
+                      >
+                        <span
+                          style={
+                            styles.infoLabel
+                          }
+                        >
+                          Payment Method
+                        </span>
+
+                        <strong
+                          style={
+                            styles.infoValue
+                          }
+                        >
+                          {paymentMethod}
+                        </strong>
+                      </div>
+
+                      {bankName ? (
+                        <div
+                          style={
+                            styles.infoBox
+                          }
+                        >
+                          <span
+                            style={
+                              styles.infoLabel
+                            }
+                          >
+                            Bank
+                          </span>
+
+                          <strong
+                            style={
+                              styles.infoValue
+                            }
+                          >
+                            {bankName}
+                          </strong>
+                        </div>
+                      ) : null}
+
+                      <div
+                        style={
+                          styles.infoBox
+                        }
+                      >
+                        <span
+                          style={
+                            styles.infoLabel
+                          }
+                        >
+                          Submitted
+                        </span>
+
+                        <strong
+                          style={
+                            styles.infoValue
+                          }
+                        >
+                          {formatDate(
+                            deposit.submittedAt ||
+                              deposit.createdAt ||
+                              deposit.date
+                          )}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {deposit.transactionId ? (
+                      <div
+                        style={
+                          styles.transactionBox
+                        }
+                      >
+                        <span
+                          style={
+                            styles.transactionLabel
+                          }
+                        >
+                          Transaction ID
+                        </span>
+
+                        <strong
+                          style={
+                            styles.transactionId
+                          }
+                        >
+                          {
+                            deposit.transactionId
+                          }
                         </strong>
                       </div>
                     ) : null}
 
-                    <div style={styles.infoBox}>
-                      <span style={styles.infoLabel}>
-                        Submitted
-                      </span>
+                    {String(
+                      status
+                    ).toLowerCase() ===
+                    "approved" ? (
+                      <div
+                        style={
+                          styles.approvedMessage
+                        }
+                      >
+                        ✅ Deposit approved successfully.
+                      </div>
+                    ) : null}
 
-                      <strong style={styles.infoValue}>
-                        {formatDate(
-                          deposit.submittedAt ||
-                            deposit.createdAt ||
-                            deposit.date
-                        )}
-                      </strong>
-                    </div>
+                    {String(
+                      status
+                    ).toLowerCase() ===
+                    "rejected" ? (
+                      <div
+                        style={
+                          styles.rejectedMessage
+                        }
+                      >
+                        ❌ This deposit request was rejected.
+                      </div>
+                    ) : null}
+
+                    {String(
+                      status
+                    ).toLowerCase() ===
+                    "pending" ? (
+                      <div
+                        style={
+                          styles.pendingMessage
+                        }
+                      >
+                        ⏳ Your deposit is currently under review.
+                      </div>
+                    ) : null}
                   </div>
-
-                  {deposit.transactionId ? (
-                    <div style={styles.transactionBox}>
-                      <span
-                        style={styles.transactionLabel}
-                      >
-                        Transaction ID
-                      </span>
-
-                      <strong
-                        style={styles.transactionId}
-                      >
-                        {deposit.transactionId}
-                      </strong>
-                    </div>
-                  ) : null}
-
-                  {String(status).toLowerCase() ===
-                  "approved" ? (
-                    <div
-                      style={styles.approvedMessage}
-                    >
-                      ✅ Deposit approved successfully.
-                    </div>
-                  ) : null}
-
-                  {String(status).toLowerCase() ===
-                  "rejected" ? (
-                    <div
-                      style={styles.rejectedMessage}
-                    >
-                      ❌ This deposit request was rejected.
-                    </div>
-                  ) : null}
-
-                  {String(status).toLowerCase() ===
-                  "pending" ? (
-                    <div
-                      style={styles.pendingMessage}
-                    >
-                      ⏳ Your deposit is currently under review.
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+                );
+              }
+            )}
           </div>
         )}
       </div>
@@ -655,7 +920,8 @@ const styles = {
     padding: "24px",
     boxSizing: "border-box",
     color: "#173b2b",
-    fontFamily: "Arial, sans-serif",
+    fontFamily:
+      "Arial, sans-serif",
   },
 
   container: {
@@ -669,7 +935,8 @@ const styles = {
     borderRadius: "16px",
     padding: "22px 24px",
     marginBottom: "20px",
-    boxShadow: "0 8px 25px rgba(16,42,67,.12)",
+    boxShadow:
+      "0 8px 25px rgba(16,42,67,.12)",
   },
 
   title: {
@@ -693,16 +960,19 @@ const styles = {
 
   card: {
     background: "#ffffff",
-    border: "1px solid #dce8df",
+    border:
+      "1px solid #dce8df",
     borderRadius: "16px",
     padding: "20px",
-    boxShadow: "0 7px 22px rgba(23,59,43,.08)",
+    boxShadow:
+      "0 7px 22px rgba(23,59,43,.08)",
   },
 
   cardTop: {
     display: "flex",
     alignItems: "flex-start",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     gap: "15px",
   },
 
@@ -744,7 +1014,8 @@ const styles = {
 
   infoBox: {
     background: "#f6faf7",
-    border: "1px solid #e1ece4",
+    border:
+      "1px solid #e1ece4",
     borderRadius: "10px",
     padding: "12px",
   },
@@ -776,7 +1047,8 @@ const styles = {
   transactionBox: {
     marginTop: "12px",
     background: "#eef7f0",
-    border: "1px solid #d4e8d8",
+    border:
+      "1px solid #d4e8d8",
     borderRadius: "10px",
     padding: "12px",
   },
@@ -801,7 +1073,8 @@ const styles = {
     padding: "10px 12px",
     borderRadius: "9px",
     background: "#ecfdf3",
-    border: "1px solid #bbf7d0",
+    border:
+      "1px solid #bbf7d0",
     color: "#166534",
     fontSize: "12px",
     fontWeight: 800,
@@ -812,7 +1085,8 @@ const styles = {
     padding: "10px 12px",
     borderRadius: "9px",
     background: "#fff1f2",
-    border: "1px solid #fecdd3",
+    border:
+      "1px solid #fecdd3",
     color: "#9f1239",
     fontSize: "12px",
     fontWeight: 800,
@@ -823,7 +1097,8 @@ const styles = {
     padding: "10px 12px",
     borderRadius: "9px",
     background: "#fffbeb",
-    border: "1px solid #fde68a",
+    border:
+      "1px solid #fde68a",
     color: "#92400e",
     fontSize: "12px",
     fontWeight: 800,
@@ -831,11 +1106,13 @@ const styles = {
 
   emptyCard: {
     background: "#ffffff",
-    border: "1px solid #dce8df",
+    border:
+      "1px solid #dce8df",
     borderRadius: "16px",
     padding: "45px 20px",
     textAlign: "center",
-    boxShadow: "0 7px 22px rgba(23,59,43,.08)",
+    boxShadow:
+      "0 7px 22px rgba(23,59,43,.08)",
   },
 
   emptyIcon: {
@@ -851,7 +1128,8 @@ const styles = {
   },
 
   emptyText: {
-    margin: "8px auto 0",
+    margin:
+      "8px auto 0",
     maxWidth: "450px",
     color: "#718879",
     fontSize: "13px",
@@ -865,6 +1143,7 @@ const styles = {
     textAlign: "center",
     color: "#173b2b",
     fontWeight: 800,
-    boxShadow: "0 7px 22px rgba(23,59,43,.08)",
+    boxShadow:
+      "0 7px 22px rgba(23,59,43,.08)",
   },
 };
