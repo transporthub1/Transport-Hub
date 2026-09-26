@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "./lib/supabase";
 
 const PLAN_DURATION_WEEKS = 260;
 const PLAN_DURATION_YEARS = 5;
@@ -80,6 +81,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [activePlans, setActivePlans] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [withdrawableReturns, setWithdrawableReturns] = useState(0);
 
@@ -197,11 +199,28 @@ export default function Dashboard() {
 
     setWithdrawableReturns(storedWithdrawable);
 
-    setTransactions(
-      getStorageArray(
-        "transportTransactions_" + phone
-      )
+    const storedTransactions = getStorageArray(
+      "transportTransactions_" + phone
     );
+
+    setTransactions(storedTransactions);
+
+    try {
+      const { data: withdrawalRows, error: withdrawalError } =
+        await supabase
+          .from("withdraw_requests")
+          .select("*")
+          .eq("user_phone", phone)
+          .order("created_at", { ascending: false });
+
+      if (!withdrawalError && Array.isArray(withdrawalRows)) {
+        setWithdrawRequests(withdrawalRows);
+      } else {
+        setWithdrawRequests([]);
+      }
+    } catch (error) {
+      setWithdrawRequests([]);
+    }
 
     setTeamMembers(
       getStorageArray(
@@ -273,20 +292,18 @@ export default function Dashboard() {
   }, [transactions]);
 
   const withdrawalTotal = useMemo(() => {
-    return transactions
+    return withdrawRequests
       .filter(
         (item) =>
-          String(item.type || "").toLowerCase() ===
-            "withdraw" &&
           String(item.status || "").toLowerCase() ===
-            "approved"
+          "approved"
       )
       .reduce(
         (total, item) =>
           total + Number(item.amount || 0),
         0
       );
-  }, [transactions]);
+  }, [withdrawRequests]);
 
   const pendingDeposits = useMemo(() => {
     return transactions
@@ -305,20 +322,18 @@ export default function Dashboard() {
   }, [transactions]);
 
   const pendingWithdrawals = useMemo(() => {
-    return transactions
+    return withdrawRequests
       .filter(
         (item) =>
-          String(item.type || "").toLowerCase() ===
-            "withdraw" &&
           String(item.status || "").toLowerCase() ===
-            "pending"
+          "pending"
       )
       .reduce(
         (total, item) =>
           total + Number(item.amount || 0),
         0
       );
-  }, [transactions]);
+  }, [withdrawRequests]);
 
   const teamInvestment = useMemo(() => {
     return teamMembers.reduce(
@@ -401,6 +416,50 @@ export default function Dashboard() {
         "/register?ref=" +
         referralCode
       : "";
+
+  const recentTransactions = useMemo(() => {
+    const nonWithdrawalTransactions = transactions.filter((item) => {
+      const type = String(item.type || "").toLowerCase();
+      return type !== "withdraw" && type !== "withdrawal";
+    });
+
+    const centralWithdrawalTransactions = withdrawRequests.map((item) => ({
+      id: item.id,
+      type: "withdraw",
+      status: item.status || "Pending",
+      amount: Number(item.amount || 0),
+      date: item.submitted_at || item.created_at || "Recently",
+      createdAt: item.submitted_at || item.created_at || "",
+      returnType: "",
+      withdrawalRequestId: item.id,
+    }));
+
+    return [
+      ...nonWithdrawalTransactions,
+      ...centralWithdrawalTransactions,
+    ]
+      .sort((a, b) => {
+        const aTime = new Date(
+          a.createdAt ||
+            a.created_at ||
+            a.submittedAt ||
+            a.submitted_at ||
+            a.date ||
+            0
+        ).getTime();
+
+        const bTime = new Date(
+          b.createdAt ||
+            b.created_at ||
+            b.submittedAt ||
+            b.submitted_at ||
+            b.date ||
+            0
+        ).getTime();
+
+        return bTime - aTime;
+      });
+  }, [transactions, withdrawRequests]);
 
   function goTo(path) {
     setMenuOpen(false);
@@ -1298,13 +1357,13 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {transactions.length === 0 ? (
+          {recentTransactions.length === 0 ? (
             <div style={styles.transactionEmpty}>
               No transactions yet.
             </div>
           ) : (
             <div style={styles.transactionList}>
-              {transactions
+              {recentTransactions
                 .slice(0, 5)
                 .map((item, index) => {
                   const type = String(
@@ -1352,7 +1411,11 @@ export default function Dashboard() {
                           ? styles.mobileTransactionRow
                           : {}),
                       }}
-                      key={index}
+                      key={
+                        item.id ||
+                        item.withdrawalRequestId ||
+                        index
+                      }
                     >
                       <div
                         style={styles.transactionIcon}
@@ -1680,17 +1743,6 @@ const styles = {
     fontWeight: 900,
   },
 
-  mobileHeaderUser: {
-    width: "34px",
-    height: "34px",
-    borderRadius: "50%",
-    background: "#1E3A56",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  /* ===== FIXED MOBILE OVERLAY ===== */
   mobileOverlay: {
     position: "fixed",
     top: "calc(58px + env(safe-area-inset-top, 0px))",
@@ -1716,7 +1768,6 @@ const styles = {
     zIndex: 1000,
   },
 
-  /* ===== FIXED MOBILE SIDEBAR ===== */
   mobileSidebar: {
     width: "270px",
     maxWidth: "82vw",
@@ -2487,7 +2538,6 @@ const styles = {
     whiteSpace: "nowrap",
   },
 
-  /* ===== MOBILE APP DOWNLOAD CARD ===== */
   appDownloadCard: {
     background:
       "linear-gradient(135deg, #102A43, #173B5A)",
