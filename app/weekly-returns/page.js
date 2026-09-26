@@ -10,8 +10,6 @@ const DEFAULT_PLAN = {
   durationWeeks: 260,
   durationYears: 5,
   totalReturn: 3900,
-
-  // Compatibility with old data
   daily: 15,
   duration: 260,
 };
@@ -63,7 +61,8 @@ function getWeeklyAmountFromPlan(plan) {
 
 function normalizeActivePlan(row) {
   const rawPlan =
-    row?.plan && typeof row.plan === "object"
+    row?.plan &&
+    typeof row.plan === "object"
       ? row.plan
       : {};
 
@@ -162,11 +161,12 @@ function normalizeActivePlan(row) {
 
     weeklyReturn: weekly,
 
-    // Compatibility with old data
     daily: weekly,
+
     dailyReturn: weekly,
 
     durationWeeks: 260,
+
     durationYears,
 
     duration: 260,
@@ -206,12 +206,22 @@ function normalizeActivePlan(row) {
 
 export default function DailyReturns() {
   const [user, setUser] = useState(null);
-  const [activePlans, setActivePlans] = useState([]);
-  const [withdrawableReturns, setWithdrawableReturns] =
-    useState(0);
-  const [loading, setLoading] = useState(true);
-  const [claimingId, setClaimingId] = useState(null);
-  const [message, setMessage] = useState("");
+  const [activePlans, setActivePlans] =
+    useState([]);
+  const [
+    withdrawableReturns,
+    setWithdrawableReturns,
+  ] = useState(0);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [claimingId, setClaimingId] =
+    useState(null);
+
+  const [message, setMessage] =
+    useState("");
+
   const [messageType, setMessageType] =
     useState("success");
 
@@ -225,7 +235,8 @@ export default function DailyReturns() {
         );
 
       if (loggedIn !== "true") {
-        window.location.href = "/login";
+        window.location.href =
+          "/login";
         return;
       }
 
@@ -235,11 +246,10 @@ export default function DailyReturns() {
       );
 
       if (!savedUser) {
-        window.location.href = "/login";
+        window.location.href =
+          "/login";
         return;
       }
-
-      if (cancelled) return;
 
       setUser(savedUser);
 
@@ -304,9 +314,11 @@ export default function DailyReturns() {
                   );
 
                 return (
-                  rowPhone === cleanPhone &&
+                  rowPhone ===
+                    cleanPhone &&
                   String(
-                    row.status || "Active"
+                    row.status ||
+                      "Active"
                   ).toLowerCase() ===
                     "active"
                 );
@@ -325,7 +337,8 @@ export default function DailyReturns() {
           );
         } else {
           supabaseUser =
-            userResult.data || null;
+            userResult.data ||
+            null;
         }
       } catch (error) {
         console.log(
@@ -335,8 +348,8 @@ export default function DailyReturns() {
       }
 
       /* =========================================================
-         SUPABASE IS AUTHORITATIVE
-         LOCAL STORAGE IS FALLBACK / COMPATIBILITY ONLY
+         SUPABASE FIRST
+         LOCAL STORAGE FALLBACK ONLY
       ========================================================= */
 
       let plans = [];
@@ -365,7 +378,9 @@ export default function DailyReturns() {
         }
       }
 
-      if (plans.length === 0) {
+      if (
+        plans.length === 0
+      ) {
         const oldPlan =
           readJSON(
             "transportActivePlan",
@@ -466,9 +481,7 @@ export default function DailyReturns() {
           };
         });
 
-      if (
-        cancelled
-      ) {
+      if (cancelled) {
         return;
       }
 
@@ -482,7 +495,7 @@ export default function DailyReturns() {
       );
 
       /* =========================================================
-         LOAD WITHDRAWABLE RETURNS FROM SUPABASE
+         WITHDRAWABLE RETURNS
       ========================================================= */
 
       if (supabaseUser) {
@@ -692,16 +705,6 @@ export default function DailyReturns() {
 
   const getNextReturnTime =
     (plan) => {
-      /*
-        Supabase fields:
-        next_return_at
-        last_return_at
-
-        Normalized frontend fields:
-        nextReturnAt
-        lastReturnAt
-      */
-
       if (
         plan.nextReturnAt
       ) {
@@ -820,8 +823,7 @@ export default function DailyReturns() {
         );
 
       const minutes =
-        remainingAfterDays %
-        60;
+        remainingAfterDays % 60;
 
       if (
         days > 0
@@ -857,21 +859,23 @@ export default function DailyReturns() {
         setMessage(
           "User account information is missing."
         );
+
         setMessageType(
           "error"
         );
+
         return;
       }
 
-      if (
-        !planId
-      ) {
+      if (!planId) {
         setMessage(
           "Active plan ID is missing."
         );
+
         setMessageType(
           "error"
         );
+
         return;
       }
 
@@ -883,7 +887,7 @@ export default function DailyReturns() {
 
       try {
         /* =======================================================
-           GET THE LATEST PLAN DIRECTLY FROM SUPABASE
+           GET LATEST PLAN
         ======================================================= */
 
         const {
@@ -911,21 +915,23 @@ export default function DailyReturns() {
           setMessage(
             "Could not load this active plan. Please try again."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
-        if (
-          !dbPlan
-        ) {
+        if (!dbPlan) {
           setMessage(
             "This active plan could not be found in the system."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
@@ -951,7 +957,7 @@ export default function DailyReturns() {
           );
 
         /* =======================================================
-           VERIFY PLAN BELONGS TO THIS USER
+           VERIFY USER
         ======================================================= */
 
         const planPhone =
@@ -971,9 +977,11 @@ export default function DailyReturns() {
           setMessage(
             "This active plan does not belong to the logged-in account."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
@@ -989,14 +997,16 @@ export default function DailyReturns() {
           setMessage(
             "Weekly return is not available yet. Please wait until 7 days are completed."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
         /* =======================================================
-           CHECK PLAN COMPLETION
+           CHECK COMPLETION
         ======================================================= */
 
         if (
@@ -1006,9 +1016,11 @@ export default function DailyReturns() {
           setMessage(
             "This transport plan has completed all weekly returns."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
@@ -1019,19 +1031,16 @@ export default function DailyReturns() {
           setMessage(
             "Weekly return amount is not available for this plan."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
-        /* =======================================================
-           CALCULATE NEW PLAN VALUES
-        ======================================================= */
-
         const newReturnsPaid =
-          returnsPaid +
-          1;
+          returnsPaid + 1;
 
         const newEarnedReturns =
           Number(
@@ -1054,7 +1063,7 @@ export default function DailyReturns() {
           ).toISOString();
 
         /* =======================================================
-           UPDATE ACTIVE PLAN IN SUPABASE
+           UPDATE ACTIVE PLAN
         ======================================================= */
 
         const {
@@ -1108,9 +1117,11 @@ export default function DailyReturns() {
           setMessage(
             "Weekly return could not be saved. Please try again."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
@@ -1120,14 +1131,16 @@ export default function DailyReturns() {
           setMessage(
             "The weekly return update was not confirmed by the system."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
         /* =======================================================
-           GET CURRENT USER WITHDRAWABLE BALANCE
+           GET CURRENT USER
         ======================================================= */
 
         const {
@@ -1157,9 +1170,11 @@ export default function DailyReturns() {
           setMessage(
             "Plan was updated, but the withdrawable balance could not be loaded."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
@@ -1169,9 +1184,11 @@ export default function DailyReturns() {
           setMessage(
             "Your user account could not be found."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
@@ -1186,7 +1203,7 @@ export default function DailyReturns() {
           weeklyAmount;
 
         /* =======================================================
-           UPDATE WITHDRAWABLE RETURNS IN SUPABASE
+           UPDATE WITHDRAWABLE RETURNS
         ======================================================= */
 
         const {
@@ -1220,14 +1237,16 @@ export default function DailyReturns() {
           setMessage(
             "The plan return was updated, but the withdrawable balance could not be saved."
           );
+
           setMessageType(
             "error"
           );
+
           return;
         }
 
         /* =======================================================
-           UPDATE LOCAL STORAGE
+           LOCAL STORAGE UPDATE
         ======================================================= */
 
         const updatedFrontendPlan =
@@ -1345,7 +1364,7 @@ export default function DailyReturns() {
         );
 
         /* =======================================================
-           SAVE TRANSACTION LOCALLY
+           SAVE TRANSACTION
         ======================================================= */
 
         const transactionKey =
@@ -1364,11 +1383,14 @@ export default function DailyReturns() {
             ? storedTransactions
             : [];
 
+        const transactionId =
+          `weekly-return-${planId}-${newReturnsPaid}`;
+
         const alreadySaved =
           transactionList.some(
             (item) =>
               item.id ===
-              `weekly-return-${planId}-${newReturnsPaid}`
+              transactionId
           );
 
         if (
@@ -1377,7 +1399,7 @@ export default function DailyReturns() {
           const newTransaction =
             {
               id:
-                `weekly-return-${planId}-${newReturnsPaid}`,
+                transactionId,
 
               type:
                 "Return",
@@ -1460,6 +1482,7 @@ export default function DailyReturns() {
         setMessage(
           "Something went wrong while claiming the weekly return."
         );
+
         setMessageType(
           "error"
         );
@@ -1530,7 +1553,6 @@ export default function DailyReturns() {
           styles.container
         }
       >
-
         {/* HEADER */}
 
         <header
@@ -1588,13 +1610,13 @@ export default function DailyReturns() {
             styles.content
           }
         >
-
           {/* MESSAGE */}
 
           {message && (
             <div
               style={
-                messageType === "error"
+                messageType ===
+                "error"
                   ? styles.errorMessage
                   : styles.successMessage
               }
@@ -1606,7 +1628,12 @@ export default function DailyReturns() {
                   : "✅"}
               </span>
 
-              <span>
+              <span
+                style={{
+                  minWidth: 0,
+                  flex: 1,
+                }}
+              >
                 {message}
               </span>
 
@@ -1630,7 +1657,12 @@ export default function DailyReturns() {
               styles.walletCard
             }
           >
-            <div>
+            <div
+              style={{
+                minWidth: 0,
+                flex: 1,
+              }}
+            >
               <p
                 style={
                   styles.walletLabel
@@ -1671,7 +1703,6 @@ export default function DailyReturns() {
           {/* SUMMARY */}
 
           <div className="statsGrid">
-
             <div
               style={
                 styles.statCard
@@ -1824,7 +1855,6 @@ export default function DailyReturns() {
                 </h3>
               </div>
             </div>
-
           </div>
 
           {/* NO ACTIVE PLAN */}
@@ -1880,13 +1910,17 @@ export default function DailyReturns() {
 
           {activePlans.length > 0 && (
             <div>
-
               <div
                 style={
                   styles.sectionHeader
                 }
               >
-                <div>
+                <div
+                  style={{
+                    minWidth: 0,
+                    flex: 1,
+                  }}
+                >
                   <h2
                     style={
                       styles.sectionTitle
@@ -1919,15 +1953,9 @@ export default function DailyReturns() {
                 </div>
               </div>
 
-              <div
-                style={
-                  styles.plansGrid
-                }
-              >
-
+              <div className="activePlansGrid">
                 {activePlans.map(
                   (plan, index) => {
-
                     const weeklyAmount =
                       getWeeklyAmount(
                         plan
@@ -1946,14 +1974,14 @@ export default function DailyReturns() {
                     const returnsPaid =
                       Number(
                         plan.returnsPaid ||
-                        0
+                          0
                       );
 
                     const earned =
                       Number(
                         plan.earnedReturns ||
-                        plan.totalEarned ||
-                        0
+                          plan.totalEarned ||
+                          0
                       );
 
                     const completed =
@@ -1961,9 +1989,7 @@ export default function DailyReturns() {
                       durationWeeks;
 
                     const available =
-                      canClaim(
-                        plan
-                      );
+                      canClaim(plan);
 
                     const planId =
                       plan.id ||
@@ -1974,18 +2000,28 @@ export default function DailyReturns() {
                         key={
                           planId
                         }
-                        style={
-                          styles.planCard
-                        }
+                        style={{
+                          ...styles.planCard,
+                          minWidth: 0,
+                          width: "100%",
+                          maxWidth: "100%",
+                          boxSizing:
+                            "border-box",
+                          overflow:
+                            "hidden",
+                        }}
                       >
-
                         <div
                           style={
                             styles.planTop
                           }
                         >
-                          <div>
-
+                          <div
+                            style={{
+                              minWidth: 0,
+                              flex: 1,
+                            }}
+                          >
                             <span
                               style={
                                 styles.planTag
@@ -2003,7 +2039,6 @@ export default function DailyReturns() {
                                 plan
                               )}
                             </h3>
-
                           </div>
 
                           <div
@@ -2015,12 +2050,7 @@ export default function DailyReturns() {
                           </div>
                         </div>
 
-                        <div
-                          style={
-                            styles.planGrid
-                          }
-                        >
-
+                        <div className="planInfoGrid">
                           <div
                             style={
                               styles.planInfo
@@ -2034,8 +2064,8 @@ export default function DailyReturns() {
                               PKR{" "}
                               {formatMoney(
                                 plan.price ||
-                                plan.amount ||
-                                0
+                                  plan.amount ||
+                                  0
                               )}
                             </strong>
                           </div>
@@ -2089,7 +2119,6 @@ export default function DailyReturns() {
                               {durationWeeks}
                             </strong>
                           </div>
-
                         </div>
 
                         <div
@@ -2142,7 +2171,12 @@ export default function DailyReturns() {
                             styles.earnedBox
                           }
                         >
-                          <div>
+                          <div
+                            style={{
+                              minWidth: 0,
+                              flex: 1,
+                            }}
+                          >
                             <span
                               style={
                                 styles.earnedLabel
@@ -2221,24 +2255,21 @@ export default function DailyReturns() {
                             returns.
                           </div>
                         )}
-
                       </div>
                     );
                   }
                 )}
-
               </div>
             </div>
           )}
 
-          {/* SIMPLE INFORMATION LINES */}
+          {/* INFORMATION */}
 
           <div
             style={
               styles.simpleInfoSection
             }
           >
-
             <div
               style={
                 styles.simpleInfoLine
@@ -2389,7 +2420,6 @@ export default function DailyReturns() {
                 </p>
               </div>
             </div>
-
           </div>
 
           {/* BUTTONS */}
@@ -2399,7 +2429,6 @@ export default function DailyReturns() {
               styles.buttons
             }
           >
-
             <button
               onClick={() => {
                 window.location.href =
@@ -2435,13 +2464,11 @@ export default function DailyReturns() {
             >
               ← Back to Dashboard
             </button>
-
           </div>
-
         </main>
       </div>
 
-      {/* MOBILE RESPONSIVE FIX */}
+      {/* MOBILE + DESKTOP RESPONSIVE CSS */}
 
       <style jsx>{`
         .statsGrid {
@@ -2452,13 +2479,38 @@ export default function DailyReturns() {
           );
           gap: 16px;
           margin-bottom: 28px;
+          width: 100%;
         }
 
         .statsGrid > * {
           min-width: 0;
         }
 
-        .statContent {
+        .activePlansGrid {
+          display: grid;
+          grid-template-columns: repeat(
+            2,
+            minmax(0, 1fr)
+          );
+          gap: 20px;
+          margin-bottom: 28px;
+          width: 100%;
+          min-width: 0;
+        }
+
+        .planInfoGrid {
+          display: grid;
+          grid-template-columns: repeat(
+            2,
+            minmax(0, 1fr)
+          );
+          gap: 10px;
+          margin-bottom: 18px;
+          width: 100%;
+          min-width: 0;
+        }
+
+        .statsGrid .statContent {
           min-width: 0;
           flex: 1;
         }
@@ -2470,6 +2522,10 @@ export default function DailyReturns() {
               minmax(0, 1fr)
             );
           }
+
+          .activePlansGrid {
+            grid-template-columns: 1fr;
+          }
         }
 
         @media (max-width: 600px) {
@@ -2480,6 +2536,27 @@ export default function DailyReturns() {
 
           .statsGrid > * {
             width: 100%;
+          }
+
+          .activePlansGrid {
+            grid-template-columns: 1fr;
+            gap: 14px;
+          }
+
+          .planInfoGrid {
+            grid-template-columns: 1fr;
+            gap: 8px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .activePlansGrid {
+            grid-template-columns: 1fr;
+            width: 100%;
+          }
+
+          .planInfoGrid {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
@@ -2495,12 +2572,16 @@ const styles = {
     fontFamily:
       "Arial, sans-serif",
     paddingBottom: "50px",
+    width: "100%",
+    overflowX: "hidden",
+    boxSizing: "border-box",
   },
 
   container: {
     width: "100%",
     maxWidth: "1200px",
     margin: "0 auto",
+    boxSizing: "border-box",
   },
 
   loadingPage: {
@@ -2511,6 +2592,8 @@ const styles = {
     justifyContent: "center",
     fontFamily:
       "Arial, sans-serif",
+    padding: "20px",
+    boxSizing: "border-box",
   },
 
   loadingCard: {
@@ -2522,6 +2605,9 @@ const styles = {
       "0 10px 30px rgba(16,42,67,0.18)",
     border:
       "1px solid #1E3A56",
+    width: "100%",
+    maxWidth: "400px",
+    boxSizing: "border-box",
   },
 
   loadingIcon: {
@@ -2555,12 +2641,16 @@ const styles = {
       "1px solid #1E3A56",
     boxShadow:
       "0 8px 24px rgba(16,42,67,0.18)",
+    boxSizing: "border-box",
+    width: "100%",
   },
 
   headerLeft: {
     display: "flex",
     alignItems: "center",
     gap: "16px",
+    minWidth: 0,
+    flex: 1,
   },
 
   headerIcon: {
@@ -2572,12 +2662,14 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     fontSize: "28px",
+    flexShrink: 0,
   },
 
   title: {
     margin: 0,
     fontSize: "28px",
     fontWeight: "800",
+    color: "#ffffff",
   },
 
   subtitle: {
@@ -2597,11 +2689,14 @@ const styles = {
     borderRadius: "9px",
     cursor: "pointer",
     fontWeight: "700",
+    flexShrink: 0,
   },
 
   content: {
     padding:
       "28px 20px",
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   successMessage: {
@@ -2617,6 +2712,8 @@ const styles = {
     alignItems: "center",
     gap: "10px",
     fontSize: "14px",
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   errorMessage: {
@@ -2632,6 +2729,8 @@ const styles = {
     alignItems: "center",
     gap: "10px",
     fontSize: "14px",
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   closeMessage: {
@@ -2641,6 +2740,7 @@ const styles = {
     color: "#ffffff",
     fontSize: "20px",
     cursor: "pointer",
+    flexShrink: 0,
   },
 
   walletCard: {
@@ -2658,6 +2758,8 @@ const styles = {
     boxShadow:
       "0 8px 24px rgba(16,42,67,0.16)",
     marginBottom: "20px",
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   walletLabel: {
@@ -2671,12 +2773,14 @@ const styles = {
       "7px 0",
     color: "#8FD694",
     fontSize: "32px",
+    lineHeight: 1.15,
   },
 
   walletText: {
     margin: 0,
     color: "#C9D8E6",
     fontSize: "13px",
+    lineHeight: 1.5,
   },
 
   walletIcon: {
@@ -2688,14 +2792,14 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     fontSize: "31px",
+    flexShrink: 0,
   },
 
   statsGrid: {
     display: "grid",
-    gridTemplateColumns:
-      "repeat(4, minmax(0, 1fr))",
     gap: "16px",
     marginBottom: "28px",
+    width: "100%",
   },
 
   statCard: {
@@ -2729,6 +2833,7 @@ const styles = {
   statContent: {
     minWidth: 0,
     flex: 1,
+    width: "100%",
   },
 
   statLabel: {
@@ -2744,6 +2849,9 @@ const styles = {
     fontSize: "17px",
     whiteSpace:
       "nowrap",
+    overflow: "hidden",
+    textOverflow:
+      "ellipsis",
   },
 
   greenValue: {
@@ -2753,6 +2861,9 @@ const styles = {
     fontSize: "17px",
     whiteSpace:
       "nowrap",
+    overflow: "hidden",
+    textOverflow:
+      "ellipsis",
   },
 
   emptyCard: {
@@ -2766,6 +2877,8 @@ const styles = {
     boxShadow:
       "0 7px 22px rgba(16,42,67,0.14)",
     marginBottom: "25px",
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   emptyIcon: {
@@ -2790,17 +2903,20 @@ const styles = {
 
   sectionHeader: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent:
       "space-between",
     gap: "20px",
     marginBottom: "17px",
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   sectionTitle: {
     margin: 0,
     color: "#102A43",
     fontSize: "22px",
+    lineHeight: 1.25,
   },
 
   sectionText: {
@@ -2808,6 +2924,7 @@ const styles = {
       "5px 0 0",
     color: "#60758A",
     fontSize: "13px",
+    lineHeight: 1.5,
   },
 
   expectedBadge: {
@@ -2822,14 +2939,7 @@ const styles = {
     fontWeight: "700",
     whiteSpace:
       "nowrap",
-  },
-
-  plansGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(2, minmax(0, 1fr))",
-    gap: "20px",
-    marginBottom: "28px",
+    flexShrink: 0,
   },
 
   planCard: {
@@ -2840,6 +2950,7 @@ const styles = {
       "1px solid #1E3A56",
     boxShadow:
       "0 7px 22px rgba(16,42,67,0.15)",
+    boxSizing: "border-box",
   },
 
   planTop: {
@@ -2850,6 +2961,8 @@ const styles = {
       "flex-start",
     gap: "15px",
     marginBottom: "20px",
+    width: "100%",
+    minWidth: 0,
   },
 
   planTag: {
@@ -2870,6 +2983,9 @@ const styles = {
       "8px 0 0",
     color: "#ffffff",
     fontSize: "21px",
+    lineHeight: 1.25,
+    overflowWrap:
+      "anywhere",
   },
 
   planEmoji: {
@@ -2881,14 +2997,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     fontSize: "23px",
-  },
-
-  planGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(2, minmax(0, 1fr))",
-    gap: "10px",
-    marginBottom: "18px",
+    flexShrink: 0,
   },
 
   planInfo: {
@@ -2898,20 +3007,29 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: "5px",
+    minWidth: 0,
+    width: "100%",
+    boxSizing: "border-box",
+    overflow: "hidden",
   },
 
   greenText: {
     color: "#8FD694",
+    overflowWrap:
+      "anywhere",
   },
 
   progressArea: {
     marginBottom: "18px",
+    width: "100%",
+    minWidth: 0,
   },
 
   progressHeader: {
     display: "flex",
     justifyContent:
       "space-between",
+    gap: "10px",
     color: "#C9D8E6",
     fontSize: "12px",
     marginBottom: "7px",
@@ -2922,6 +3040,7 @@ const styles = {
     background: "#29435A",
     borderRadius: "20px",
     overflow: "hidden",
+    width: "100%",
   },
 
   progressBar: {
@@ -2943,6 +3062,9 @@ const styles = {
       "space-between",
     gap: "12px",
     marginBottom: "13px",
+    width: "100%",
+    boxSizing: "border-box",
+    minWidth: 0,
   },
 
   earnedLabel: {
@@ -2962,6 +3084,7 @@ const styles = {
     color: "#C9D8E6",
     fontSize: "12px",
     textAlign: "right",
+    flexShrink: 0,
   },
 
   claimButton: {
@@ -2976,6 +3099,7 @@ const styles = {
     cursor: "pointer",
     fontWeight: "800",
     fontSize: "13px",
+    boxSizing: "border-box",
   },
 
   disabledButton: {
@@ -2990,6 +3114,7 @@ const styles = {
     cursor: "not-allowed",
     fontWeight: "700",
     fontSize: "13px",
+    boxSizing: "border-box",
   },
 
   completedBox: {
@@ -3002,12 +3127,17 @@ const styles = {
     textAlign: "center",
     fontSize: "12px",
     fontWeight: "700",
+    lineHeight: 1.5,
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   simpleInfoSection: {
     marginBottom: "25px",
     background:
       "transparent",
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   simpleInfoLine: {
@@ -3019,6 +3149,8 @@ const styles = {
       "12px 0",
     borderBottom:
       "1px solid #d8e1e8",
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   simpleInfoContent: {
@@ -3061,6 +3193,8 @@ const styles = {
     display: "flex",
     gap: "12px",
     flexWrap: "wrap",
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   primaryButton: {
