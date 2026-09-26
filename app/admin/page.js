@@ -30,6 +30,7 @@ export default function Admin() {
   const [withdrawRequests, setWithdrawRequests] = useState([]);
   const [users, setUsers] = useState([]);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("success");
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
 
@@ -48,7 +49,7 @@ export default function Admin() {
 
   const loadAllData = async () => {
     await loadUsers();
-    loadDepositRequests();
+    await loadDepositRequests();
     loadWithdrawRequests();
     setLoading(false);
   };
@@ -68,13 +69,14 @@ export default function Admin() {
   };
 
   /*
-   * OLD LOCAL USERS -> SUPABASE
+   * ----------------------------------------------------
+   * MIGRATE OLD LOCAL USERS TO SUPABASE
+   * ----------------------------------------------------
    *
-   * This reads the old browser localStorage users
-   * and copies their account information into the
-   * Supabase users table.
-   *
-   * Existing Supabase users are skipped by phone number.
+   * Kept for compatibility with the existing system.
+   * Current loadUsers() does not automatically migrate
+   * localStorage users because Supabase is now the
+   * main source of registered users.
    */
   const migrateUsersToSupabase = async (
     oldUsers
@@ -108,12 +110,14 @@ export default function Admin() {
       }
 
       try {
-        const { data: existingUser, error: findError } =
-          await supabase
-            .from("users")
-            .select("id, phone")
-            .eq("phone", phone)
-            .maybeSingle();
+        const {
+          data: existingUser,
+          error: findError,
+        } = await supabase
+          .from("users")
+          .select("id, phone")
+          .eq("phone", phone)
+          .maybeSingle();
 
         if (findError) {
           console.log(
@@ -141,59 +145,71 @@ export default function Admin() {
 
         const userRow = {
           id: newId,
+
           full_name:
             oldUser.fullName ||
             oldUser.full_name ||
             oldUser.name ||
             oldUser.username ||
             "",
+
           phone: phone,
+
           password:
             oldUser.password ||
             "",
+
           balance:
             Number(
               oldUser.balance || 0
             ),
+
           referral_bonus:
             Number(
               oldUser.referralBonus ??
                 oldUser.referral_bonus ??
                 0
             ),
+
           total_referral_bonus:
             Number(
               oldUser.totalReferralBonus ??
                 oldUser.total_referral_bonus ??
                 0
             ),
+
           referral_code:
             oldUser.referralCode ||
             oldUser.referral_code ||
             oldUser.referral ||
             "",
+
           referred_by:
             oldUser.referredBy ??
             oldUser.referred_by ??
             null,
+
           referrer_code:
             oldUser.referrerCode ??
             oldUser.referrer_code ??
             null,
+
           referrer_phone:
             oldUser.referrerPhone ??
             oldUser.referrer_phone ??
             null,
+
           created_at:
             oldUser.createdAt ||
             oldUser.created_at ||
             new Date().toISOString(),
         };
 
-        const { error: insertError } =
-          await supabase
-            .from("users")
-            .insert([userRow]);
+        const {
+          error: insertError,
+        } = await supabase
+          .from("users")
+          .insert([userRow]);
 
         if (insertError) {
           console.log(
@@ -224,113 +240,377 @@ export default function Admin() {
     };
   };
 
+  /*
+   * ----------------------------------------------------
+   * LOAD USERS FROM SUPABASE
+   * ----------------------------------------------------
+   *
+   * IMPORTANT:
+   * Supabase is the MAIN and DIRECT source.
+   *
+   * We do NOT fall back to localStorage when the
+   * Supabase request fails, because doing so can make
+   * the Admin Panel display only old local users.
+   *
+   * Password is never selected.
+   */
   const loadUsers = async () => {
-    const savedUsers = localStorage.getItem(
-      "transportUsers"
-    );
-
-    if (!savedUsers) {
-      setUsers([]);
-      return;
-    }
-
     try {
-      const parsed = JSON.parse(
-        savedUsers
-      );
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("users")
+        .select(
+          "id, full_name, phone, balance, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+        )
+        .order("created_at", {
+          ascending: false,
+        });
 
-      if (!Array.isArray(parsed)) {
+      if (error) {
+        console.error(
+          "Could not load Supabase users:",
+          error
+        );
+
         setUsers([]);
+
+        setMessage(
+          "Supabase Users Error: " +
+            error.message
+        );
+
+        setMessageType("error");
         return;
       }
 
-      setUsers(parsed);
+      const mappedUsers = (
+        Array.isArray(data)
+          ? data
+          : []
+      ).map((row) => ({
+        id:
+          row.id || "",
 
-      const migrationResult =
-        await migrateUsersToSupabase(
-          parsed
-        );
+        fullName:
+          row.full_name ||
+          "",
 
-      if (
-        migrationResult.migrated > 0
-      ) {
-        setMessage(
-          migrationResult.migrated +
-            " old user account(s) migrated to Supabase successfully."
-        );
-      }
-    } catch (error) {
+        phone:
+          normalizePhone(
+            row.phone
+          ),
+
+        balance:
+          Number(
+            row.balance || 0
+          ),
+
+        referralBonus:
+          Number(
+            row.referral_bonus ||
+              0
+          ),
+
+        totalReferralBonus:
+          Number(
+            row.total_referral_bonus ||
+              0
+          ),
+
+        referralCode:
+          row.referral_code ||
+          "",
+
+        referredBy:
+          row.referred_by ||
+          null,
+
+        referrerCode:
+          row.referrer_code ||
+          null,
+
+        referrerPhone:
+          row.referrer_phone ||
+          null,
+
+        createdAt:
+          row.created_at ||
+          "",
+      }));
+
+      /*
+       * Supabase result is shown directly.
+       */
+      setUsers(
+        mappedUsers
+      );
+
+      /*
+       * Keep local compatibility copy.
+       * This does NOT control the Admin Users list.
+       */
+      localStorage.setItem(
+        "transportUsers",
+        JSON.stringify(
+          mappedUsers
+        )
+      );
+
       console.log(
-        "Could not load users",
+        "Supabase users loaded successfully:",
+        mappedUsers.length
+      );
+    } catch (error) {
+      console.error(
+        "Supabase users loading error:",
         error
       );
+
       setUsers([]);
+
+      setMessage(
+        "Supabase Users Error: " +
+          (error?.message ||
+            "Unknown error")
+      );
+
+      setMessageType("error");
     }
   };
 
-  const loadDepositRequests = () => {
-    let requests = [];
+  /*
+   * ----------------------------------------------------
+   * SUPABASE DEPOSIT REQUESTS
+   * ----------------------------------------------------
+   */
+  const loadDepositRequests = async () => {
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("deposit_requests")
+        .select("*")
+        .order("created_at", {
+          ascending: false,
+        });
 
-    const savedRequests = localStorage.getItem(
-      "transportDepositRequests"
-    );
-
-    if (savedRequests) {
-      try {
-        const parsed = JSON.parse(
-          savedRequests
-        );
-
-        if (Array.isArray(parsed)) {
-          requests = parsed;
-        }
-      } catch (error) {
+      if (error) {
         console.log(
-          "Could not load deposit requests"
+          "Could not load Supabase deposit requests:",
+          error.message
         );
+
+        loadDepositRequestsFromLocalStorage();
+        return;
       }
-    }
 
-    if (requests.length === 0) {
-      const oldRequest =
+      const mappedRequests = (
+        Array.isArray(data)
+          ? data
+          : []
+      ).map((row) => {
+        const userData =
+          row.user_data &&
+          typeof row.user_data ===
+            "object"
+            ? row.user_data
+            : {};
+
+        return {
+          ...userData,
+
+          ...row,
+
+          id:
+            row.id ||
+            "deposit-" +
+              Date.now(),
+
+          user:
+            userData,
+
+          phone:
+            userData.phone ||
+            userData.mobile ||
+            row.phone ||
+            "",
+
+          fullName:
+            userData.fullName ||
+            userData.full_name ||
+            userData.name ||
+            row.full_name ||
+            row.name ||
+            "User",
+
+          paymentMethod:
+            row.payment_method ||
+            row.paymentMethod ||
+            "",
+
+          paymentMethodId:
+            row.payment_method_id ||
+            row.paymentMethodId ||
+            "",
+
+          accountName:
+            row.account_name ||
+            row.accountName ||
+            "",
+
+          accountNumber:
+            row.account_number ||
+            row.accountNumber ||
+            "",
+
+          bankName:
+            row.bank_name ||
+            row.bankName ||
+            "",
+
+          transactionId:
+            row.transaction_id ||
+            row.transactionId ||
+            "",
+
+          depositAmount:
+            Number(
+              row.deposit_amount ||
+                row.depositAmount ||
+                0
+            ),
+
+          amount:
+            Number(
+              row.deposit_amount ||
+                row.depositAmount ||
+                row.amount ||
+                row.plan?.amount ||
+                0
+            ),
+
+          plan:
+            row.plan || {},
+
+          screenshot:
+            row.screenshot ||
+            "",
+
+          screenshotName:
+            row.screenshot_name ||
+            "",
+
+          status:
+            row.status ||
+            "Pending",
+
+          submittedAt:
+            userData.submittedAt ||
+            row.submitted_at ||
+            row.created_at ||
+            row.createdAt ||
+            "",
+        };
+      });
+
+      setDepositRequests(
+        mappedRequests
+      );
+
+      localStorage.setItem(
+        "transportDepositRequests",
+        JSON.stringify(
+          mappedRequests
+        )
+      );
+    } catch (error) {
+      console.log(
+        "Supabase deposit loading error:",
+        error
+      );
+
+      loadDepositRequestsFromLocalStorage();
+    }
+  };
+
+  const loadDepositRequestsFromLocalStorage =
+    () => {
+      let requests = [];
+
+      const savedRequests =
         localStorage.getItem(
-          "transportDepositRequest"
+          "transportDepositRequests"
         );
 
-      if (oldRequest) {
+      if (savedRequests) {
         try {
           const parsed =
-            JSON.parse(oldRequest);
-
-          if (parsed) {
-            const migrated = {
-              ...parsed,
-              id:
-                parsed.id ||
-                "deposit-" +
-                  Date.now(),
-            };
-
-            requests = [migrated];
-
-            localStorage.setItem(
-              "transportDepositRequests",
-              JSON.stringify(
-                requests
-              )
+            JSON.parse(
+              savedRequests
             );
+
+          if (Array.isArray(parsed)) {
+            requests = parsed;
           }
         } catch (error) {
           console.log(
-            "Could not migrate old deposit request"
+            "Could not load deposit requests"
           );
         }
       }
-    }
 
-    setDepositRequests(requests);
-  };
+      if (requests.length === 0) {
+        const oldRequest =
+          localStorage.getItem(
+            "transportDepositRequest"
+          );
 
+        if (oldRequest) {
+          try {
+            const parsed =
+              JSON.parse(oldRequest);
+
+            if (parsed) {
+              const migrated = {
+                ...parsed,
+                id:
+                  parsed.id ||
+                  "deposit-" +
+                    Date.now(),
+              };
+
+              requests = [migrated];
+
+              localStorage.setItem(
+                "transportDepositRequests",
+                JSON.stringify(
+                  requests
+                )
+              );
+            }
+          } catch (error) {
+            console.log(
+              "Could not migrate old deposit request"
+            );
+          }
+        }
+      }
+
+      setDepositRequests(
+        requests
+      );
+    };
+
+  /*
+   * ----------------------------------------------------
+   * WITHDRAW REQUESTS
+   * ----------------------------------------------------
+   *
+   * Existing withdrawal system is preserved.
+   */
   const loadWithdrawRequests = () => {
     let requests = [];
 
@@ -342,7 +622,9 @@ export default function Admin() {
     if (savedRequests) {
       try {
         const parsed =
-          JSON.parse(savedRequests);
+          JSON.parse(
+            savedRequests
+          );
 
         if (Array.isArray(parsed)) {
           requests = parsed;
@@ -391,9 +673,16 @@ export default function Admin() {
       }
     }
 
-    setWithdrawRequests(requests);
+    setWithdrawRequests(
+      requests
+    );
   };
 
+  /*
+   * ----------------------------------------------------
+   * TRANSACTIONS
+   * ----------------------------------------------------
+   */
   const saveTransaction = (
     transaction,
     phone
@@ -486,6 +775,11 @@ export default function Admin() {
     );
   };
 
+  /*
+   * ----------------------------------------------------
+   * ACTIVE PLANS
+   * ----------------------------------------------------
+   */
   const updateActivePlans = (
     newPlan,
     phone
@@ -537,6 +831,11 @@ export default function Admin() {
     );
   };
 
+  /*
+   * ----------------------------------------------------
+   * USER / REFERRAL HELPERS
+   * ----------------------------------------------------
+   */
   const findUserByPhone = (
     phone
   ) => {
@@ -1179,7 +1478,12 @@ export default function Admin() {
     };
   };
 
-  const updateDepositStatus = (
+  /*
+   * ----------------------------------------------------
+   * DEPOSIT STATUS
+   * ----------------------------------------------------
+   */
+  const updateDepositStatus = async (
     requestId,
     newStatus
   ) => {
@@ -1194,6 +1498,7 @@ export default function Admin() {
       setMessage(
         "Deposit request not found."
       );
+      setMessageType("error");
       return;
     }
 
@@ -1206,6 +1511,7 @@ export default function Admin() {
       setMessage(
         "This deposit has already been approved."
       );
+      setMessageType("error");
       return;
     }
 
@@ -1218,7 +1524,39 @@ export default function Admin() {
       setMessage(
         "This deposit has already been rejected."
       );
+      setMessageType("error");
       return;
+    }
+
+    /*
+     * First update Supabase.
+     */
+    if (request.id) {
+      const {
+        error: supabaseUpdateError,
+      } = await supabase
+        .from("deposit_requests")
+        .update({
+          status:
+            newStatus,
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq("id", request.id);
+
+      if (supabaseUpdateError) {
+        console.error(
+          "Supabase deposit status update error:",
+          supabaseUpdateError
+        );
+
+        setMessage(
+          "Supabase Error: " +
+            supabaseUpdateError.message
+        );
+        setMessageType("error");
+        return;
+      }
     }
 
     const phone =
@@ -1237,6 +1575,7 @@ export default function Admin() {
       setMessage(
         "User mobile number is missing from this request."
       );
+      setMessageType("error");
       return;
     }
 
@@ -1272,47 +1611,67 @@ export default function Admin() {
 
     const updatedRequest = {
       ...request,
+
       status:
         newStatus,
+
       updatedAt:
         new Date().toISOString(),
+
       plan: {
         ...requestPlan,
+
         id:
           requestPlan.id ||
           request.planId ||
           "",
+
         name:
           planName,
+
         amount:
           planAmount,
+
         weekly:
           weeklyReturn,
+
         daily:
           weeklyReturn,
+
         durationYears:
           DURATION_YEARS,
+
         durationWeeks:
           DURATION_WEEKS,
+
         duration:
           DURATION_WEEKS,
+
         totalReturn:
           totalReturn,
       },
+
       planName:
         planName,
+
       amount:
         planAmount,
+
       weeklyReturn:
         weeklyReturn,
+
       dailyReturn:
         weeklyReturn,
+
       durationYears:
         DURATION_YEARS,
+
       durationWeeks:
         DURATION_WEEKS,
+
       duration:
         DURATION_WEEKS,
+
       totalReturn:
         totalReturn,
     };
@@ -1338,7 +1697,7 @@ export default function Admin() {
         planName +
           " deposit request rejected."
       );
-
+      setMessageType("success");
       return;
     }
 
@@ -1593,9 +1952,16 @@ export default function Admin() {
         referralMessage
     );
 
-    loadUsers();
+    setMessageType("success");
+
+    await loadUsers();
   };
 
+  /*
+   * ----------------------------------------------------
+   * WITHDRAW STATUS
+   * ----------------------------------------------------
+   */
   const updateWithdrawStatus = (
     requestId,
     newStatus
@@ -1611,6 +1977,7 @@ export default function Admin() {
       setMessage(
         "Withdrawal request not found."
       );
+      setMessageType("error");
       return;
     }
 
@@ -1623,6 +1990,7 @@ export default function Admin() {
       setMessage(
         "This withdrawal has already been approved."
       );
+      setMessageType("error");
       return;
     }
 
@@ -1635,6 +2003,7 @@ export default function Admin() {
       setMessage(
         "This withdrawal has already been rejected."
       );
+      setMessageType("error");
       return;
     }
 
@@ -1648,6 +2017,7 @@ export default function Admin() {
       setMessage(
         "User mobile number is missing from this withdrawal request."
       );
+      setMessageType("error");
       return;
     }
 
@@ -1682,6 +2052,7 @@ export default function Admin() {
         "Insufficient earned returns. Available: PKR " +
           availableReturns.toLocaleString()
       );
+      setMessageType("error");
       return;
     }
 
@@ -1784,13 +2155,20 @@ export default function Admin() {
           ) +
           " approved successfully."
       );
+      setMessageType("success");
     } else {
       setMessage(
         "Withdrawal request rejected."
       );
+      setMessageType("success");
     }
   };
 
+  /*
+   * ----------------------------------------------------
+   * STATS
+   * ----------------------------------------------------
+   */
   const stats = useMemo(() => {
     const totalDeposits =
       depositRequests.reduce(
@@ -1857,13 +2235,20 @@ export default function Admin() {
     return {
       users:
         users.length,
+
       totalDeposits,
+
       approvedDeposits,
+
       pendingDeposits,
+
       pendingWithdrawals,
+
       approvedWithdrawals,
+
       totalRequests:
         depositRequests.length,
+
       totalWithdrawRequests:
         withdrawRequests.length,
     };
@@ -1873,6 +2258,11 @@ export default function Admin() {
     withdrawRequests,
   ]);
 
+  /*
+   * ----------------------------------------------------
+   * GROUP USERS / TRANSACTIONS
+   * ----------------------------------------------------
+   */
   const groupedUsers = useMemo(() => {
     const groups = {};
 
@@ -1889,25 +2279,31 @@ export default function Admin() {
         if (!groups[phone]) {
           groups[phone] = {
             key: phone,
+
             fullName:
               request.fullName ||
               request.name ||
               request.user?.fullName ||
               request.user?.name ||
               "User",
+
             phone:
               request.phone ||
               request.mobile ||
               request.mobileNumber ||
               request.user?.phone ||
               "N/A",
+
             bankName:
               request.bankName ||
               "N/A",
+
             accountNumber:
               request.accountNumber ||
               "N/A",
+
             deposits: [],
+
             withdrawals: [],
           };
         }
@@ -1968,22 +2364,28 @@ export default function Admin() {
         if (!groups[phone]) {
           groups[phone] = {
             key: phone,
+
             fullName:
               request.fullName ||
               request.name ||
               "User",
+
             phone:
               request.phone ||
               request.mobile ||
               request.mobileNumber ||
               "N/A",
+
             bankName:
               request.bankName ||
               "N/A",
+
             accountNumber:
               request.accountNumber ||
               "N/A",
+
             deposits: [],
+
             withdrawals: [],
           };
         }
@@ -2340,24 +2742,44 @@ export default function Admin() {
           <div
             style={{
               background:
-                "rgba(143, 214, 148, 0.10)",
+                messageType ===
+                "error"
+                  ? "rgba(255,159,150,0.10)"
+                  : "rgba(143,214,148,0.10)",
+
               border:
-                "1px solid rgba(143, 214, 148, 0.25)",
+                messageType ===
+                "error"
+                  ? "1px solid rgba(255,159,150,0.25)"
+                  : "1px solid rgba(143,214,148,0.25)",
+
               color:
-                GREEN,
+                messageType ===
+                "error"
+                  ? RED
+                  : GREEN,
+
               borderRadius:
                 "13px",
+
               padding:
                 "13px 15px",
+
               marginBottom:
                 "18px",
+
               fontSize:
                 "14px",
+
               fontWeight:
                 "600",
             }}
           >
-            ✅ {message}
+            {messageType ===
+            "error"
+              ? "❌ "
+              : "✅ "}
+            {message}
 
             <button
               onClick={() =>
@@ -2371,7 +2793,10 @@ export default function Admin() {
                 background:
                   "transparent",
                 color:
-                  GREEN,
+                  messageType ===
+                  "error"
+                    ? RED
+                    : GREEN,
                 cursor:
                   "pointer",
                 fontSize:
@@ -2883,6 +3308,14 @@ export default function Admin() {
                                       />
 
                                       <Detail
+                                        label="Payment Method"
+                                        value={
+                                          request.paymentMethod ||
+                                          "N/A"
+                                        }
+                                      />
+
+                                      <Detail
                                         label="Transaction ID"
                                         value={
                                           request.transactionId ||
@@ -2900,6 +3333,30 @@ export default function Admin() {
                                           request.depositNumber ||
                                           request.mobileNumber ||
                                           request.depositPhone ||
+                                          "N/A"
+                                        }
+                                      />
+
+                                      <Detail
+                                        label="Account Name"
+                                        value={
+                                          request.accountName ||
+                                          "N/A"
+                                        }
+                                      />
+
+                                      <Detail
+                                        label="Account Number"
+                                        value={
+                                          request.accountNumber ||
+                                          "N/A"
+                                        }
+                                      />
+
+                                      <Detail
+                                        label="Bank Name"
+                                        value={
+                                          request.bankName ||
                                           "N/A"
                                         }
                                       />
@@ -3425,7 +3882,7 @@ export default function Admin() {
           <div>
             <SectionHeader
               title="Registered Users"
-              subtitle="View registered Transport Hub accounts."
+              subtitle="Users are now loaded directly from the central Supabase database."
               icon="👥"
             />
 
@@ -3582,7 +4039,7 @@ export default function Admin() {
               <EmptyState
                 icon="👥"
                 title="No Registered Users"
-                text="No Transport Hub users were found."
+                text="No Transport Hub users were found in Supabase."
               />
             )}
           </div>
@@ -3939,22 +4396,29 @@ function ActionButton({
           isApprove
             ? "1px solid rgba(143,214,148,0.35)"
             : "1px solid rgba(255,159,150,0.30)",
+
         borderRadius:
           "10px",
+
         padding:
           "11px 15px",
+
         background:
           isApprove
             ? "linear-gradient(135deg, #3E8E5B, #2E6B4A)"
             : "rgba(255,159,150,0.10)",
+
         color:
           isApprove
             ? "#ffffff"
             : RED,
+
         fontSize:
           "13px",
+
         fontWeight:
           "700",
+
         cursor:
           "pointer",
       }}
