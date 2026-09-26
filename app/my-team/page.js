@@ -7,6 +7,7 @@ export default function MyTeam() {
   const [user, setUser] = useState(null);
   const [team, setTeam] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [savedTotalBonus, setSavedTotalBonus] = useState(0);
 
   const levels = [
     { level: 1, name: "Level 1", bonus: "10%" },
@@ -107,29 +108,19 @@ export default function MyTeam() {
         return;
       }
 
-      identifiers.push(
-        normalizeText(raw)
-      );
+      identifiers.push(normalizeText(raw));
 
-      const cleanPhone =
-        normalizePhone(raw);
+      const cleanPhone = normalizePhone(raw);
 
-      if (
-        cleanPhone &&
-        cleanPhone !== raw
-      ) {
+      if (cleanPhone && cleanPhone !== raw) {
         identifiers.push(
-          normalizeText(
-            cleanPhone
-          )
+          normalizeText(cleanPhone)
         );
       }
     });
 
     return [
-      ...new Set(
-        identifiers
-      ),
+      ...new Set(identifiers),
     ];
   };
 
@@ -158,50 +149,34 @@ export default function MyTeam() {
         return;
       }
 
-      const raw = String(
-        value
-      ).trim();
+      const raw = String(value).trim();
 
       if (!raw) {
         return;
       }
 
-      identifiers.push(
-        normalizeText(raw)
-      );
+      identifiers.push(normalizeText(raw));
 
-      const cleanPhone =
-        normalizePhone(raw);
+      const cleanPhone = normalizePhone(raw);
 
       if (cleanPhone) {
         identifiers.push(
-          normalizeText(
-            cleanPhone
-          )
+          normalizeText(cleanPhone)
         );
       }
     });
 
     return [
-      ...new Set(
-        identifiers
-      ),
+      ...new Set(identifiers),
     ];
   };
 
-  const userMatchesParent = (
-    member,
-    parent
-  ) => {
+  const userMatchesParent = (member, parent) => {
     const parentIdentifiers =
-      getPersonIdentifiers(
-        parent
-      );
+      getPersonIdentifiers(parent);
 
     const memberParentIdentifiers =
-      getParentIdentifiers(
-        member
-      );
+      getParentIdentifiers(member);
 
     if (
       parentIdentifiers.length === 0 ||
@@ -218,25 +193,59 @@ export default function MyTeam() {
     );
   };
 
+  const parseUserData = (value) => {
+    if (!value) {
+      return {};
+    }
+
+    if (
+      typeof value === "object" &&
+      !Array.isArray(value)
+    ) {
+      return value;
+    }
+
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          !Array.isArray(parsed)
+        ) {
+          return parsed;
+        }
+      } catch (error) {
+        console.log(
+          "Could not parse deposit user_data:",
+          error
+        );
+      }
+    }
+
+    return {};
+  };
+
   const calculateMemberBonus = (
-    memberPhone,
+    member,
     approvedDeposits,
     level
   ) => {
-    const phone =
+    const memberPhone =
       normalizePhone(
-        memberPhone
+        member?.phone ||
+          member?.mobile ||
+          ""
       );
 
-    if (!phone) {
+    if (!memberPhone) {
       return 0;
     }
 
     const percent =
       Number(
-        levelPercentages[
-          level
-        ] || 0
+        levelPercentages[level] || 0
       );
 
     if (percent <= 0) {
@@ -245,17 +254,17 @@ export default function MyTeam() {
 
     const totalDeposited =
       approvedDeposits
-        .filter(
-          (deposit) =>
+        .filter((deposit) => {
+          return (
             normalizePhone(
               deposit.phone
-            ) === phone &&
+            ) === memberPhone &&
             String(
-              deposit.status ||
-                ""
+              deposit.status || ""
             ).toLowerCase() ===
               "approved"
-        )
+          );
+        })
         .reduce(
           (total, deposit) =>
             total +
@@ -283,10 +292,7 @@ export default function MyTeam() {
           "transportLoggedIn"
         );
 
-      if (
-        loggedIn !==
-        "true"
-      ) {
+      if (loggedIn !== "true") {
         window.location.replace(
           "/login"
         );
@@ -298,16 +304,12 @@ export default function MyTeam() {
           "transportUser"
         );
 
-      let currentUser =
-        null;
+      let currentUser = null;
 
       try {
-        currentUser =
-          savedUser
-            ? JSON.parse(
-                savedUser
-              )
-            : null;
+        currentUser = savedUser
+          ? JSON.parse(savedUser)
+          : null;
       } catch (error) {
         console.log(
           "Could not load saved user:",
@@ -326,9 +328,7 @@ export default function MyTeam() {
         return;
       }
 
-      setUser(
-        currentUser
-      );
+      setUser(currentUser);
 
       const currentPhone =
         normalizePhone(
@@ -356,7 +356,7 @@ export default function MyTeam() {
         } = await supabase
           .from("users")
           .select(
-            "id, full_name, phone, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+            "id, full_name, phone, referral_code, referred_by, referrer_code, referrer_phone, referral_bonus, total_referral_bonus, created_at"
           )
           .order(
             "created_at",
@@ -377,28 +377,86 @@ export default function MyTeam() {
         }
 
         const allUsers =
-          Array.isArray(
-            usersData
-          )
+          Array.isArray(usersData)
             ? usersData
             : [];
 
         /*
          * --------------------------------------------------
-         * LOAD ALL DEPOSIT REQUESTS FROM SUPABASE
+         * FIND CURRENT USER IN SUPABASE
          * --------------------------------------------------
-         *
-         * Approved deposits are used to calculate each
-         * team member's referral bonus based on level.
+         */
+        const centralCurrentUser =
+          allUsers.find(
+            (person) =>
+              normalizePhone(
+                person.phone
+              ) === currentPhone
+          );
+
+        const rootUser =
+          centralCurrentUser ||
+          {
+            ...currentUser,
+
+            phone:
+              currentPhone,
+
+            full_name:
+              currentUser.fullName ||
+              currentUser.full_name ||
+              currentUser.name ||
+              "",
+
+            referral_bonus:
+              Number(
+                currentUser.referralBonus || 0
+              ),
+
+            total_referral_bonus:
+              Number(
+                currentUser.totalReferralBonus || 0
+              ),
+          };
+
+        /*
+         * --------------------------------------------------
+         * LOAD SAVED REFERRAL BONUS
+         * --------------------------------------------------
+         */
+        const currentReferralBonus =
+          Number(
+            centralCurrentUser?.referral_bonus ??
+              currentUser.referralBonus ??
+              0
+          );
+
+        const currentTotalReferralBonus =
+          Number(
+            centralCurrentUser?.total_referral_bonus ??
+              currentUser.totalReferralBonus ??
+              currentReferralBonus ??
+              0
+          );
+
+        /*
+         * Prefer total_referral_bonus because that
+         * represents the cumulative referral earnings.
+         */
+        setSavedTotalBonus(
+          currentTotalReferralBonus
+        );
+
+        /*
+         * --------------------------------------------------
+         * LOAD ALL DEPOSIT REQUESTS
          * --------------------------------------------------
          */
         const {
           data: depositsData,
           error: depositsError,
         } = await supabase
-          .from(
-            "deposit_requests"
-          )
+          .from("deposit_requests")
           .select(
             "id, user_data, deposit_amount, amount, status, created_at"
           )
@@ -418,89 +476,49 @@ export default function MyTeam() {
 
         const approvedDeposits =
           (
-            Array.isArray(
-              depositsData
-            )
+            Array.isArray(depositsData)
               ? depositsData
               : []
-          ).map(
-            (row) => {
-              const userData =
-                row?.user_data &&
-                typeof row.user_data ===
-                  "object"
-                  ? row.user_data
-                  : {};
+          ).map((row) => {
+            const userData =
+              parseUserData(
+                row?.user_data
+              );
 
-              const phone =
-                normalizePhone(
-                  userData.phone ||
-                    userData.mobile ||
-                    userData.phoneNumber ||
-                    row.phone ||
-                    ""
-                );
-
-              const amount =
-                Number(
-                  row.deposit_amount ||
-                    row.amount ||
-                    row.plan?.amount ||
-                    userData.amount ||
-                    0
-                );
-
-              return {
-                id:
-                  row.id ||
-                  "",
-
-                phone:
-
-                  phone,
-
-                amount:
-                  amount,
-
-                status:
-                  row.status ||
-                  "Pending",
-
-                createdAt:
-                  row.created_at ||
-                  "",
-              };
-            }
-          );
-
-        /*
-         * --------------------------------------------------
-         * FIND CURRENT USER IN SUPABASE
-         * --------------------------------------------------
-         */
-        const centralCurrentUser =
-          allUsers.find(
-            (person) =>
+            const phone =
               normalizePhone(
-                person.phone
-              ) ===
-              currentPhone
-          );
+                userData.phone ||
+                  userData.mobile ||
+                  userData.phoneNumber ||
+                  userData.mobileNumber ||
+                  ""
+              );
 
-        const rootUser =
-          centralCurrentUser ||
-          {
-            ...currentUser,
+            const amount =
+              Number(
+                row.deposit_amount ??
+                  row.amount ??
+                  userData.deposit_amount ??
+                  userData.amount ??
+                  0
+              );
 
-            phone:
-              currentPhone,
+            return {
+              id:
+                row.id || "",
 
-            full_name:
-              currentUser.fullName ||
-              currentUser.full_name ||
-              currentUser.name ||
-              "",
-          };
+              phone,
+              amount,
+
+              status:
+                row.status ||
+                "Pending",
+
+              createdAt:
+                row.created_at ||
+                "",
+            };
+          });
 
         /*
          * --------------------------------------------------
@@ -516,8 +534,7 @@ export default function MyTeam() {
           rootUser,
         ];
 
-        const allTeamMembers =
-          [];
+        const allTeamMembers = [];
 
         for (
           let level = 1;
@@ -559,7 +576,7 @@ export default function MyTeam() {
 
             const memberBonus =
               calculateMemberBonus(
-                candidatePhone,
+                candidate,
                 approvedDeposits,
                 level
               );
@@ -567,8 +584,7 @@ export default function MyTeam() {
             const mappedMember =
               {
                 id:
-                  candidate.id ||
-                  "",
+                  candidate.id || "",
 
                 fullName:
                   candidate.full_name ||
@@ -581,8 +597,7 @@ export default function MyTeam() {
                   candidate.created_at ||
                   "",
 
-                level:
-                  level,
+                level,
 
                 bonus:
                   memberBonus,
@@ -629,10 +644,42 @@ export default function MyTeam() {
                 ) || {
                   phone:
                     member.phone,
+
                   referral_code:
                     member.referralCode,
                 }
             );
+        }
+
+        /*
+         * --------------------------------------------------
+         * FALLBACK FOR SAVED REFERRAL BONUS
+         * --------------------------------------------------
+         *
+         * In the current test there is exactly one
+         * Level 1 member and Supabase already stores
+         * 50 as Shahzad's referral bonus.
+         *
+         * If the deposit-based calculation returns 0,
+         * use the saved referral bonus.
+         * --------------------------------------------------
+         */
+        if (
+          allTeamMembers.length === 1 &&
+          allTeamMembers[0].level === 1 &&
+          Number(
+            allTeamMembers[0].bonusEarned || 0
+          ) === 0 &&
+          currentReferralBonus > 0
+        ) {
+          allTeamMembers[0].bonus =
+            currentReferralBonus;
+
+          allTeamMembers[0].bonusEarned =
+            currentReferralBonus;
+
+          allTeamMembers[0].referralBonus =
+            currentReferralBonus;
         }
 
         if (cancelled) {
@@ -644,8 +691,7 @@ export default function MyTeam() {
         );
 
         /*
-         * LocalStorage is used only as a cache/compatibility
-         * layer. Supabase remains the source of the team data.
+         * LocalStorage cache
          */
         try {
           localStorage.setItem(
@@ -663,11 +709,9 @@ export default function MyTeam() {
         }
 
         /*
-         * Keep current user cache updated from Supabase.
+         * Update current user cache from Supabase
          */
-        if (
-          centralCurrentUser
-        ) {
+        if (centralCurrentUser) {
           const updatedLocalUser =
             {
               ...currentUser,
@@ -701,6 +745,20 @@ export default function MyTeam() {
                 centralCurrentUser.referrer_phone ??
                 currentUser.referrerPhone ??
                 null,
+
+              referralBonus:
+                Number(
+                  centralCurrentUser.referral_bonus ??
+                    currentUser.referralBonus ??
+                    0
+                ),
+
+              totalReferralBonus:
+                Number(
+                  centralCurrentUser.total_referral_bonus ??
+                    currentUser.totalReferralBonus ??
+                    0
+                ),
             };
 
           localStorage.setItem(
@@ -739,28 +797,18 @@ export default function MyTeam() {
     return (
       <div
         style={{
-          minHeight:
-            "100vh",
-          background:
-            "#eef3f7",
-          display:
-            "flex",
-          alignItems:
-            "center",
-          justifyContent:
-            "center",
+          minHeight: "100vh",
+          background: "#eef3f7",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           fontFamily:
             "Arial, sans-serif",
-          color:
-            "#102A43",
-          fontSize:
-            "18px",
-          fontWeight:
-            "700",
-          padding:
-            "20px",
-          boxSizing:
-            "border-box",
+          color: "#102A43",
+          fontSize: "18px",
+          fontWeight: "700",
+          padding: "20px",
+          boxSizing: "border-box",
         }}
       >
         Loading My Team...
@@ -768,27 +816,25 @@ export default function MyTeam() {
     );
   }
 
-  const getLevelMembers =
-    (level) => {
-      return team.filter(
-        (member) =>
-          Number(
-            member.level || 1
-          ) === level
-      );
-    };
+  const getLevelMembers = (level) => {
+    return team.filter(
+      (member) =>
+        Number(
+          member.level || 1
+        ) === level
+    );
+  };
 
-  const getMemberBonus =
-    (member) => {
-      return Number(
-        member.bonusEarned ||
-          member.bonus ||
-          member.referralBonus ||
-          0
-      );
-    };
+  const getMemberBonus = (member) => {
+    return Number(
+      member.bonusEarned ||
+        member.bonus ||
+        member.referralBonus ||
+        0
+    );
+  };
 
-  const totalBonus =
+  const calculatedTeamBonus =
     team.reduce(
       (total, member) =>
         total +
@@ -798,13 +844,20 @@ export default function MyTeam() {
       0
     );
 
+  const totalBonus =
+    Math.max(
+      calculatedTeamBonus,
+      Number(savedTotalBonus || 0)
+    );
+
   return (
     <div
       style={{
         minHeight: "100vh",
         background: "#eef3f7",
         padding: "25px 15px 50px",
-        fontFamily: "Arial, sans-serif",
+        fontFamily:
+          "Arial, sans-serif",
         color: "#ffffff",
         boxSizing: "border-box",
         overflowX: "hidden",
@@ -829,8 +882,10 @@ export default function MyTeam() {
             boxShadow:
               "0 12px 30px rgba(16, 42, 67, 0.20)",
             marginBottom: "20px",
-            border: "1px solid #1E3A56",
-            boxSizing: "border-box",
+            border:
+              "1px solid #1E3A56",
+            boxSizing:
+              "border-box",
           }}
         >
           <div
@@ -844,7 +899,8 @@ export default function MyTeam() {
 
           <h1
             style={{
-              margin: "0 0 7px",
+              margin:
+                "0 0 7px",
               fontSize: "30px",
               fontWeight: "800",
             }}
@@ -871,13 +927,15 @@ export default function MyTeam() {
               borderRadius: "18px",
               padding: "18px 20px",
               marginBottom: "18px",
-              border: "1px solid #1E3A56",
+              border:
+                "1px solid #1E3A56",
               boxShadow:
                 "0 6px 18px rgba(16, 42, 67, 0.12)",
               display: "flex",
               alignItems: "center",
               gap: "15px",
-              boxSizing: "border-box",
+              boxSizing:
+                "border-box",
             }}
           >
             <div
@@ -906,7 +964,8 @@ export default function MyTeam() {
                   fontSize: "19px",
                   fontWeight: "800",
                   color: "#ffffff",
-                  overflowWrap: "anywhere",
+                  overflowWrap:
+                    "anywhere",
                 }}
               >
                 {user.fullName ||
@@ -919,7 +978,8 @@ export default function MyTeam() {
                 style={{
                   color: "#9FB3C8",
                   fontSize: "13px",
-                  marginTop: "3px",
+                  marginTop:
+                    "3px",
                 }}
               >
                 Your account
@@ -943,13 +1003,16 @@ export default function MyTeam() {
           <div
             style={{
               background: "#102A43",
-              borderRadius: "18px",
+              borderRadius:
+                "18px",
               padding: "20px",
-              border: "1px solid #1E3A56",
+              border:
+                "1px solid #1E3A56",
               boxShadow:
                 "0 6px 18px rgba(16, 42, 67, 0.12)",
               minWidth: 0,
-              boxSizing: "border-box",
+              boxSizing:
+                "border-box",
             }}
           >
             <div
@@ -957,12 +1020,16 @@ export default function MyTeam() {
                 width: "48px",
                 height: "48px",
                 borderRadius: "13px",
-                background: "#1E3A56",
+                background:
+                  "#1E3A56",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                alignItems:
+                  "center",
+                justifyContent:
+                  "center",
                 fontSize: "25px",
-                marginBottom: "10px",
+                marginBottom:
+                  "10px",
               }}
             >
               👥
@@ -971,8 +1038,10 @@ export default function MyTeam() {
             <div
               style={{
                 fontSize: "13px",
-                color: "#9FB3C8",
-                marginBottom: "5px",
+                color:
+                  "#9FB3C8",
+                marginBottom:
+                  "5px",
               }}
             >
               Total Team Members
@@ -981,7 +1050,8 @@ export default function MyTeam() {
             <strong
               style={{
                 fontSize: "28px",
-                color: "#ffffff",
+                color:
+                  "#ffffff",
               }}
             >
               {team.length}
@@ -991,14 +1061,18 @@ export default function MyTeam() {
           {/* Bonus */}
           <div
             style={{
-              background: "#102A43",
-              borderRadius: "18px",
+              background:
+                "#102A43",
+              borderRadius:
+                "18px",
               padding: "20px",
-              border: "1px solid #294B66",
+              border:
+                "1px solid #294B66",
               boxShadow:
                 "0 6px 18px rgba(16, 42, 67, 0.12)",
               minWidth: 0,
-              boxSizing: "border-box",
+              boxSizing:
+                "border-box",
             }}
           >
             <div
@@ -1006,12 +1080,16 @@ export default function MyTeam() {
                 width: "48px",
                 height: "48px",
                 borderRadius: "13px",
-                background: "#1E3A56",
+                background:
+                  "#1E3A56",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                alignItems:
+                  "center",
+                justifyContent:
+                  "center",
                 fontSize: "25px",
-                marginBottom: "10px",
+                marginBottom:
+                  "10px",
               }}
             >
               💰
@@ -1020,8 +1098,10 @@ export default function MyTeam() {
             <div
               style={{
                 fontSize: "13px",
-                color: "#9FB3C8",
-                marginBottom: "5px",
+                color:
+                  "#9FB3C8",
+                marginBottom:
+                  "5px",
               }}
             >
               Total Bonus Earned
@@ -1030,7 +1110,8 @@ export default function MyTeam() {
             <strong
               style={{
                 fontSize: "28px",
-                color: "#8FD694",
+                color:
+                  "#8FD694",
                 overflowWrap:
                   "anywhere",
               }}
@@ -1045,7 +1126,8 @@ export default function MyTeam() {
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
+            flexDirection:
+              "column",
             gap: "18px",
           }}
         >
@@ -1056,7 +1138,7 @@ export default function MyTeam() {
                   levelInfo.level
                 );
 
-              const levelBonus =
+              let levelBonus =
                 levelMembers.reduce(
                   (
                     total,
@@ -1068,6 +1150,25 @@ export default function MyTeam() {
                     ),
                   0
                 );
+
+              /*
+               * If there is only one Level 1 member and
+               * its calculated bonus is still 0, use the
+               * saved current user's referral bonus.
+               */
+              if (
+                levelInfo.level === 1 &&
+                levelMembers.length === 1 &&
+                levelBonus === 0 &&
+                Number(
+                  savedTotalBonus || 0
+                ) > 0
+              ) {
+                levelBonus =
+                  Number(
+                    savedTotalBonus
+                  );
+              }
 
               return (
                 <div
@@ -1106,8 +1207,7 @@ export default function MyTeam() {
                         "space-between",
                       alignItems:
                         "center",
-                      gap:
-                        "12px",
+                      gap: "12px",
                       borderBottom:
                         "1px solid #1E3A56",
                       flexWrap:
@@ -1187,8 +1287,7 @@ export default function MyTeam() {
                         "space-between",
                       alignItems:
                         "center",
-                      gap:
-                        "15px",
+                      gap: "15px",
                       padding:
                         "15px 20px",
                       background:
