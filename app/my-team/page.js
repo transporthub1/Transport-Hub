@@ -132,10 +132,8 @@ export default function MyTeam() {
     const values = [
       getUserPhone(person),
       getReferralCode(person),
-
       person.referral_code,
       person.referralCode,
-
       person.phone,
       person.mobile,
       person.phoneNumber,
@@ -439,10 +437,6 @@ export default function MyTeam() {
               0
           );
 
-        /*
-         * Prefer total_referral_bonus because that
-         * represents the cumulative referral earnings.
-         */
         setSavedTotalBonus(
           currentTotalReferralBonus
         );
@@ -655,14 +649,6 @@ export default function MyTeam() {
          * --------------------------------------------------
          * FALLBACK FOR SAVED REFERRAL BONUS
          * --------------------------------------------------
-         *
-         * In the current test there is exactly one
-         * Level 1 member and Supabase already stores
-         * 50 as Shahzad's referral bonus.
-         *
-         * If the deposit-based calculation returns 0,
-         * use the saved referral bonus.
-         * --------------------------------------------------
          */
         if (
           allTeamMembers.length === 1 &&
@@ -690,9 +676,6 @@ export default function MyTeam() {
           allTeamMembers
         );
 
-        /*
-         * LocalStorage cache
-         */
         try {
           localStorage.setItem(
             "transportTeam_" +
@@ -708,9 +691,6 @@ export default function MyTeam() {
           );
         }
 
-        /*
-         * Update current user cache from Supabase
-         */
         if (centralCurrentUser) {
           const updatedLocalUser =
             {
@@ -936,6 +916,8 @@ export default function MyTeam() {
               gap: "15px",
               boxSizing:
                 "border-box",
+              minWidth:
+                0,
             }}
           >
             <div
@@ -957,6 +939,7 @@ export default function MyTeam() {
             <div
               style={{
                 minWidth: 0,
+                overflow: "hidden",
               }}
             >
               <div
@@ -1129,6 +1112,8 @@ export default function MyTeam() {
             flexDirection:
               "column",
             gap: "18px",
+            width: "100%",
+            minWidth: 0,
           }}
         >
           {levels.map(
@@ -1151,11 +1136,6 @@ export default function MyTeam() {
                   0
                 );
 
-              /*
-               * If there is only one Level 1 member and
-               * its calculated bonus is still 0, use the
-               * saved current user's referral bonus.
-               */
               if (
                 levelInfo.level === 1 &&
                 levelMembers.length === 1 &&
@@ -1190,6 +1170,8 @@ export default function MyTeam() {
                       "100%",
                     boxSizing:
                       "border-box",
+                    minWidth:
+                      0,
                   }}
                 >
                   {/* Level Header */}
@@ -1374,234 +1356,274 @@ export default function MyTeam() {
                         "100%",
                       boxSizing:
                         "border-box",
+                      minWidth:
+                        0,
+                      overflowX:
+                        "auto",
+                      overflowY:
+                        "hidden",
                     }}
                   >
                     {levelMembers.length >
                     0 ? (
-                      levelMembers.map(
-                        (
-                          member,
-                          index
-                        ) => (
-                          <div
-                            key={
-                              member.id ||
-                              member.phone ||
-                              index
-                            }
-                            className="teamMemberRow"
-                            style={{
-                              display:
-                                "grid",
-                              gridTemplateColumns:
-                                "45px 1.5fr 1fr 1fr 1fr",
-                              alignItems:
-                                "center",
-                              gap:
-                                "12px",
-                              padding:
-                                "14px 10px",
-                              borderBottom:
-                                index ===
-                                levelMembers.length -
-                                  1
-                                  ? "none"
-                                  : "1px solid #294B66",
-                              minWidth:
-                                0,
-                              boxSizing:
-                                "border-box",
-                            }}
-                          >
-                            {/* Icon */}
+                      <div
+                        style={{
+                          minWidth:
+                            "620px",
+                          width:
+                            "100%",
+                        }}
+                      >
+                        {levelMembers.map(
+                          (
+                            member,
+                            index
+                          ) => (
                             <div
+                              key={
+                                member.id ||
+                                member.phone ||
+                                index
+                              }
+                              className="teamMemberRow"
                               style={{
-                                width:
-                                  "40px",
-                                height:
-                                  "40px",
-                                borderRadius:
-                                  "50%",
-                                background:
-                                  "#1E3A56",
                                 display:
-                                  "flex",
+                                  "grid",
+                                gridTemplateColumns:
+                                  "42px 1.6fr 1.2fr 1fr 1fr",
                                 alignItems:
                                   "center",
-                                justifyContent:
-                                  "center",
-                                fontSize:
-                                  "19px",
-                                flexShrink:
-                                  0,
-                              }}
-                            >
-                              👤
-                            </div>
-
-                            {/* Name */}
-                            <div
-                              style={{
+                                gap:
+                                  "12px",
+                                padding:
+                                  "14px 10px",
+                                borderBottom:
+                                  index ===
+                                  levelMembers.length - 1
+                                    ? "none"
+                                    : "1px solid #294B66",
                                 minWidth:
-                                  0,
+                                  "620px",
+                                width:
+                                  "100%",
+                                boxSizing:
+                                  "border-box",
                               }}
                             >
+                              {/* Icon */}
                               <div
                                 style={{
+                                  width:
+                                    "40px",
+                                  height:
+                                    "40px",
+                                  borderRadius:
+                                    "50%",
+                                  background:
+                                    "#1E3A56",
+                                  display:
+                                    "flex",
+                                  alignItems:
+                                    "center",
+                                  justifyContent:
+                                    "center",
                                   fontSize:
-                                    "14px",
-                                  fontWeight:
-                                    "800",
-                                  color:
-                                    "#ffffff",
-                                  overflowWrap:
-                                    "anywhere",
+                                    "19px",
+                                  flexShrink:
+                                    0,
                                 }}
                               >
-                                {
-                                  member.fullName
-                                }
+                                👤
                               </div>
 
+                              {/* Name */}
                               <div
                                 style={{
-                                  fontSize:
-                                    "10px",
-                                  color:
-                                    "#9FB3C8",
-                                  marginTop:
-                                    "3px",
+                                  minWidth:
+                                    0,
+                                  overflow:
+                                    "hidden",
                                 }}
                               >
-                                Member #
-                                {
-                                  index +
-                                  1
-                                }
+                                <div
+                                  style={{
+                                    fontSize:
+                                      "14px",
+                                    fontWeight:
+                                      "800",
+                                    color:
+                                      "#ffffff",
+                                    whiteSpace:
+                                      "nowrap",
+                                    overflow:
+                                      "hidden",
+                                    textOverflow:
+                                      "ellipsis",
+                                  }}
+                                >
+                                  {
+                                    member.fullName
+                                  }
+                                </div>
+
+                                <div
+                                  style={{
+                                    fontSize:
+                                      "10px",
+                                    color:
+                                      "#9FB3C8",
+                                    marginTop:
+                                      "3px",
+                                    whiteSpace:
+                                      "nowrap",
+                                  }}
+                                >
+                                  Member #
+                                  {
+                                    index +
+                                    1
+                                  }
+                                </div>
+                              </div>
+
+                              {/* Mobile */}
+                              <div
+                                style={{
+                                  minWidth:
+                                    0,
+                                  overflow:
+                                    "hidden",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize:
+                                      "10px",
+                                    color:
+                                      "#9FB3C8",
+                                    whiteSpace:
+                                      "nowrap",
+                                  }}
+                                >
+                                  Mobile
+                                </div>
+
+                                <div
+                                  style={{
+                                    fontSize:
+                                      "12px",
+                                    fontWeight:
+                                      "700",
+                                    color:
+                                      "#ffffff",
+                                    marginTop:
+                                      "3px",
+                                    whiteSpace:
+                                      "nowrap",
+                                  }}
+                                >
+                                  {
+                                    member.phone
+                                  }
+                                </div>
+                              </div>
+
+                              {/* Joined */}
+                              <div
+                                style={{
+                                  minWidth:
+                                    0,
+                                  overflow:
+                                    "hidden",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize:
+                                      "10px",
+                                    color:
+                                      "#9FB3C8",
+                                    whiteSpace:
+                                      "nowrap",
+                                  }}
+                                >
+                                  Joined
+                                </div>
+
+                                <div
+                                  style={{
+                                    fontSize:
+                                      "12px",
+                                    fontWeight:
+                                      "700",
+                                    color:
+                                      "#ffffff",
+                                    marginTop:
+                                      "3px",
+                                    whiteSpace:
+                                      "nowrap",
+                                  }}
+                                >
+                                  {
+                                    member.createdAt
+                                      ? new Date(
+                                          member.createdAt
+                                        ).toLocaleDateString(
+                                          "en-GB"
+                                        )
+                                      : "N/A"
+                                  }
+                                </div>
+                              </div>
+
+                              {/* Bonus */}
+                              <div
+                                style={{
+                                  textAlign:
+                                    "right",
+                                  minWidth:
+                                    0,
+                                  overflow:
+                                    "hidden",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize:
+                                      "10px",
+                                    color:
+                                      "#9FB3C8",
+                                    whiteSpace:
+                                      "nowrap",
+                                  }}
+                                >
+                                  Bonus
+                                </div>
+
+                                <div
+                                  style={{
+                                    fontSize:
+                                      "12px",
+                                    fontWeight:
+                                      "800",
+                                    color:
+                                      "#8FD694",
+                                    marginTop:
+                                      "3px",
+                                    whiteSpace:
+                                      "nowrap",
+                                  }}
+                                >
+                                  PKR{" "}
+                                  {getMemberBonus(
+                                    member
+                                  ).toLocaleString()}
+                                </div>
                               </div>
                             </div>
-
-                            {/* Mobile */}
-                            <div
-                              style={{
-                                minWidth:
-                                  0,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontSize:
-                                    "10px",
-                                  color:
-                                    "#9FB3C8",
-                                }}
-                              >
-                                Mobile
-                              </div>
-
-                              <div
-                                style={{
-                                  fontSize:
-                                    "12px",
-                                  fontWeight:
-                                    "700",
-                                  color:
-                                    "#ffffff",
-                                  marginTop:
-                                    "3px",
-                                  overflowWrap:
-                                    "anywhere",
-                                }}
-                              >
-                                {
-                                  member.phone
-                                }
-                              </div>
-                            </div>
-
-                            {/* Joined */}
-                            <div
-                              style={{
-                                minWidth:
-                                  0,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontSize:
-                                    "10px",
-                                  color:
-                                    "#9FB3C8",
-                                }}
-                              >
-                                Joined
-                              </div>
-
-                              <div
-                                style={{
-                                  fontSize:
-                                    "12px",
-                                  fontWeight:
-                                    "700",
-                                  color:
-                                    "#ffffff",
-                                  marginTop:
-                                    "3px",
-                                }}
-                              >
-                                {
-                                  member.createdAt
-                                    ? new Date(
-                                        member.createdAt
-                                      ).toLocaleDateString()
-                                    : "N/A"
-                                }
-                              </div>
-                            </div>
-
-                            {/* Bonus */}
-                            <div
-                              style={{
-                                textAlign:
-                                  "right",
-                                minWidth:
-                                  0,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontSize:
-                                    "10px",
-                                  color:
-                                    "#9FB3C8",
-                                }}
-                              >
-                                Bonus
-                              </div>
-
-                              <div
-                                style={{
-                                  fontSize:
-                                    "12px",
-                                  fontWeight:
-                                    "800",
-                                  color:
-                                    "#8FD694",
-                                  marginTop:
-                                    "3px",
-                                  overflowWrap:
-                                    "anywhere",
-                                }}
-                              >
-                                PKR{" "}
-                                {getMemberBonus(
-                                  member
-                                ).toLocaleString()}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      )
+                          )
+                        )}
+                      </div>
                     ) : (
                       <div
                         style={{
@@ -1700,24 +1722,40 @@ export default function MyTeam() {
           }
 
           .teamMemberRow {
-            grid-template-columns: 42px 1fr !important;
+            grid-template-columns:
+              42px
+              1.6fr
+              1.2fr
+              1fr
+              1fr !important;
+
             gap: 10px !important;
-          }
-
-          .teamMemberRow > div:nth-child(3),
-          .teamMemberRow > div:nth-child(4),
-          .teamMemberRow > div:nth-child(5) {
-            grid-column: 2;
-          }
-
-          .teamMemberRow > div:nth-child(5) {
-            text-align: left !important;
+            min-width: 620px !important;
           }
         }
 
         @media (max-width: 480px) {
           .teamMemberRow {
-            grid-template-columns: 40px 1fr !important;
+            grid-template-columns:
+              40px
+              1.5fr
+              1.15fr
+              0.95fr
+              0.95fr !important;
+
+            min-width: 600px !important;
+            gap: 9px !important;
+            padding: 12px 8px !important;
+          }
+
+          .teamMemberRow > div:nth-child(2) > div:first-child {
+            font-size: 12px !important;
+          }
+
+          .teamMemberRow > div:nth-child(3) > div:last-child,
+          .teamMemberRow > div:nth-child(4) > div:last-child,
+          .teamMemberRow > div:nth-child(5) > div:last-child {
+            font-size: 11px !important;
           }
         }
       `}</style>
