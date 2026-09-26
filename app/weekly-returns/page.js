@@ -204,6 +204,115 @@ function normalizeActivePlan(row) {
   };
 }
 
+/*
+ * ----------------------------------------------------
+ * SAVE TRANSACTION TO SUPABASE
+ * ----------------------------------------------------
+ *
+ * Weekly Return transactions are saved centrally.
+ * LocalStorage remains as compatibility/local cache.
+ * ----------------------------------------------------
+ */
+async function saveTransactionToSupabase(
+  transaction,
+  phone
+) {
+  const normalizedPhone =
+    normalizePhone(
+      phone ||
+        transaction?.phone ||
+        transaction?.userPhone ||
+        ""
+    );
+
+  if (
+    !transaction ||
+    !transaction.id ||
+    !normalizedPhone
+  ) {
+    return false;
+  }
+
+  const transactionRow = {
+    id:
+      String(
+        transaction.id
+      ),
+
+    user_phone:
+      normalizedPhone,
+
+    type:
+      transaction.type === "Return"
+        ? "Return"
+        : transaction.type ||
+          "Return",
+
+    amount:
+      Number(
+        transaction.amount || 0
+      ),
+
+    status:
+      transaction.status ||
+      "Completed",
+
+    return_type:
+      transaction.returnType ||
+      "Weekly",
+
+    description:
+      transaction.description ||
+      "Weekly Return",
+
+    plan_name:
+      transaction.planName ||
+      null,
+
+    created_at:
+      transaction.createdAt ||
+      transaction.created_at ||
+      new Date().toISOString(),
+  };
+
+  try {
+    const {
+      error,
+    } = await supabase
+      .from("transactions")
+      .upsert(
+        [transactionRow],
+        {
+          onConflict:
+            "id",
+        }
+      );
+
+    if (error) {
+      console.error(
+        "Supabase weekly return transaction save error:",
+        error
+      );
+
+      return false;
+    }
+
+    console.log(
+      "Weekly return transaction saved to Supabase:",
+      transactionRow
+    );
+
+    return true;
+  } catch (error) {
+    console.error(
+      "Supabase weekly return transaction failed:",
+      error
+    );
+
+    return false;
+  }
+}
+
 export default function DailyReturns() {
   const [user, setUser] = useState(null);
   const [activePlans, setActivePlans] =
@@ -1364,7 +1473,7 @@ export default function DailyReturns() {
         );
 
         /* =======================================================
-           SAVE TRANSACTION
+           SAVE TRANSACTION LOCALLY + SUPABASE
         ======================================================= */
 
         const transactionKey =
@@ -1393,39 +1502,41 @@ export default function DailyReturns() {
               transactionId
           );
 
+        const newTransaction = {
+          id:
+            transactionId,
+
+          type:
+            "Return",
+
+          returnType:
+            "Weekly",
+
+          amount:
+            weeklyAmount,
+
+          status:
+            "Completed",
+
+          planName:
+            updatedFrontendPlan.name,
+
+          description:
+            `Weekly return from ${updatedFrontendPlan.name}`,
+
+          phone:
+            phone,
+
+          date:
+            now,
+
+          createdAt:
+            now,
+        };
+
         if (
           !alreadySaved
         ) {
-          const newTransaction =
-            {
-              id:
-                transactionId,
-
-              type:
-                "Return",
-
-              returnType:
-                "Weekly",
-
-              amount:
-                weeklyAmount,
-
-              status:
-                "Completed",
-
-              planName:
-                updatedFrontendPlan.name,
-
-              description:
-                `Weekly return from ${updatedFrontendPlan.name}`,
-
-              date:
-                now,
-
-              createdAt:
-                now,
-            };
-
           transactionList.unshift(
             newTransaction
           );
@@ -1435,6 +1546,12 @@ export default function DailyReturns() {
             transactionList
           );
         }
+
+        const transactionSavedToSupabase =
+          await saveTransactionToSupabase(
+            newTransaction,
+            phone
+          );
 
         /* =======================================================
            UPDATE SCREEN
@@ -1464,14 +1581,26 @@ export default function DailyReturns() {
           )
         );
 
-        setMessage(
-          `PKR ${formatMoney(
-            weeklyAmount
-          )} weekly return has been added to your withdrawable balance.`
-        );
+        if (
+          transactionSavedToSupabase
+        ) {
+          setMessage(
+            `PKR ${formatMoney(
+              weeklyAmount
+            )} weekly return has been added to your withdrawable balance and saved to Supabase.`
+          );
+        } else {
+          setMessage(
+            `PKR ${formatMoney(
+              weeklyAmount
+            )} weekly return has been added to your withdrawable balance. Warning: transaction record could not be synced to Supabase.`
+          );
+        }
 
         setMessageType(
-          "success"
+          transactionSavedToSupabase
+            ? "success"
+            : "error"
         );
       } catch (error) {
         console.log(
