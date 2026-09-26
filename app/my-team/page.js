@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export default function MyTeam() {
   const [user, setUser] = useState(null);
@@ -16,108 +17,786 @@ export default function MyTeam() {
     { level: 6, name: "Level 6", bonus: "0.5%" },
   ];
 
-  useEffect(() => {
-    const loggedIn = localStorage.getItem("transportLoggedIn");
+  const levelPercentages = {
+    1: 10,
+    2: 5,
+    3: 3,
+    4: 2,
+    5: 1,
+    6: 0.5,
+  };
 
-    if (loggedIn !== "true") {
-      window.location.replace("/login");
-      return;
+  const normalizePhone = (value) => {
+    let phone = String(value || "")
+      .replace(/\s+/g, "")
+      .replace(/-/g, "")
+      .trim();
+
+    if (phone.startsWith("+92")) {
+      phone = "0" + phone.slice(3);
+    } else if (phone.startsWith("0092")) {
+      phone = "0" + phone.slice(4);
     }
 
-    const savedUser = localStorage.getItem("transportUser");
+    return phone;
+  };
 
-    let currentUser = null;
+  const normalizeText = (value) => {
+    return String(value || "")
+      .trim()
+      .toLowerCase();
+  };
 
-    if (savedUser) {
-      try {
-        currentUser = JSON.parse(savedUser);
-        setUser(currentUser);
-      } catch (error) {
-        console.log("Could not load user");
-      }
+  const getUserPhone = (person) => {
+    if (!person) {
+      return "";
     }
 
-    // Get current user's phone for user-specific team data
-    const phone =
-      currentUser?.phone ||
-      currentUser?.mobile ||
-      currentUser?.phoneNumber ||
-      "";
-
-    let savedTeam = null;
-
-    // First priority: current user's team
-    if (phone) {
-      savedTeam = localStorage.getItem(
-        "transportTeam_" + String(phone)
-      );
-    }
-
-    // Fallback: older/global team storage
-    if (!savedTeam) {
-      savedTeam = localStorage.getItem("transportTeam");
-    }
-
-    if (savedTeam) {
-      try {
-        const parsedTeam = JSON.parse(savedTeam);
-
-        if (Array.isArray(parsedTeam)) {
-          // Make sure team data belongs to the current user
-          const filteredTeam = parsedTeam.filter((member) => {
-            if (!member || typeof member !== "object") {
-              return false;
-            }
-
-            const memberOwner =
-              member.ownerPhone ||
-              member.referrerPhone ||
-              member.parentPhone ||
-              member.uplinePhone ||
-              member.userPhone ||
-              "";
-
-            // If team member has no owner information,
-            // keep it for compatibility with older stored data.
-            if (!memberOwner) {
-              return true;
-            }
-
-            return String(memberOwner) === String(phone);
-          });
-
-          setTeam(filteredTeam);
-        } else {
-          setTeam([]);
-        }
-      } catch (error) {
-        console.log("Could not load team");
-        setTeam([]);
-      }
-    } else {
-      setTeam([]);
-    }
-
-    setLoading(false);
-  }, []);
-
-  if (loading) {
-    return null;
-  }
-
-  const getLevelMembers = (level) => {
-    return team.filter(
-      (member) => Number(member.level || 1) === level
+    return normalizePhone(
+      person.phone ||
+        person.mobile ||
+        person.phoneNumber ||
+        person.mobileNumber ||
+        ""
     );
   };
 
-  const getMemberBonus = (member) => {
-    return Number(member.bonusEarned || member.bonus || 0);
+  const getReferralCode = (person) => {
+    if (!person) {
+      return "";
+    }
+
+    return normalizeText(
+      person.referral_code ||
+        person.referralCode ||
+        person.referral ||
+        ""
+    );
   };
 
-  const totalBonus = team.reduce((total, member) => {
-    return total + getMemberBonus(member);
-  }, 0);
+  const getParentIdentifiers = (person) => {
+    if (!person) {
+      return [];
+    }
+
+    const values = [
+      person.referred_by,
+      person.referredBy,
+      person.referrer_code,
+      person.referrerCode,
+      person.referrer_phone,
+      person.referrerPhone,
+      person.referrer_mobile,
+      person.referrerMobile,
+      person.parent_phone,
+      person.parentPhone,
+      person.upline_phone,
+      person.uplinePhone,
+    ];
+
+    const identifiers = [];
+
+    values.forEach((value) => {
+      if (!value) {
+        return;
+      }
+
+      const raw = String(value).trim();
+
+      if (!raw) {
+        return;
+      }
+
+      identifiers.push(
+        normalizeText(raw)
+      );
+
+      const cleanPhone =
+        normalizePhone(raw);
+
+      if (
+        cleanPhone &&
+        cleanPhone !== raw
+      ) {
+        identifiers.push(
+          normalizeText(
+            cleanPhone
+          )
+        );
+      }
+    });
+
+    return [
+      ...new Set(
+        identifiers
+      ),
+    ];
+  };
+
+  const getPersonIdentifiers = (person) => {
+    if (!person) {
+      return [];
+    }
+
+    const values = [
+      getUserPhone(person),
+      getReferralCode(person),
+
+      person.referral_code,
+      person.referralCode,
+
+      person.phone,
+      person.mobile,
+      person.phoneNumber,
+      person.mobileNumber,
+    ];
+
+    const identifiers = [];
+
+    values.forEach((value) => {
+      if (!value) {
+        return;
+      }
+
+      const raw = String(
+        value
+      ).trim();
+
+      if (!raw) {
+        return;
+      }
+
+      identifiers.push(
+        normalizeText(raw)
+      );
+
+      const cleanPhone =
+        normalizePhone(raw);
+
+      if (cleanPhone) {
+        identifiers.push(
+          normalizeText(
+            cleanPhone
+          )
+        );
+      }
+    });
+
+    return [
+      ...new Set(
+        identifiers
+      ),
+    ];
+  };
+
+  const userMatchesParent = (
+    member,
+    parent
+  ) => {
+    const parentIdentifiers =
+      getPersonIdentifiers(
+        parent
+      );
+
+    const memberParentIdentifiers =
+      getParentIdentifiers(
+        member
+      );
+
+    if (
+      parentIdentifiers.length === 0 ||
+      memberParentIdentifiers.length === 0
+    ) {
+      return false;
+    }
+
+    return memberParentIdentifiers.some(
+      (memberValue) =>
+        parentIdentifiers.includes(
+          memberValue
+        )
+    );
+  };
+
+  const calculateMemberBonus = (
+    memberPhone,
+    approvedDeposits,
+    level
+  ) => {
+    const phone =
+      normalizePhone(
+        memberPhone
+      );
+
+    if (!phone) {
+      return 0;
+    }
+
+    const percent =
+      Number(
+        levelPercentages[
+          level
+        ] || 0
+      );
+
+    if (percent <= 0) {
+      return 0;
+    }
+
+    const totalDeposited =
+      approvedDeposits
+        .filter(
+          (deposit) =>
+            normalizePhone(
+              deposit.phone
+            ) === phone &&
+            String(
+              deposit.status ||
+                ""
+            ).toLowerCase() ===
+              "approved"
+        )
+        .reduce(
+          (total, deposit) =>
+            total +
+            Number(
+              deposit.amount || 0
+            ),
+          0
+        );
+
+    return Number(
+      (
+        totalDeposited *
+        percent /
+        100
+      ).toFixed(2)
+    );
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTeam = async () => {
+      const loggedIn =
+        localStorage.getItem(
+          "transportLoggedIn"
+        );
+
+      if (
+        loggedIn !==
+        "true"
+      ) {
+        window.location.replace(
+          "/login"
+        );
+        return;
+      }
+
+      const savedUser =
+        localStorage.getItem(
+          "transportUser"
+        );
+
+      let currentUser =
+        null;
+
+      try {
+        currentUser =
+          savedUser
+            ? JSON.parse(
+                savedUser
+              )
+            : null;
+      } catch (error) {
+        console.log(
+          "Could not load saved user:",
+          error
+        );
+      }
+
+      if (!currentUser) {
+        window.location.replace(
+          "/login"
+        );
+        return;
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      setUser(
+        currentUser
+      );
+
+      const currentPhone =
+        normalizePhone(
+          currentUser.phone ||
+            currentUser.mobile ||
+            currentUser.phoneNumber ||
+            ""
+        );
+
+      if (!currentPhone) {
+        setTeam([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        /*
+         * --------------------------------------------------
+         * LOAD ALL USERS FROM SUPABASE
+         * --------------------------------------------------
+         */
+        const {
+          data: usersData,
+          error: usersError,
+        } = await supabase
+          .from("users")
+          .select(
+            "id, full_name, phone, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+          )
+          .order(
+            "created_at",
+            {
+              ascending: true,
+            }
+          );
+
+        if (usersError) {
+          console.error(
+            "Could not load Supabase users for My Team:",
+            usersError
+          );
+
+          setTeam([]);
+          setLoading(false);
+          return;
+        }
+
+        const allUsers =
+          Array.isArray(
+            usersData
+          )
+            ? usersData
+            : [];
+
+        /*
+         * --------------------------------------------------
+         * LOAD ALL DEPOSIT REQUESTS FROM SUPABASE
+         * --------------------------------------------------
+         *
+         * Approved deposits are used to calculate each
+         * team member's referral bonus based on level.
+         * --------------------------------------------------
+         */
+        const {
+          data: depositsData,
+          error: depositsError,
+        } = await supabase
+          .from(
+            "deposit_requests"
+          )
+          .select(
+            "id, user_data, deposit_amount, amount, status, created_at"
+          )
+          .order(
+            "created_at",
+            {
+              ascending: true,
+            }
+          );
+
+        if (depositsError) {
+          console.log(
+            "Could not load deposit requests for My Team:",
+            depositsError
+          );
+        }
+
+        const approvedDeposits =
+          (
+            Array.isArray(
+              depositsData
+            )
+              ? depositsData
+              : []
+          ).map(
+            (row) => {
+              const userData =
+                row?.user_data &&
+                typeof row.user_data ===
+                  "object"
+                  ? row.user_data
+                  : {};
+
+              const phone =
+                normalizePhone(
+                  userData.phone ||
+                    userData.mobile ||
+                    userData.phoneNumber ||
+                    row.phone ||
+                    ""
+                );
+
+              const amount =
+                Number(
+                  row.deposit_amount ||
+                    row.amount ||
+                    row.plan?.amount ||
+                    userData.amount ||
+                    0
+                );
+
+              return {
+                id:
+                  row.id ||
+                  "",
+
+                phone:
+
+                  phone,
+
+                amount:
+                  amount,
+
+                status:
+                  row.status ||
+                  "Pending",
+
+                createdAt:
+                  row.created_at ||
+                  "",
+              };
+            }
+          );
+
+        /*
+         * --------------------------------------------------
+         * FIND CURRENT USER IN SUPABASE
+         * --------------------------------------------------
+         */
+        const centralCurrentUser =
+          allUsers.find(
+            (person) =>
+              normalizePhone(
+                person.phone
+              ) ===
+              currentPhone
+          );
+
+        const rootUser =
+          centralCurrentUser ||
+          {
+            ...currentUser,
+
+            phone:
+              currentPhone,
+
+            full_name:
+              currentUser.fullName ||
+              currentUser.full_name ||
+              currentUser.name ||
+              "",
+          };
+
+        /*
+         * --------------------------------------------------
+         * BUILD 6-LEVEL TEAM
+         * --------------------------------------------------
+         */
+        const usedPhones =
+          new Set([
+            currentPhone,
+          ]);
+
+        let parents = [
+          rootUser,
+        ];
+
+        const allTeamMembers =
+          [];
+
+        for (
+          let level = 1;
+          level <= 6;
+          level++
+        ) {
+          const currentLevelMembers =
+            [];
+
+          for (
+            const candidate of allUsers
+          ) {
+            const candidatePhone =
+              getUserPhone(
+                candidate
+              );
+
+            if (
+              !candidatePhone ||
+              usedPhones.has(
+                candidatePhone
+              )
+            ) {
+              continue;
+            }
+
+            const isChild =
+              parents.some(
+                (parent) =>
+                  userMatchesParent(
+                    candidate,
+                    parent
+                  )
+              );
+
+            if (!isChild) {
+              continue;
+            }
+
+            const memberBonus =
+              calculateMemberBonus(
+                candidatePhone,
+                approvedDeposits,
+                level
+              );
+
+            const mappedMember =
+              {
+                id:
+                  candidate.id ||
+                  "",
+
+                fullName:
+                  candidate.full_name ||
+                  "Unknown Member",
+
+                phone:
+                  candidatePhone,
+
+                createdAt:
+                  candidate.created_at ||
+                  "",
+
+                level:
+                  level,
+
+                bonus:
+                  memberBonus,
+
+                bonusEarned:
+                  memberBonus,
+
+                referralBonus:
+                  memberBonus,
+
+                referralCode:
+                  candidate.referral_code ||
+                  "",
+
+                referredBy:
+                  candidate.referred_by ||
+                  null,
+              };
+
+            currentLevelMembers.push(
+              mappedMember
+            );
+
+            usedPhones.add(
+              candidatePhone
+            );
+
+            allTeamMembers.push(
+              mappedMember
+            );
+          }
+
+          parents =
+            currentLevelMembers.map(
+              (member) =>
+                allUsers.find(
+                  (person) =>
+                    normalizePhone(
+                      person.phone
+                    ) ===
+                    normalizePhone(
+                      member.phone
+                    )
+                ) || {
+                  phone:
+                    member.phone,
+                  referral_code:
+                    member.referralCode,
+                }
+            );
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setTeam(
+          allTeamMembers
+        );
+
+        /*
+         * LocalStorage is used only as a cache/compatibility
+         * layer. Supabase remains the source of the team data.
+         */
+        try {
+          localStorage.setItem(
+            "transportTeam_" +
+              currentPhone,
+            JSON.stringify(
+              allTeamMembers
+            )
+          );
+        } catch (error) {
+          console.log(
+            "Could not save team cache:",
+            error
+          );
+        }
+
+        /*
+         * Keep current user cache updated from Supabase.
+         */
+        if (
+          centralCurrentUser
+        ) {
+          const updatedLocalUser =
+            {
+              ...currentUser,
+
+              fullName:
+                centralCurrentUser.full_name ||
+                currentUser.fullName ||
+                "",
+
+              phone:
+                normalizePhone(
+                  centralCurrentUser.phone
+                ),
+
+              referralCode:
+                centralCurrentUser.referral_code ||
+                currentUser.referralCode ||
+                "",
+
+              referredBy:
+                centralCurrentUser.referred_by ??
+                currentUser.referredBy ??
+                null,
+
+              referrerCode:
+                centralCurrentUser.referrer_code ??
+                currentUser.referrerCode ??
+                null,
+
+              referrerPhone:
+                centralCurrentUser.referrer_phone ??
+                currentUser.referrerPhone ??
+                null,
+            };
+
+          localStorage.setItem(
+            "transportUser",
+            JSON.stringify(
+              updatedLocalUser
+            )
+          );
+
+          setUser(
+            updatedLocalUser
+          );
+        }
+      } catch (error) {
+        console.error(
+          "My Team Supabase loading error:",
+          error
+        );
+
+        setTeam([]);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadTeam();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          minHeight:
+            "100vh",
+          background:
+            "#eef3f7",
+          display:
+            "flex",
+          alignItems:
+            "center",
+          justifyContent:
+            "center",
+          fontFamily:
+            "Arial, sans-serif",
+          color:
+            "#102A43",
+          fontSize:
+            "18px",
+          fontWeight:
+            "700",
+          padding:
+            "20px",
+          boxSizing:
+            "border-box",
+        }}
+      >
+        Loading My Team...
+      </div>
+    );
+  }
+
+  const getLevelMembers =
+    (level) => {
+      return team.filter(
+        (member) =>
+          Number(
+            member.level || 1
+          ) === level
+      );
+    };
+
+  const getMemberBonus =
+    (member) => {
+      return Number(
+        member.bonusEarned ||
+          member.bonus ||
+          member.referralBonus ||
+          0
+      );
+    };
+
+  const totalBonus =
+    team.reduce(
+      (total, member) =>
+        total +
+        getMemberBonus(
+          member
+        ),
+      0
+    );
 
   return (
     <div
@@ -127,28 +806,39 @@ export default function MyTeam() {
         padding: "25px 15px 50px",
         fontFamily: "Arial, sans-serif",
         color: "#ffffff",
+        boxSizing: "border-box",
+        overflowX: "hidden",
       }}
     >
       <div
         style={{
           maxWidth: "900px",
           margin: "0 auto",
+          width: "100%",
         }}
       >
         {/* Header */}
         <div
           style={{
-            background: "linear-gradient(135deg, #102A43, #173B5A)",
+            background:
+              "linear-gradient(135deg, #102A43, #173B5A)",
             borderRadius: "22px",
             padding: "28px 25px",
             color: "#ffffff",
             textAlign: "center",
-            boxShadow: "0 12px 30px rgba(16, 42, 67, 0.20)",
+            boxShadow:
+              "0 12px 30px rgba(16, 42, 67, 0.20)",
             marginBottom: "20px",
             border: "1px solid #1E3A56",
+            boxSizing: "border-box",
           }}
         >
-          <div style={{ fontSize: "42px", marginBottom: "8px" }}>
+          <div
+            style={{
+              fontSize: "42px",
+              marginBottom: "8px",
+            }}
+          >
             👥
           </div>
 
@@ -182,10 +872,12 @@ export default function MyTeam() {
               padding: "18px 20px",
               marginBottom: "18px",
               border: "1px solid #1E3A56",
-              boxShadow: "0 6px 18px rgba(16, 42, 67, 0.12)",
+              boxShadow:
+                "0 6px 18px rgba(16, 42, 67, 0.12)",
               display: "flex",
               alignItems: "center",
               gap: "15px",
+              boxSizing: "border-box",
             }}
           >
             <div
@@ -204,15 +896,23 @@ export default function MyTeam() {
               👤
             </div>
 
-            <div>
+            <div
+              style={{
+                minWidth: 0,
+              }}
+            >
               <div
                 style={{
                   fontSize: "19px",
                   fontWeight: "800",
                   color: "#ffffff",
+                  overflowWrap: "anywhere",
                 }}
               >
-                {user.fullName}
+                {user.fullName ||
+                  user.name ||
+                  user.username ||
+                  "User"}
               </div>
 
               <div
@@ -230,9 +930,11 @@ export default function MyTeam() {
 
         {/* Summary */}
         <div
+          className="teamSummaryGrid"
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
+            gridTemplateColumns:
+              "repeat(2, minmax(0, 1fr))",
             gap: "15px",
             marginBottom: "25px",
           }}
@@ -244,7 +946,10 @@ export default function MyTeam() {
               borderRadius: "18px",
               padding: "20px",
               border: "1px solid #1E3A56",
-              boxShadow: "0 6px 18px rgba(16, 42, 67, 0.12)",
+              boxShadow:
+                "0 6px 18px rgba(16, 42, 67, 0.12)",
+              minWidth: 0,
+              boxSizing: "border-box",
             }}
           >
             <div
@@ -290,7 +995,10 @@ export default function MyTeam() {
               borderRadius: "18px",
               padding: "20px",
               border: "1px solid #294B66",
-              boxShadow: "0 6px 18px rgba(16, 42, 67, 0.12)",
+              boxShadow:
+                "0 6px 18px rgba(16, 42, 67, 0.12)",
+              minWidth: 0,
+              boxSizing: "border-box",
             }}
           >
             <div
@@ -323,9 +1031,12 @@ export default function MyTeam() {
               style={{
                 fontSize: "28px",
                 color: "#8FD694",
+                overflowWrap:
+                  "anywhere",
               }}
             >
-              PKR {totalBonus.toLocaleString()}
+              PKR{" "}
+              {totalBonus.toLocaleString()}
             </strong>
           </div>
         </div>
@@ -338,327 +1049,579 @@ export default function MyTeam() {
             gap: "18px",
           }}
         >
-          {levels.map((levelInfo) => {
-            const levelMembers = getLevelMembers(levelInfo.level);
+          {levels.map(
+            (levelInfo) => {
+              const levelMembers =
+                getLevelMembers(
+                  levelInfo.level
+                );
 
-            const levelBonus = levelMembers.reduce((total, member) => {
-              return total + getMemberBonus(member);
-            }, 0);
+              const levelBonus =
+                levelMembers.reduce(
+                  (
+                    total,
+                    member
+                  ) =>
+                    total +
+                    getMemberBonus(
+                      member
+                    ),
+                  0
+                );
 
-            return (
-              <div
-                key={levelInfo.level}
-                style={{
-                  background: "#102A43",
-                  borderRadius: "20px",
-                  border: "1px solid #1E3A56",
-                  boxShadow: "0 8px 22px rgba(16, 42, 67, 0.13)",
-                  overflow: "hidden",
-                }}
-              >
-                {/* Level Header */}
+              return (
                 <div
+                  key={
+                    levelInfo.level
+                  }
                   style={{
                     background:
-                      "linear-gradient(135deg, #102A43, #173B5A)",
-                    padding: "18px 20px",
-                    color: "#ffffff",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    borderBottom: "1px solid #1E3A56",
+                      "#102A43",
+                    borderRadius:
+                      "20px",
+                    border:
+                      "1px solid #1E3A56",
+                    boxShadow:
+                      "0 8px 22px rgba(16, 42, 67, 0.13)",
+                    overflow:
+                      "hidden",
+                    width:
+                      "100%",
+                    boxSizing:
+                      "border-box",
                   }}
                 >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "22px",
-                        fontWeight: "800",
-                      }}
-                    >
-                      {levelInfo.name}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        marginTop: "4px",
-                        color: "#C9D8E6",
-                      }}
-                    >
-                      Referral Bonus: {levelInfo.bonus}
-                    </div>
-                  </div>
-
+                  {/* Level Header */}
                   <div
                     style={{
-                      background: "#1E3A56",
-                      padding: "9px 15px",
-                      borderRadius: "12px",
-                      fontSize: "13px",
-                      fontWeight: "700",
-                      color: "#C9D8E6",
+                      background:
+                        "linear-gradient(135deg, #102A43, #173B5A)",
+                      padding:
+                        "18px 20px",
+                      color:
+                        "#ffffff",
+                      display:
+                        "flex",
+                      justifyContent:
+                        "space-between",
+                      alignItems:
+                        "center",
+                      gap:
+                        "12px",
+                      borderBottom:
+                        "1px solid #1E3A56",
+                      flexWrap:
+                        "wrap",
+                      boxSizing:
+                        "border-box",
                     }}
                   >
-                    {levelMembers.length} Members
-                  </div>
-                </div>
-
-                {/* Level Summary */}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "15px 20px",
-                    background: "#173B5A",
-                    borderBottom: "1px solid #294B66",
-                  }}
-                >
-                  <div>
-                    <span
-                      style={{
-                        color: "#9FB3C8",
-                        fontSize: "12px",
-                      }}
-                    >
-                      Total Members
-                    </span>
-
                     <div
                       style={{
-                        color: "#ffffff",
-                        fontSize: "20px",
-                        fontWeight: "800",
-                        marginTop: "3px",
+                        minWidth:
+                          0,
+                        flex: 1,
                       }}
                     >
-                      {levelMembers.length}
-                    </div>
-                  </div>
-
-                  <div style={{ textAlign: "right" }}>
-                    <span
-                      style={{
-                        color: "#9FB3C8",
-                        fontSize: "12px",
-                      }}
-                    >
-                      Level Bonus
-                    </span>
-
-                    <div
-                      style={{
-                        color: "#8FD694",
-                        fontSize: "18px",
-                        fontWeight: "800",
-                        marginTop: "3px",
-                      }}
-                    >
-                      PKR {levelBonus.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Members */}
-                <div style={{ padding: "10px 15px 15px" }}>
-                  {levelMembers.length > 0 ? (
-                    levelMembers.map((member, index) => (
                       <div
-                        key={index}
                         style={{
-                          display: "grid",
-                          gridTemplateColumns:
-                            "45px 1.5fr 1fr 1fr 1fr",
-                          alignItems: "center",
-                          gap: "12px",
-                          padding: "14px 10px",
-                          borderBottom:
-                            index === levelMembers.length - 1
-                              ? "none"
-                              : "1px solid #294B66",
+                          fontSize:
+                            "22px",
+                          fontWeight:
+                            "800",
                         }}
                       >
-                        {/* Icon */}
+                        {
+                          levelInfo.name
+                        }
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize:
+                            "12px",
+                          marginTop:
+                            "4px",
+                          color:
+                            "#C9D8E6",
+                        }}
+                      >
+                        Referral Bonus:{" "}
+                        {
+                          levelInfo.bonus
+                        }
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        background:
+                          "#1E3A56",
+                        padding:
+                          "9px 15px",
+                        borderRadius:
+                          "12px",
+                        fontSize:
+                          "13px",
+                        fontWeight:
+                          "700",
+                        color:
+                          "#C9D8E6",
+                        flexShrink:
+                          0,
+                      }}
+                    >
+                      {
+                        levelMembers.length
+                      }{" "}
+                      Members
+                    </div>
+                  </div>
+
+                  {/* Level Summary */}
+                  <div
+                    style={{
+                      display:
+                        "flex",
+                      justifyContent:
+                        "space-between",
+                      alignItems:
+                        "center",
+                      gap:
+                        "15px",
+                      padding:
+                        "15px 20px",
+                      background:
+                        "#173B5A",
+                      borderBottom:
+                        "1px solid #294B66",
+                      flexWrap:
+                        "wrap",
+                      boxSizing:
+                        "border-box",
+                    }}
+                  >
+                    <div>
+                      <span
+                        style={{
+                          color:
+                            "#9FB3C8",
+                          fontSize:
+                            "12px",
+                        }}
+                      >
+                        Total Members
+                      </span>
+
+                      <div
+                        style={{
+                          color:
+                            "#ffffff",
+                          fontSize:
+                            "20px",
+                          fontWeight:
+                            "800",
+                          marginTop:
+                            "3px",
+                        }}
+                      >
+                        {
+                          levelMembers.length
+                        }
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        textAlign:
+                          "right",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color:
+                            "#9FB3C8",
+                          fontSize:
+                            "12px",
+                        }}
+                      >
+                        Level Bonus
+                      </span>
+
+                      <div
+                        style={{
+                          color:
+                            "#8FD694",
+                          fontSize:
+                            "18px",
+                          fontWeight:
+                            "800",
+                          marginTop:
+                            "3px",
+                        }}
+                      >
+                        PKR{" "}
+                        {levelBonus.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Members */}
+                  <div
+                    style={{
+                      padding:
+                        "10px 15px 15px",
+                      width:
+                        "100%",
+                      boxSizing:
+                        "border-box",
+                    }}
+                  >
+                    {levelMembers.length >
+                    0 ? (
+                      levelMembers.map(
+                        (
+                          member,
+                          index
+                        ) => (
+                          <div
+                            key={
+                              member.id ||
+                              member.phone ||
+                              index
+                            }
+                            className="teamMemberRow"
+                            style={{
+                              display:
+                                "grid",
+                              gridTemplateColumns:
+                                "45px 1.5fr 1fr 1fr 1fr",
+                              alignItems:
+                                "center",
+                              gap:
+                                "12px",
+                              padding:
+                                "14px 10px",
+                              borderBottom:
+                                index ===
+                                levelMembers.length -
+                                  1
+                                  ? "none"
+                                  : "1px solid #294B66",
+                              minWidth:
+                                0,
+                              boxSizing:
+                                "border-box",
+                            }}
+                          >
+                            {/* Icon */}
+                            <div
+                              style={{
+                                width:
+                                  "40px",
+                                height:
+                                  "40px",
+                                borderRadius:
+                                  "50%",
+                                background:
+                                  "#1E3A56",
+                                display:
+                                  "flex",
+                                alignItems:
+                                  "center",
+                                justifyContent:
+                                  "center",
+                                fontSize:
+                                  "19px",
+                                flexShrink:
+                                  0,
+                              }}
+                            >
+                              👤
+                            </div>
+
+                            {/* Name */}
+                            <div
+                              style={{
+                                minWidth:
+                                  0,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize:
+                                    "14px",
+                                  fontWeight:
+                                    "800",
+                                  color:
+                                    "#ffffff",
+                                  overflowWrap:
+                                    "anywhere",
+                                }}
+                              >
+                                {
+                                  member.fullName
+                                }
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize:
+                                    "10px",
+                                  color:
+                                    "#9FB3C8",
+                                  marginTop:
+                                    "3px",
+                                }}
+                              >
+                                Member #
+                                {
+                                  index +
+                                  1
+                                }
+                              </div>
+                            </div>
+
+                            {/* Mobile */}
+                            <div
+                              style={{
+                                minWidth:
+                                  0,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize:
+                                    "10px",
+                                  color:
+                                    "#9FB3C8",
+                                }}
+                              >
+                                Mobile
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize:
+                                    "12px",
+                                  fontWeight:
+                                    "700",
+                                  color:
+                                    "#ffffff",
+                                  marginTop:
+                                    "3px",
+                                  overflowWrap:
+                                    "anywhere",
+                                }}
+                              >
+                                {
+                                  member.phone
+                                }
+                              </div>
+                            </div>
+
+                            {/* Joined */}
+                            <div
+                              style={{
+                                minWidth:
+                                  0,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize:
+                                    "10px",
+                                  color:
+                                    "#9FB3C8",
+                                }}
+                              >
+                                Joined
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize:
+                                    "12px",
+                                  fontWeight:
+                                    "700",
+                                  color:
+                                    "#ffffff",
+                                  marginTop:
+                                    "3px",
+                                }}
+                              >
+                                {
+                                  member.createdAt
+                                    ? new Date(
+                                        member.createdAt
+                                      ).toLocaleDateString()
+                                    : "N/A"
+                                }
+                              </div>
+                            </div>
+
+                            {/* Bonus */}
+                            <div
+                              style={{
+                                textAlign:
+                                  "right",
+                                minWidth:
+                                  0,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize:
+                                    "10px",
+                                  color:
+                                    "#9FB3C8",
+                                }}
+                              >
+                                Bonus
+                              </div>
+
+                              <div
+                                style={{
+                                  fontSize:
+                                    "12px",
+                                  fontWeight:
+                                    "800",
+                                  color:
+                                    "#8FD694",
+                                  marginTop:
+                                    "3px",
+                                  overflowWrap:
+                                    "anywhere",
+                                }}
+                              >
+                                PKR{" "}
+                                {getMemberBonus(
+                                  member
+                                ).toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      )
+                    ) : (
+                      <div
+                        style={{
+                          textAlign:
+                            "center",
+                          padding:
+                            "28px 10px",
+                          color:
+                            "#9FB3C8",
+                        }}
+                      >
                         <div
                           style={{
-                            width: "40px",
-                            height: "40px",
-                            borderRadius: "50%",
-                            background: "#1E3A56",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "19px",
+                            fontSize:
+                              "30px",
+                            marginBottom:
+                              "7px",
                           }}
                         >
                           👤
                         </div>
 
-                        {/* Name */}
-                        <div>
-                          <div
-                            style={{
-                              fontSize: "14px",
-                              fontWeight: "800",
-                              color: "#ffffff",
-                            }}
-                          >
-                            {member.fullName || "Unknown Member"}
-                          </div>
-
-                          <div
-                            style={{
-                              fontSize: "10px",
-                              color: "#9FB3C8",
-                              marginTop: "3px",
-                            }}
-                          >
-                            Member #{index + 1}
-                          </div>
+                        <div
+                          style={{
+                            fontSize:
+                              "14px",
+                            fontWeight:
+                              "700",
+                            color:
+                              "#C9D8E6",
+                          }}
+                        >
+                          No Members Yet
                         </div>
 
-                        {/* Mobile */}
-                        <div>
-                          <div
-                            style={{
-                              fontSize: "10px",
-                              color: "#9FB3C8",
-                            }}
-                          >
-                            Mobile
-                          </div>
-
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              fontWeight: "700",
-                              color: "#ffffff",
-                              marginTop: "3px",
-                            }}
-                          >
-                            {member.phone || "N/A"}
-                          </div>
-                        </div>
-
-                        {/* Joined */}
-                        <div>
-                          <div
-                            style={{
-                              fontSize: "10px",
-                              color: "#9FB3C8",
-                            }}
-                          >
-                            Joined
-                          </div>
-
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              fontWeight: "700",
-                              color: "#ffffff",
-                              marginTop: "3px",
-                            }}
-                          >
-                            {member.createdAt
-                              ? new Date(
-                                  member.createdAt
-                                ).toLocaleDateString()
-                              : "N/A"}
-                          </div>
-                        </div>
-
-                        {/* Bonus */}
-                        <div style={{ textAlign: "right" }}>
-                          <div
-                            style={{
-                              fontSize: "10px",
-                              color: "#9FB3C8",
-                            }}
-                          >
-                            Bonus
-                          </div>
-
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              fontWeight: "800",
-                              color: "#8FD694",
-                              marginTop: "3px",
-                            }}
-                          >
-                            PKR{" "}
-                            {getMemberBonus(member).toLocaleString()}
-                          </div>
+                        <div
+                          style={{
+                            fontSize:
+                              "12px",
+                            marginTop:
+                              "4px",
+                            color:
+                              "#9FB3C8",
+                          }}
+                        >
+                          Members at this level will appear here.
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <div
-                      style={{
-                        textAlign: "center",
-                        padding: "28px 10px",
-                        color: "#9FB3C8",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: "30px",
-                          marginBottom: "7px",
-                        }}
-                      >
-                        👤
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: "14px",
-                          fontWeight: "700",
-                          color: "#C9D8E6",
-                        }}
-                      >
-                        No Members Yet
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: "12px",
-                          marginTop: "4px",
-                          color: "#9FB3C8",
-                        }}
-                      >
-                        Members at this level will appear here.
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            }
+          )}
         </div>
 
         {/* Back Button */}
         <button
           onClick={() => {
-            window.location.href = "/";
+            window.location.href =
+              "/";
           }}
           style={{
-            width: "100%",
-            marginTop: "25px",
-            padding: "15px",
-            border: "1px solid #1E3A56",
-            borderRadius: "14px",
-            background: "#102A43",
-            color: "#ffffff",
-            fontSize: "15px",
-            fontWeight: "800",
-            cursor: "pointer",
-            boxShadow: "0 7px 18px rgba(16, 42, 67, 0.15)",
+            width:
+              "100%",
+            marginTop:
+              "25px",
+            padding:
+              "15px",
+            border:
+              "1px solid #1E3A56",
+            borderRadius:
+              "14px",
+            background:
+              "#102A43",
+            color:
+              "#ffffff",
+            fontSize:
+              "15px",
+            fontWeight:
+              "800",
+            cursor:
+              "pointer",
+            boxShadow:
+              "0 7px 18px rgba(16, 42, 67, 0.15)",
           }}
         >
           ← Back to Dashboard
         </button>
       </div>
+
+      <style jsx>{`
+        @media (max-width: 700px) {
+          .teamSummaryGrid {
+            grid-template-columns: 1fr !important;
+          }
+
+          .teamMemberRow {
+            grid-template-columns: 42px 1fr !important;
+            gap: 10px !important;
+          }
+
+          .teamMemberRow > div:nth-child(3),
+          .teamMemberRow > div:nth-child(4),
+          .teamMemberRow > div:nth-child(5) {
+            grid-column: 2;
+          }
+
+          .teamMemberRow > div:nth-child(5) {
+            text-align: left !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .teamMemberRow {
+            grid-template-columns: 40px 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
