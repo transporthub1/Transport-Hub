@@ -26,19 +26,72 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // =========================================================
-      // STEP 1: CHECK SUPABASE USERS
-      // =========================================================
+      // CHECK DELETED USERS
+      try {
+        const deletedUsers = JSON.parse(
+          localStorage.getItem("transportDeletedUsers") || "[]"
+        );
+
+        if (
+          Array.isArray(deletedUsers) &&
+          deletedUsers.some((item) => {
+            const deletedPhone =
+              typeof item === "string"
+                ? item
+                : item?.phone;
+
+            return normalizePhone(deletedPhone) === cleanPhone;
+          })
+        ) {
+          setLoading(false);
+          setMessage(
+            "This account has been deleted. You cannot login."
+          );
+          return;
+        }
+      } catch (deletedError) {
+        console.log(
+          "Deleted users check error:",
+          deletedError
+        );
+      }
+
+      // STEP 1: CHECK IF USER IS BLOCKED
+      const {
+        data: blockedUser,
+        error: blockedCheckError,
+      } = await supabase
+        .from("users")
+        .select("id, phone, is_blocked")
+        .eq("phone", cleanPhone)
+        .eq("is_blocked", true)
+        .maybeSingle();
+
+      if (blockedCheckError) {
+        console.log(
+          "Blocked user check error:",
+          blockedCheckError
+        );
+      }
+
+      if (blockedUser) {
+        setLoading(false);
+        setMessage(
+          "This account has been deleted or blocked. You cannot login."
+        );
+        return;
+      }
+
+      // STEP 2: CHECK SUPABASE USERS
       const { data, error } = await supabase
         .from("users")
         .select("*")
         .eq("phone", cleanPhone)
         .eq("password", password)
+        .eq("is_blocked", false)
         .maybeSingle();
 
-      // =========================================================
       // SUPABASE USER FOUND
-      // =========================================================
       if (!error && data) {
         const user = {
           ...data,
@@ -89,13 +142,12 @@ export default function Login() {
         return;
       }
 
-      // =========================================================
-      // STEP 2: CHECK OLD LOCALSTORAGE USERS
-      // =========================================================
+      // STEP 3: CHECK OLD LOCALSTORAGE USERS
       let oldUsers = [];
 
       try {
-        const savedUsers = localStorage.getItem("transportUsers");
+        const savedUsers =
+          localStorage.getItem("transportUsers");
 
         if (savedUsers) {
           const parsedUsers = JSON.parse(savedUsers);
@@ -120,9 +172,7 @@ export default function Login() {
         );
       });
 
-      // =========================================================
       // OLD USER FOUND
-      // =========================================================
       if (oldUser) {
         const user = {
           ...oldUser,
@@ -197,9 +247,7 @@ export default function Login() {
         return;
       }
 
-      // =========================================================
       // NO USER FOUND
-      // =========================================================
       if (error) {
         console.log(
           "Supabase login error:",
@@ -212,7 +260,10 @@ export default function Login() {
         "Invalid mobile number or password."
       );
     } catch (error) {
-      console.log("Login error:", error);
+      console.log(
+        "Login error:",
+        error
+      );
 
       setLoading(false);
       setMessage(
