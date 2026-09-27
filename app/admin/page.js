@@ -3036,13 +3036,11 @@ export default function Admin() {
        * inside user_data JSON.
        */
       const {
-        data: depositRows,
-        error: depositReadError,
-      } = await supabase
-        .from("deposit_requests")
-        .select(
-          "id, user_data"
-        );
+  data: depositRows,
+  error: depositReadError,
+} = await supabase
+  .from("deposit_requests")
+  .select("*");
 
       if (depositReadError) {
         throw new Error(
@@ -3068,13 +3066,17 @@ export default function Admin() {
                 : {};
 
             const rowPhone =
-              normalizePhone(
-                userData.phone ||
-                  userData.mobile ||
-                  userData.phoneNumber ||
-                  userData.username ||
-                  ""
-              );
+  normalizePhone(
+    userData.phone ||
+      userData.mobile ||
+      userData.phoneNumber ||
+      userData.username ||
+      row.phone ||
+      row.mobile ||
+      row.mobile_number ||
+      row.mobileNumber ||
+      ""
+  );
 
             return (
               rowPhone ===
