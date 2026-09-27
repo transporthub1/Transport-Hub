@@ -6,15 +6,38 @@ export default function AdminLogin() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
 
-    if (username === "admin" && password === "Admin@123") {
-      localStorage.setItem("transportAdminLoggedIn", "true");
-      window.location.href = "/admin";
-    } else {
-      setError("Invalid username or password");
+    setError("");
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        localStorage.setItem("transportAdminLoggedIn", "true");
+        window.location.href = "/admin";
+      } else {
+        setError(data.message || "Invalid username or password");
+      }
+    } catch (error) {
+      setError("Unable to connect to server. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -77,6 +100,7 @@ export default function AdminLogin() {
 
         <button
           type="submit"
+          disabled={loading}
           style={{
             width: "100%",
             padding: "12px",
@@ -85,10 +109,11 @@ export default function AdminLogin() {
             background: "#8FD694",
             color: "#102A43",
             fontWeight: "700",
-            cursor: "pointer",
+            cursor: loading ? "not-allowed" : "pointer",
+            opacity: loading ? 0.7 : 1,
           }}
         >
-          Login
+          {loading ? "Logging in..." : "Login"}
         </button>
       </form>
     </div>

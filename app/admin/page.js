@@ -33,6 +33,7 @@ export default function Admin() {
   const [messageType, setMessageType] = useState("success");
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
+  const [deletingUserPhone, setDeletingUserPhone] = useState("");
 
   useEffect(() => {
     const loggedIn = localStorage.getItem(
@@ -213,6 +214,13 @@ export default function Admin() {
             oldUser.createdAt ||
             oldUser.created_at ||
             new Date().toISOString(),
+
+          is_blocked:
+            Boolean(
+              oldUser.isBlocked ??
+                oldUser.is_blocked ??
+                false
+            ),
         };
 
         const {
@@ -263,7 +271,7 @@ export default function Admin() {
       } = await supabase
         .from("users")
         .select(
-          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at, is_blocked"
         )
         .order("created_at", {
           ascending: false,
@@ -290,62 +298,72 @@ export default function Admin() {
         Array.isArray(data)
           ? data
           : []
-      ).map((row) => ({
-        id:
-          row.id || "",
+      )
+        .filter(
+          (row) =>
+            row.is_blocked !== true
+        )
+        .map((row) => ({
+          id:
+            row.id || "",
 
-        fullName:
-          row.full_name ||
-          "",
+          fullName:
+            row.full_name ||
+            "",
 
-        phone:
-          normalizePhone(
-            row.phone
-          ),
+          phone:
+            normalizePhone(
+              row.phone
+            ),
 
-        balance:
-          Number(
-            row.balance || 0
-          ),
+          balance:
+            Number(
+              row.balance || 0
+            ),
 
-        withdrawableReturns:
-          Number(
-            row.withdrawable_returns ||
-              0
-          ),
+          withdrawableReturns:
+            Number(
+              row.withdrawable_returns ||
+                0
+            ),
 
-        referralBonus:
-          Number(
-            row.referral_bonus ||
-              0
-          ),
+          referralBonus:
+            Number(
+              row.referral_bonus ||
+                0
+            ),
 
-        totalReferralBonus:
-          Number(
-            row.total_referral_bonus ||
-              0
-          ),
+          totalReferralBonus:
+            Number(
+              row.total_referral_bonus ||
+                0
+            ),
 
-        referralCode:
-          row.referral_code ||
-          "",
+          referralCode:
+            row.referral_code ||
+            "",
 
-        referredBy:
-          row.referred_by ||
-          null,
+          referredBy:
+            row.referred_by ||
+            null,
 
-        referrerCode:
-          row.referrer_code ||
-          null,
+          referrerCode:
+            row.referrer_code ||
+            null,
 
-        referrerPhone:
-          row.referrer_phone ||
-          null,
+          referrerPhone:
+            row.referrer_phone ||
+            null,
 
-        createdAt:
-          row.created_at ||
-          "",
-      }));
+          createdAt:
+            row.created_at ||
+            "",
+
+          isBlocked:
+            Boolean(
+              row.is_blocked
+            ),
+        }));
 
       setUsers(
         mappedUsers
@@ -607,10 +625,6 @@ export default function Admin() {
   /*
    * ----------------------------------------------------
    * WITHDRAW REQUESTS
-   * ----------------------------------------------------
-   *
-   * Withdrawals now load from Supabase first.
-   * LocalStorage remains as compatibility fallback.
    * ----------------------------------------------------
    */
   const loadWithdrawRequests = async () => {
@@ -920,10 +934,6 @@ export default function Admin() {
    * ----------------------------------------------------
    * CENTRAL SUPABASE TRANSACTIONS
    * ----------------------------------------------------
-   *
-   * Every new Deposit / Return / Withdraw /
-   * Referral Bonus transaction is also stored centrally.
-   * ----------------------------------------------------
    */
   const saveTransactionToSupabase =
     async (
@@ -1069,11 +1079,6 @@ export default function Admin() {
           return false;
         }
 
-        console.log(
-          "Transaction saved to Supabase:",
-          transactionRow
-        );
-
         return true;
       } catch (error) {
         console.error(
@@ -1086,8 +1091,9 @@ export default function Admin() {
     };
 
   /*
-   * Update an existing local transaction status.
-   * Used for Pending -> Approved / Rejected.
+   * ----------------------------------------------------
+   * UPDATE LOCAL TRANSACTION STATUS
+   * ----------------------------------------------------
    */
   const updateSavedTransactionStatus = (
     transactionId,
@@ -1358,11 +1364,6 @@ export default function Admin() {
         return false;
       }
 
-      console.log(
-        "Active plan saved to Supabase:",
-        supabasePlanRow.id
-      );
-
       return true;
     } catch (error) {
       console.error(
@@ -1378,9 +1379,6 @@ export default function Admin() {
    * ----------------------------------------------------
    * ADD WEEKLY RETURN TO SUPABASE
    * ----------------------------------------------------
-   *
-   * Every newly approved plan receives its first weekly
-   * return immediately.
    */
   const addWithdrawableReturnsToSupabase =
     async (
@@ -1558,20 +1556,6 @@ export default function Admin() {
             error
           );
         }
-
-        console.log(
-          "Withdrawable returns updated in Supabase:",
-          {
-            phone:
-              normalizedPhone,
-
-            added:
-              amountToAdd,
-
-            newValue:
-              finalValue,
-          }
-        );
 
         return {
           success: true,
@@ -1834,7 +1818,7 @@ export default function Admin() {
       } = await supabase
         .from("users")
         .select(
-          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at, is_blocked"
         )
         .eq(
           "phone",
@@ -1865,6 +1849,18 @@ export default function Admin() {
     if (!supabaseUser) {
       console.error(
         "User not found in Supabase:",
+        normalizedPhone
+      );
+
+      return null;
+    }
+
+    if (
+      supabaseUser.is_blocked ===
+      true
+    ) {
+      console.error(
+        "Blocked user cannot receive referral balance:",
         normalizedPhone
       );
 
@@ -1934,7 +1930,7 @@ export default function Admin() {
           supabaseUser.id
         )
         .select(
-          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at"
+          "id, full_name, phone, balance, withdrawable_returns, referral_bonus, total_referral_bonus, referral_code, referred_by, referrer_code, referrer_phone, created_at, is_blocked"
         )
         .maybeSingle();
 
@@ -2044,6 +2040,11 @@ export default function Admin() {
         createdAt:
           finalSupabaseUser.created_at ||
           "",
+
+        isBlocked:
+          Boolean(
+            finalSupabaseUser.is_blocked
+          ),
       };
 
       let localUserFound = false;
@@ -2108,6 +2109,9 @@ export default function Admin() {
                 createdAt:
                   mappedUpdatedUser.createdAt ||
                   user.createdAt,
+
+                isBlocked:
+                  mappedUpdatedUser.isBlocked,
               };
             }
 
@@ -2138,26 +2142,6 @@ export default function Admin() {
         String(
           mappedUpdatedUser.withdrawableReturns
         )
-      );
-
-      console.log(
-        "Central referral balance updated:",
-        {
-          phone:
-            normalizedPhone,
-
-          added:
-            amountToAdd,
-
-          newBalance:
-            mappedUpdatedUser.balance,
-
-          newWithdrawableReturns:
-            mappedUpdatedUser.withdrawableReturns,
-
-          newReferralBonus:
-            mappedUpdatedUser.referralBonus,
-        }
       );
 
       return mappedUpdatedUser;
@@ -2426,11 +2410,6 @@ export default function Admin() {
         );
 
       if (!referrerUser) {
-        console.error(
-          "Could not credit referral balance:",
-          referrerPhone
-        );
-
         continue;
       }
 
@@ -2540,6 +2519,817 @@ export default function Admin() {
       details:
         details,
     };
+  };
+
+  /*
+   * ----------------------------------------------------
+   * DELETE USER LOCAL DATA
+   * ----------------------------------------------------
+   */
+  const removeUserFromLocalStorage = (
+    phone
+  ) => {
+    const normalizedPhone =
+      normalizePhone(phone);
+
+    if (!normalizedPhone) {
+      return;
+    }
+
+    /*
+     * Remove from cached users.
+     */
+    try {
+      const savedUsers =
+        localStorage.getItem(
+          "transportUsers"
+        );
+
+      if (savedUsers) {
+        const parsed =
+          JSON.parse(
+            savedUsers
+          );
+
+        if (Array.isArray(parsed)) {
+          const filtered =
+            parsed.filter(
+              (user) =>
+                getUserPhone(
+                  user
+                ) !==
+                normalizedPhone
+            );
+
+          localStorage.setItem(
+            "transportUsers",
+            JSON.stringify(
+              filtered
+            )
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Could not clean local users:",
+        error
+      );
+    }
+
+    /*
+     * Remove user-specific keys.
+     */
+    const keysToRemove = [
+      "transportWithdrawableReturns_" +
+        normalizedPhone,
+
+      "transportActivePlans_" +
+        normalizedPhone,
+
+      "transportTransactions_" +
+        normalizedPhone,
+
+      "transportTeam_" +
+        normalizedPhone,
+
+      "transportSelectedPlan_" +
+        normalizedPhone,
+
+      "transportDepositRequest_" +
+        normalizedPhone,
+
+      "transportWithdrawRequest_" +
+        normalizedPhone,
+    ];
+
+    keysToRemove.forEach(
+      (key) => {
+        localStorage.removeItem(
+          key
+        );
+      }
+    );
+
+    /*
+     * Remove matching users from
+     * common cached deposit requests.
+     */
+    try {
+      const savedDeposits =
+        localStorage.getItem(
+          "transportDepositRequests"
+        );
+
+      if (savedDeposits) {
+        const parsed =
+          JSON.parse(
+            savedDeposits
+          );
+
+        if (Array.isArray(parsed)) {
+          const filtered =
+            parsed.filter(
+              (request) => {
+                const requestPhone =
+                  normalizePhone(
+                    request?.phone ||
+                      request?.mobile ||
+                      request?.mobileNumber ||
+                      request?.user?.phone ||
+                      request?.user?.mobile ||
+                      request?.user_data?.phone ||
+                      request?.user_data?.mobile ||
+                      ""
+                  );
+
+                return (
+                  requestPhone !==
+                  normalizedPhone
+                );
+              }
+            );
+
+          localStorage.setItem(
+            "transportDepositRequests",
+            JSON.stringify(
+              filtered
+            )
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Could not clean local deposit requests:",
+        error
+      );
+    }
+
+    /*
+     * Remove matching users from
+     * common cached withdrawal requests.
+     */
+    try {
+      const savedWithdrawals =
+        localStorage.getItem(
+          "transportWithdrawRequests"
+        );
+
+      if (savedWithdrawals) {
+        const parsed =
+          JSON.parse(
+            savedWithdrawals
+          );
+
+        if (Array.isArray(parsed)) {
+          const filtered =
+            parsed.filter(
+              (request) => {
+                const requestPhone =
+                  normalizePhone(
+                    request?.phone ||
+                      request?.mobile ||
+                      request?.mobileNumber ||
+                      request?.user_phone ||
+                      request?.user?.phone ||
+                      request?.user?.mobile ||
+                      request?.user_data?.phone ||
+                      request?.user_data?.mobile ||
+                      ""
+                  );
+
+                return (
+                  requestPhone !==
+                  normalizedPhone
+                );
+              }
+            );
+
+          localStorage.setItem(
+            "transportWithdrawRequests",
+            JSON.stringify(
+              filtered
+            )
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Could not clean local withdrawal requests:",
+        error
+      );
+    }
+
+    /*
+     * Remove matching users from
+     * common transaction cache.
+     */
+    try {
+      const savedTransactions =
+        localStorage.getItem(
+          "transportTransactions"
+        );
+
+      if (savedTransactions) {
+        const parsed =
+          JSON.parse(
+            savedTransactions
+          );
+
+        if (Array.isArray(parsed)) {
+          const filtered =
+            parsed.filter(
+              (transaction) => {
+                const transactionPhone =
+                  normalizePhone(
+                    transaction?.phone ||
+                      transaction?.userPhone ||
+                      transaction?.mobile ||
+                      transaction?.user_phone ||
+                      ""
+                  );
+
+                return (
+                  transactionPhone !==
+                  normalizedPhone
+                );
+              }
+            );
+
+          localStorage.setItem(
+            "transportTransactions",
+            JSON.stringify(
+              filtered
+            )
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Could not clean local transactions:",
+        error
+      );
+    }
+
+    /*
+     * Remove deleted user from all
+     * cached team member arrays.
+     */
+    try {
+      const localKeys = [];
+
+      for (
+        let i = 0;
+        i < localStorage.length;
+        i++
+      ) {
+        const key =
+          localStorage.key(i);
+
+        if (
+          key &&
+          key.startsWith(
+            "transportTeam_"
+          )
+        ) {
+          localKeys.push(key);
+        }
+      }
+
+      localKeys.forEach(
+        (key) => {
+          try {
+            const savedTeam =
+              localStorage.getItem(
+                key
+              );
+
+            if (!savedTeam) {
+              return;
+            }
+
+            const parsed =
+              JSON.parse(
+                savedTeam
+              );
+
+            if (
+              !Array.isArray(parsed)
+            ) {
+              return;
+            }
+
+            const filtered =
+              parsed.filter(
+                (member) =>
+                  normalizePhone(
+                    member?.phone ||
+                      member?.mobile ||
+                      member?.mobileNumber ||
+                      member?.userPhone ||
+                      ""
+                  ) !==
+                  normalizedPhone
+              );
+
+            localStorage.setItem(
+              key,
+              JSON.stringify(
+                filtered
+              )
+            );
+          } catch (error) {
+            console.error(
+              "Could not clean team cache:",
+              key,
+              error
+            );
+          }
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Could not scan team local storage:",
+        error
+      );
+    }
+
+    /*
+     * Clean common latest request keys
+     * only when they belong to this user.
+     */
+    try {
+      const latestDeposit =
+        localStorage.getItem(
+          "transportDepositRequest"
+        );
+
+      if (latestDeposit) {
+        const parsed =
+          JSON.parse(
+            latestDeposit
+          );
+
+        const requestPhone =
+          normalizePhone(
+            parsed?.phone ||
+              parsed?.mobile ||
+              parsed?.mobileNumber ||
+              parsed?.user?.phone ||
+              parsed?.user?.mobile ||
+              parsed?.user_data?.phone ||
+              parsed?.user_data?.mobile ||
+              ""
+          );
+
+        if (
+          requestPhone ===
+          normalizedPhone
+        ) {
+          localStorage.removeItem(
+            "transportDepositRequest"
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Could not clean latest deposit request:",
+        error
+      );
+    }
+
+    try {
+      const latestWithdraw =
+        localStorage.getItem(
+          "transportWithdrawRequest"
+        );
+
+      if (latestWithdraw) {
+        const parsed =
+          JSON.parse(
+            latestWithdraw
+          );
+
+        const requestPhone =
+          normalizePhone(
+            parsed?.phone ||
+              parsed?.mobile ||
+              parsed?.mobileNumber ||
+              parsed?.user_phone ||
+              parsed?.user?.phone ||
+              parsed?.user?.mobile ||
+              parsed?.user_data?.phone ||
+              parsed?.user_data?.mobile ||
+              ""
+          );
+
+        if (
+          requestPhone ===
+          normalizedPhone
+        ) {
+          localStorage.removeItem(
+            "transportWithdrawRequest"
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Could not clean latest withdrawal request:",
+        error
+      );
+    }
+  };
+
+  /*
+   * ----------------------------------------------------
+   * DELETE USER + ALL RELATED DATA
+   * ----------------------------------------------------
+   */
+  const deleteUserCompletely = async (
+    targetUser
+  ) => {
+    const phone =
+      normalizePhone(
+        targetUser?.phone
+      );
+
+    if (!phone) {
+      setMessage(
+        "This user does not have a valid mobile number."
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    const userName =
+      targetUser?.fullName ||
+      "this user";
+
+    const confirmed =
+      window.confirm(
+        "DELETE USER CONFIRMATION\n\n" +
+          "User: " +
+          userName +
+          "\n" +
+          "Mobile: " +
+          phone +
+          "\n\n" +
+          "This will permanently remove the user's account and related deposits, withdrawals, active plans and transactions.\n\n" +
+          "This action cannot be undone.\n\n" +
+          "Continue?"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingUserPhone(
+      phone
+    );
+
+    setMessage(
+      "Deleting " +
+        userName +
+        " and all related data..."
+    );
+
+    setMessageType(
+      "success"
+    );
+
+    try {
+      /*
+       * STEP 1:
+       * Mark the account blocked before deletion.
+       */
+      if (targetUser.id) {
+        const {
+          error: blockError,
+        } = await supabase
+          .from("users")
+          .update({
+            is_blocked:
+              true,
+          })
+          .eq(
+            "id",
+            targetUser.id
+          );
+
+        if (blockError) {
+          throw new Error(
+            "Could not block the user before deletion: " +
+              blockError.message
+          );
+        }
+      }
+
+      /*
+       * STEP 2:
+       * Find all deposit requests belonging
+       * to this user.
+       *
+       * Deposit requests store the phone
+       * inside user_data JSON.
+       */
+      const {
+        data: depositRows,
+        error: depositReadError,
+      } = await supabase
+        .from("deposit_requests")
+        .select(
+          "id, user_data"
+        );
+
+      if (depositReadError) {
+        throw new Error(
+          "Could not read deposit records: " +
+            depositReadError.message
+        );
+      }
+
+      const depositIds = (
+        Array.isArray(
+          depositRows
+        )
+          ? depositRows
+          : []
+      )
+        .filter(
+          (row) => {
+            const userData =
+              row?.user_data &&
+              typeof row.user_data ===
+                "object"
+                ? row.user_data
+                : {};
+
+            const rowPhone =
+              normalizePhone(
+                userData.phone ||
+                  userData.mobile ||
+                  userData.phoneNumber ||
+                  userData.username ||
+                  ""
+              );
+
+            return (
+              rowPhone ===
+              phone
+            );
+          }
+        )
+        .map(
+          (row) =>
+            row.id
+        )
+        .filter(Boolean);
+
+      /*
+       * STEP 3:
+       * Delete deposit requests.
+       */
+      if (
+        depositIds.length >
+        0
+      ) {
+        const {
+          error:
+            depositDeleteError,
+        } = await supabase
+          .from("deposit_requests")
+          .delete()
+          .in(
+            "id",
+            depositIds
+          );
+
+        if (
+          depositDeleteError
+        ) {
+          throw new Error(
+            "Could not delete deposit records: " +
+              depositDeleteError.message
+          );
+        }
+      }
+
+      /*
+       * STEP 4:
+       * Delete active plans.
+       */
+      const {
+        error:
+          activePlansDeleteError,
+      } = await supabase
+        .from("active_plans")
+        .delete()
+        .eq(
+          "user_phone",
+          phone
+        );
+
+      if (
+        activePlansDeleteError
+      ) {
+        throw new Error(
+          "Could not delete active plans: " +
+            activePlansDeleteError.message
+        );
+      }
+
+      /*
+       * STEP 5:
+       * Delete withdrawal requests.
+       */
+      const {
+        error:
+          withdrawalsDeleteError,
+      } = await supabase
+        .from("withdraw_requests")
+        .delete()
+        .eq(
+          "user_phone",
+          phone
+        );
+
+      if (
+        withdrawalsDeleteError
+      ) {
+        throw new Error(
+          "Could not delete withdrawal records: " +
+            withdrawalsDeleteError.message
+        );
+      }
+
+      /*
+       * STEP 6:
+       * Delete central transactions.
+       */
+      const {
+        error:
+          transactionsDeleteError,
+      } = await supabase
+        .from("transactions")
+        .delete()
+        .eq(
+          "user_phone",
+          phone
+        );
+
+      if (
+        transactionsDeleteError
+      ) {
+        throw new Error(
+          "Could not delete transaction records: " +
+            transactionsDeleteError.message
+        );
+      }
+
+      /*
+       * STEP 7:
+       * Delete the user account itself.
+       */
+      let userDeleteQuery =
+        supabase
+          .from("users")
+          .delete();
+
+      if (targetUser.id) {
+        userDeleteQuery =
+          userDeleteQuery.eq(
+            "id",
+            targetUser.id
+          );
+      } else {
+        userDeleteQuery =
+          userDeleteQuery.eq(
+            "phone",
+            phone
+          );
+      }
+
+      const {
+        error:
+          userDeleteError,
+      } = await userDeleteQuery;
+
+      if (
+        userDeleteError
+      ) {
+        throw new Error(
+          "Could not delete the user account: " +
+            userDeleteError.message
+        );
+      }
+
+      /*
+       * STEP 8:
+       * Clean Admin Panel/local cached data.
+       */
+      removeUserFromLocalStorage(
+        phone
+      );
+
+      setUsers(
+        (currentUsers) =>
+          currentUsers.filter(
+            (item) =>
+              normalizePhone(
+                item.phone
+              ) !== phone
+          )
+      );
+
+      setDepositRequests(
+        (currentRequests) =>
+          currentRequests.filter(
+            (request) => {
+              const requestPhone =
+                normalizePhone(
+                  request?.phone ||
+                    request?.mobile ||
+                    request?.mobileNumber ||
+                    request?.user?.phone ||
+                    request?.user?.mobile ||
+                    request?.user_data?.phone ||
+                    request?.user_data?.mobile ||
+                    ""
+                );
+
+              return (
+                requestPhone !==
+                phone
+              );
+            }
+          )
+      );
+
+      setWithdrawRequests(
+        (currentRequests) =>
+          currentRequests.filter(
+            (request) => {
+              const requestPhone =
+                normalizePhone(
+                  request?.phone ||
+                    request?.mobile ||
+                    request?.mobileNumber ||
+                    request?.user_phone ||
+                    request?.user?.phone ||
+                    request?.user?.mobile ||
+                    request?.user_data?.phone ||
+                    request?.user_data?.mobile ||
+                    ""
+                );
+
+              return (
+                requestPhone !==
+                phone
+              );
+            }
+          )
+      );
+
+      setMessage(
+        userName +
+          " (" +
+          phone +
+          ") and all related data were permanently deleted successfully."
+      );
+
+      setMessageType(
+        "success"
+      );
+    } catch (error) {
+      console.error(
+        "Complete user deletion error:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Could not delete this user and all related data."
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      /*
+       * Refresh data so the Admin Panel
+       * shows the true database state.
+       */
+      await loadUsers();
+      await loadDepositRequests();
+      await loadWithdrawRequests();
+    } finally {
+      setDeletingUserPhone(
+        ""
+      );
+    }
   };
 
   /*
@@ -3142,21 +3932,6 @@ export default function Admin() {
    * ----------------------------------------------------
    * WITHDRAW STATUS
    * ----------------------------------------------------
-   *
-   * APPROVAL:
-   * - Reads central users.withdrawable_returns
-   * - Verifies enough return balance exists
-   * - Deducts withdrawal amount centrally
-   * - Updates withdraw_requests in Supabase
-   * - Updates local transaction status
-   * - Saves transaction centrally in Supabase
-   *
-   * REJECTION:
-   * - Does NOT deduct withdrawable_returns
-   * - Only changes withdrawal request status
-   * - Updates local transaction to Rejected
-   * - Saves transaction centrally in Supabase
-   * ----------------------------------------------------
    */
   const updateWithdrawStatus = async (
     requestId,
@@ -3245,20 +4020,11 @@ export default function Admin() {
       return;
     }
 
-    /*
-     * --------------------------------------------------
-     * APPROVAL
-     * --------------------------------------------------
-     */
     if (
       newStatus ===
       "Approved"
     ) {
       try {
-        /*
-         * STEP 1:
-         * Read the latest central withdrawable balance.
-         */
         const {
           data: currentUser,
           error: userReadError,
@@ -3309,11 +4075,6 @@ export default function Admin() {
               0
           );
 
-        /*
-         * Pending withdrawals are only reserved.
-         * The central balance is deducted only here,
-         * after Admin approval.
-         */
         if (
           withdrawAmount >
           currentReturns
@@ -3334,10 +4095,6 @@ export default function Admin() {
           currentReturns -
           withdrawAmount;
 
-        /*
-         * STEP 2:
-         * Deduct centrally from users table.
-         */
         const {
           data: updatedUser,
           error: userUpdateError,
@@ -3380,10 +4137,6 @@ export default function Admin() {
               newReturns
           );
 
-        /*
-         * STEP 3:
-         * Update withdrawal request status in Supabase.
-         */
         const {
           error: requestUpdateError,
         } = await supabase
@@ -3401,19 +4154,12 @@ export default function Admin() {
           );
 
         if (requestUpdateError) {
-          /*
-           * Compensation:
-           * If the request status could not be updated,
-           * restore the deducted balance.
-           */
           console.error(
             "Withdrawal request status update failed. Restoring balance:",
             requestUpdateError
           );
 
-          const {
-            error: restoreError,
-          } = await supabase
+          await supabase
             .from("users")
             .update({
               withdrawable_returns:
@@ -3423,13 +4169,6 @@ export default function Admin() {
               "id",
               currentUser.id
             );
-
-          if (restoreError) {
-            console.error(
-              "CRITICAL: Could not restore withdrawal balance:",
-              restoreError
-            );
-          }
 
           setMessage(
             "Withdrawal approval failed: " +
@@ -3446,10 +4185,6 @@ export default function Admin() {
           return;
         }
 
-        /*
-         * STEP 4:
-         * Mirror the new central balance locally.
-         */
         localStorage.setItem(
           "transportWithdrawableReturns_" +
             phone,
@@ -3516,10 +4251,6 @@ export default function Admin() {
           );
         }
 
-        /*
-         * STEP 5:
-         * Update existing Pending withdrawal transaction locally.
-         */
         const withdrawalTransactionId =
           "withdraw-" +
           request.id;
@@ -3531,10 +4262,6 @@ export default function Admin() {
             "Approved"
           );
 
-        /*
-         * If no pending transaction was found,
-         * create the approved transaction.
-         */
         const withdrawalTransaction = {
           id:
             withdrawalTransactionId,
@@ -3605,10 +4332,6 @@ export default function Admin() {
             phone
           );
 
-        /*
-         * STEP 6:
-         * Update request locally too.
-         */
         const updatedRequest = {
           ...request,
 
@@ -3635,10 +4358,6 @@ export default function Admin() {
           updatedRequests
         );
 
-        /*
-         * STEP 7:
-         * Refresh central data.
-         */
         await loadUsers();
         await loadWithdrawRequests();
 
@@ -3687,19 +4406,11 @@ export default function Admin() {
       }
     }
 
-    /*
-     * --------------------------------------------------
-     * REJECTION
-     * --------------------------------------------------
-     */
     if (
       newStatus ===
       "Rejected"
     ) {
       try {
-        /*
-         * Do NOT deduct withdrawable_returns.
-         */
         const {
           error: requestUpdateError,
         } = await supabase
@@ -3734,9 +4445,6 @@ export default function Admin() {
           return;
         }
 
-        /*
-         * Update local transaction.
-         */
         const withdrawalTransactionId =
           "withdraw-" +
           request.id;
@@ -3818,9 +4526,6 @@ export default function Admin() {
             phone
           );
 
-        /*
-         * Update local withdrawal request.
-         */
         const updatedRequest = {
           ...request,
 
@@ -4513,12 +5218,16 @@ export default function Admin() {
 
               fontWeight:
                 "600",
+
+              lineHeight:
+                "1.5",
             }}
           >
             {messageType ===
             "error"
               ? "❌ "
               : "✅ "}
+
             {message}
 
             <button
@@ -5662,7 +6371,7 @@ export default function Admin() {
           <div>
             <SectionHeader
               title="Registered Users"
-              subtitle="Users are now loaded directly from the central Supabase database."
+              subtitle="Users are loaded directly from the central Supabase database."
               icon="👥"
             />
 
@@ -5679,151 +6388,244 @@ export default function Admin() {
                   (
                     user,
                     index
-                  ) => (
-                    <div
-                      key={
-                        user.phone ||
-                        user.id ||
-                        index
-                      }
-                      style={{
-                        background:
-                          NAVY,
-                        border:
-                          "1px solid " +
-                          BORDER,
-                        borderRadius:
-                          "17px",
-                        padding:
-                          "18px",
-                        boxShadow:
-                          "0 8px 22px rgba(16,42,67,0.10)",
-                      }}
-                    >
+                  ) => {
+                    const isDeleting =
+                      deletingUserPhone ===
+                      normalizePhone(
+                        user.phone
+                      );
+
+                    return (
                       <div
+                        key={
+                          user.phone ||
+                          user.id ||
+                          index
+                        }
                         style={{
-                          display:
-                            "flex",
-                          alignItems:
-                            "center",
-                          gap:
-                            "14px",
-                          marginBottom:
-                            "15px",
+                          background:
+                            NAVY,
+                          border:
+                            "1px solid " +
+                            BORDER,
+                          borderRadius:
+                            "17px",
+                          padding:
+                            "18px",
+                          boxShadow:
+                            "0 8px 22px rgba(16,42,67,0.10)",
                         }}
                       >
                         <div
                           style={{
-                            width:
-                              "48px",
-                            height:
-                              "48px",
-                            borderRadius:
-                              "15px",
-                            background:
-                              NAVY_2,
-                            border:
-                              "1px solid " +
-                              BORDER,
                             display:
                               "flex",
                             alignItems:
                               "center",
                             justifyContent:
-                              "center",
-                            fontSize:
-                              "22px",
+                              "space-between",
+                            gap:
+                              "14px",
+                            marginBottom:
+                              "15px",
+                            flexWrap:
+                              "wrap",
                           }}
                         >
-                          👤
-                        </div>
-
-                        <div>
-                          <h3
+                          <div
                             style={{
-                              margin:
-                                0,
-                              color:
-                                "#ffffff",
-                              fontSize:
-                                "17px",
+                              display:
+                                "flex",
+                              alignItems:
+                                "center",
+                              gap:
+                                "14px",
                             }}
                           >
-                            {user.fullName ||
-                              user.name ||
-                              user.username ||
-                              "User"}
-                          </h3>
+                            <div
+                              style={{
+                                width:
+                                  "48px",
+                                height:
+                                  "48px",
+                                borderRadius:
+                                  "15px",
+                                background:
+                                  NAVY_2,
+                                border:
+                                  "1px solid " +
+                                  BORDER,
+                                display:
+                                  "flex",
+                                alignItems:
+                                  "center",
+                                justifyContent:
+                                  "center",
+                                fontSize:
+                                  "22px",
+                              }}
+                            >
+                              👤
+                            </div>
 
-                          <p
+                            <div>
+                              <h3
+                                style={{
+                                  margin:
+                                    0,
+                                  color:
+                                    "#ffffff",
+                                  fontSize:
+                                    "17px",
+                                }}
+                              >
+                                {user.fullName ||
+                                  user.name ||
+                                  user.username ||
+                                  "User"}
+                              </h3>
+
+                              <p
+                                style={{
+                                  margin:
+                                    "4px 0 0",
+                                  color:
+                                    MUTED,
+                                  fontSize:
+                                    "12px",
+                                }}
+                              >
+                                {user.phone ||
+                                  "No mobile number"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={
+                              isDeleting
+                            }
+                            onClick={() =>
+                              deleteUserCompletely(
+                                user
+                              )
+                            }
                             style={{
-                              margin:
-                                "4px 0 0",
+                              border:
+                                "1px solid rgba(255,159,150,0.35)",
+                              background:
+                                isDeleting
+                                  ? "rgba(255,159,150,0.05)"
+                                  : "rgba(255,159,150,0.12)",
                               color:
-                                MUTED,
+                                RED,
+                              borderRadius:
+                                "10px",
+                              padding:
+                                "10px 14px",
                               fontSize:
                                 "12px",
+                              fontWeight:
+                                "800",
+                              cursor:
+                                isDeleting
+                                  ? "not-allowed"
+                                  : "pointer",
+                              opacity:
+                                isDeleting
+                                  ? 0.65
+                                  : 1,
                             }}
                           >
-                            {user.phone ||
-                              "No mobile number"}
-                          </p>
+                            {isDeleting
+                              ? "Deleting..."
+                              : "🗑️ Delete User"}
+                          </button>
+                        </div>
+
+                        <DetailsGrid>
+                          <Detail
+                            label="Full Name"
+                            value={
+                              user.fullName ||
+                              user.name ||
+                              user.username ||
+                              "N/A"
+                            }
+                          />
+
+                          <Detail
+                            label="Mobile Number"
+                            value={
+                              user.phone ||
+                              "N/A"
+                            }
+                          />
+
+                          <Detail
+                            label="Balance"
+                            value={
+                              "PKR " +
+                              Number(
+                                user.balance ||
+                                  0
+                              ).toLocaleString()
+                            }
+                            highlight
+                          />
+
+                          <Detail
+                            label="Withdrawable Returns"
+                            value={
+                              "PKR " +
+                              Number(
+                                user.withdrawableReturns ||
+                                  0
+                              ).toLocaleString()
+                            }
+                          />
+
+                          <Detail
+                            label="Referral Code"
+                            value={
+                              user.referralCode ||
+                              user.referral ||
+                              "N/A"
+                            }
+                          />
+
+                          <Detail
+                            label="Joined"
+                            value={
+                              user.createdAt
+                                ? new Date(
+                                    user.createdAt
+                                  ).toLocaleString()
+                                : "N/A"
+                            }
+                          />
+                        </DetailsGrid>
+
+                        <div
+                          style={{
+                            marginTop:
+                              "12px",
+                            color:
+                              "#FFB3AC",
+                            fontSize:
+                              "10px",
+                            lineHeight:
+                              "1.5",
+                            fontWeight:
+                              "600",
+                          }}
+                        >
+                          ⚠️ Delete User permanently removes this account and its related deposits, withdrawals, active plans and transactions.
                         </div>
                       </div>
-
-                      <DetailsGrid>
-                        <Detail
-                          label="Full Name"
-                          value={
-                            user.fullName ||
-                            user.name ||
-                            user.username ||
-                            "N/A"
-                          }
-                        />
-
-                        <Detail
-                          label="Mobile Number"
-                          value={
-                            user.phone ||
-                            "N/A"
-                          }
-                        />
-
-                        <Detail
-                          label="Balance"
-                          value={
-                            "PKR " +
-                            Number(
-                              user.balance ||
-                                0
-                            ).toLocaleString()
-                          }
-                          highlight
-                        />
-
-                        <Detail
-                          label="Withdrawable Returns"
-                          value={
-                            "PKR " +
-                            Number(
-                              user.withdrawableReturns ||
-                                0
-                            ).toLocaleString()
-                          }
-                        />
-
-                        <Detail
-                          label="Referral Code"
-                          value={
-                            user.referralCode ||
-                            user.referral ||
-                            "N/A"
-                          }
-                        />
-                      </DetailsGrid>
-                    </div>
-                  )
+                    );
+                  }
                 )}
               </div>
             ) : (
