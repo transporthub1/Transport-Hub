@@ -16,10 +16,8 @@ export async function POST(request) {
       );
     }
 
-    // Temporary admin credentials
-    // In production, move these to environment variables.
-    const ADMIN_USERNAME = "admin";
-    const ADMIN_PASSWORD = "admin123";
+    const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
     if (
       username.trim() === ADMIN_USERNAME &&
