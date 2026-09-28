@@ -2308,16 +2308,7 @@ export default function Dashboard() {
               💬 Live Chat
             </button>
 
-            <a
-              href="https://wa.me/923263159327?text=Hello%20Transport%20Hub%20Support%2C%20I%20need%20help."
-              target="_blank"
-              rel="noopener noreferrer"
-              style={
-                styles.whatsappButton
-              }
-            >
-              📱 WhatsApp
-            </a>
+      
           </div>
         </section>
 
