@@ -160,14 +160,6 @@ export default function SupportPage() {
     }
   };
 
-  const whatsappMessage = encodeURIComponent(
-    `Hello Transport Hub Support, I need help with my account.${
-      userPhone ? ` My registered number is ${userPhone}.` : ""
-    }`
-  );
-
-  const whatsappLink = `https://wa.me/923263159327?text=${whatsappMessage}`;
-
   const faqs = [
     {
       question: "How can I make a deposit?",
@@ -187,7 +179,7 @@ export default function SupportPage() {
     {
       question: "How can I contact support?",
       answer:
-        "You can contact us through Live Chat or WhatsApp Support.",
+        "You can contact us through Live Chat.",
     },
   ];
 
@@ -235,18 +227,6 @@ export default function SupportPage() {
             }}
           >
             💬 Live Chat
-          </button>
-
-          <button
-            onClick={() => setActiveTab("whatsapp")}
-            style={{
-              ...styles.tabButton,
-              ...(activeTab === "whatsapp"
-                ? styles.activeTab
-                : {}),
-            }}
-          >
-            📱 WhatsApp
           </button>
 
           <button
@@ -387,46 +367,6 @@ export default function SupportPage() {
           </section>
         )}
 
-        {activeTab === "whatsapp" && (
-          <section style={styles.card}>
-            <div style={styles.whatsappSection}>
-              <div style={styles.whatsappIcon}>📱</div>
-
-              <h2 style={styles.cardTitle}>
-                WhatsApp Support
-              </h2>
-
-              <p style={styles.whatsappText}>
-                Contact our support team directly on WhatsApp for
-                assistance with your account.
-              </p>
-
-              <div style={styles.numberBox}>
-                <div style={styles.numberLabel}>
-                  Support Number
-                </div>
-
-                <div style={styles.number}>
-                  +92 326 3159327
-                </div>
-              </div>
-
-              <a
-                href={whatsappLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={styles.whatsappButton}
-              >
-                💬 Chat on WhatsApp
-              </a>
-
-              <p style={styles.smallText}>
-                WhatsApp will open in a new tab or the WhatsApp app.
-              </p>
-            </div>
-          </section>
-        )}
-
         {activeTab === "faq" && (
           <section style={styles.card}>
             <div style={styles.cardHeader}>
@@ -462,29 +402,6 @@ export default function SupportPage() {
             </div>
           </section>
         )}
-
-        <div style={styles.bottomSupport}>
-          <div style={styles.bottomIcon}>🎧</div>
-
-          <div style={{ flex: 1 }}>
-            <div style={styles.bottomTitle}>
-              Need more assistance?
-            </div>
-
-            <div style={styles.bottomText}>
-              Contact us through WhatsApp for direct support.
-            </div>
-          </div>
-
-          <a
-            href={whatsappLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={styles.bottomButton}
-          >
-            WhatsApp
-          </a>
-        </div>
 
         <button
           onClick={() => router.push("/")}
@@ -741,7 +658,6 @@ const styles = {
     lineHeight: 1.5,
   },
 
-  /* USER CHAT */
   userBubble: {
     background: "#173B5A",
     border: "1px solid #294B66",
@@ -749,7 +665,6 @@ const styles = {
     borderBottomRightRadius: "4px",
   },
 
-  /* ADMIN CHAT - NAVY BLUE */
   supportBubble: {
     background: "#102A43",
     border: "1px solid #1E3A56",
@@ -812,69 +727,6 @@ const styles = {
     cursor: "pointer",
   },
 
-  whatsappSection: {
-    textAlign: "center",
-    padding: "18px 10px 12px",
-  },
-
-  whatsappIcon: {
-    width: "78px",
-    height: "78px",
-    borderRadius: "50%",
-    background: "#173B5A",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "38px",
-    margin: "0 auto 17px",
-  },
-
-  whatsappText: {
-    maxWidth: "600px",
-    margin: "10px auto 20px",
-    color: "#C9D8E6",
-    lineHeight: 1.6,
-    fontSize: "14px",
-  },
-
-  numberBox: {
-    maxWidth: "420px",
-    margin: "0 auto 20px",
-    padding: "15px",
-    background: "#173B5A",
-    border: "1px solid #294B66",
-    borderRadius: "12px",
-  },
-
-  numberLabel: {
-    color: "#9FB3C8",
-    fontSize: "12px",
-    marginBottom: "5px",
-  },
-
-  number: {
-    color: "#8FD694",
-    fontSize: "20px",
-    fontWeight: "800",
-  },
-
-  whatsappButton: {
-    display: "inline-block",
-    textDecoration: "none",
-    background: "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
-    color: "#FFFFFF",
-    padding: "13px 24px",
-    borderRadius: "10px",
-    fontWeight: "800",
-    fontSize: "14px",
-  },
-
-  smallText: {
-    marginTop: "14px",
-    color: "#9FB3C8",
-    fontSize: "12px",
-  },
-
   faqList: {
     display: "flex",
     flexDirection: "column",
@@ -906,49 +758,6 @@ const styles = {
     color: "#C9D8E6",
     fontSize: "13px",
     lineHeight: 1.6,
-  },
-
-  bottomSupport: {
-    marginTop: "20px",
-    background: "#102A43",
-    border: "1px solid #1E3A56",
-    borderRadius: "15px",
-    padding: "17px",
-    display: "flex",
-    alignItems: "center",
-    gap: "13px",
-  },
-
-  bottomIcon: {
-    width: "45px",
-    height: "45px",
-    borderRadius: "11px",
-    background: "#173B5A",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "20px",
-  },
-
-  bottomTitle: {
-    fontWeight: "800",
-    fontSize: "14px",
-  },
-
-  bottomText: {
-    color: "#9FB3C8",
-    fontSize: "12px",
-    marginTop: "4px",
-  },
-
-  bottomButton: {
-    textDecoration: "none",
-    background: "linear-gradient(135deg, #3E8E5B, #2E6B4A)",
-    color: "#FFFFFF",
-    padding: "10px 15px",
-    borderRadius: "9px",
-    fontSize: "12px",
-    fontWeight: "800",
   },
 
   dashboardButton: {
