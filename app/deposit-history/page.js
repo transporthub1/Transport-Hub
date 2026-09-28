@@ -8,9 +8,7 @@ export default function DepositHistoryPage() {
   const [loading, setLoading] = useState(true);
 
   const normalizePhone = (value) => {
-    let phone = String(value || "").trim();
-
-    phone = phone.replace(/\s+/g, "");
+    let phone = String(value || "").trim().replace(/\s+/g, "");
 
     if (phone.startsWith("+92")) {
       phone = "0" + phone.slice(3);
@@ -22,9 +20,7 @@ export default function DepositHistoryPage() {
   };
 
   const normalizeText = (value) => {
-    return String(value || "")
-      .trim()
-      .toLowerCase();
+    return String(value || "").trim().toLowerCase();
   };
 
   const phonesMatch = (value1, value2) => {
@@ -32,7 +28,6 @@ export default function DepositHistoryPage() {
     const b = normalizePhone(value2);
 
     if (!a || !b) return false;
-
     if (a === b) return true;
 
     const digitsA = a.replace(/\D/g, "");
@@ -51,6 +46,152 @@ export default function DepositHistoryPage() {
     return false;
   };
 
+  const getRecordPhone = (deposit) => {
+    if (!deposit || typeof deposit !== "object") {
+      return "";
+    }
+
+    const user =
+      deposit.user &&
+      typeof deposit.user === "object"
+        ? deposit.user
+        : deposit.user_data &&
+          typeof deposit.user_data === "object"
+        ? deposit.user_data
+        : {};
+
+    return (
+      deposit.phone ||
+      deposit.mobile ||
+      deposit.phoneNumber ||
+      deposit.userPhone ||
+      user.phone ||
+      user.mobile ||
+      user.phoneNumber ||
+      user.username ||
+      ""
+    );
+  };
+
+  const convertLocalRecord = (deposit) => {
+    if (!deposit || typeof deposit !== "object") {
+      return null;
+    }
+
+    const plan =
+      deposit.plan &&
+      typeof deposit.plan === "object"
+        ? deposit.plan
+        : {};
+
+    const amount =
+      deposit.depositAmount ??
+      deposit.deposit_amount ??
+      deposit.amount ??
+      deposit.price ??
+      plan.amount ??
+      plan.price ??
+      0;
+
+    return {
+      ...deposit,
+
+      id:
+        deposit.id ||
+        deposit.requestId ||
+        "",
+
+      requestId:
+        deposit.requestId ||
+        deposit.id ||
+        "",
+
+      status:
+        deposit.status ||
+        "Pending",
+
+      amount,
+      price: amount,
+      depositAmount: amount,
+
+      plan,
+
+      planName:
+        plan.name ||
+        deposit.planName ||
+        deposit.plan_name ||
+        deposit.name ||
+        "Transport Plan",
+
+      paymentMethod:
+        deposit.paymentMethod ||
+        deposit.payment_method ||
+        deposit.method ||
+        deposit.paymentType ||
+        "—",
+
+      paymentMethodId:
+        deposit.paymentMethodId ||
+        deposit.payment_method_id ||
+        "",
+
+      accountName:
+        deposit.accountName ||
+        deposit.account_name ||
+        "",
+
+      accountNumber:
+        deposit.accountNumber ||
+        deposit.account_number ||
+        "",
+
+      bankName:
+        deposit.bankName ||
+        deposit.bank_name ||
+        deposit.bank ||
+        "",
+
+      transactionId:
+        deposit.transactionId ||
+        deposit.transaction_id ||
+        "",
+
+      screenshot:
+        deposit.screenshot ||
+        "",
+
+      screenshotName:
+        deposit.screenshotName ||
+        deposit.screenshot_name ||
+        "",
+
+      submittedAt:
+        deposit.submittedAt ||
+        deposit.createdAt ||
+        deposit.created_at ||
+        deposit.date ||
+        "",
+
+      createdAt:
+        deposit.createdAt ||
+        deposit.created_at ||
+        deposit.submittedAt ||
+        deposit.date ||
+        "",
+
+      updatedAt:
+        deposit.updatedAt ||
+        deposit.updated_at ||
+        deposit.createdAt ||
+        deposit.created_at ||
+        "",
+
+      userPhone: getRecordPhone(deposit),
+
+      user: deposit.user || {},
+    };
+  };
+
   const convertSupabaseRow = (row) => {
     const rowUser =
       row.user_data &&
@@ -64,6 +205,14 @@ export default function DepositHistoryPage() {
         ? row.plan
         : {};
 
+    const amount =
+      row.deposit_amount ??
+      rowPlan.amount ??
+      rowPlan.price ??
+      row.amount ??
+      row.price ??
+      0;
+
     return {
       id: row.id,
       requestId: row.id,
@@ -72,21 +221,12 @@ export default function DepositHistoryPage() {
         row.status ||
         "Pending",
 
-      amount:
-        row.deposit_amount ??
-        rowPlan.amount ??
-        rowPlan.price ??
-        0,
-
-      price:
-        row.deposit_amount ??
-        rowPlan.amount ??
-        rowPlan.price ??
-        0,
+      amount,
+      price: amount,
 
       depositAmount:
         row.deposit_amount ??
-        0,
+        amount,
 
       plan: rowPlan,
 
@@ -154,12 +294,39 @@ export default function DepositHistoryPage() {
     };
   };
 
+  const addLocalValue = (collection, value) => {
+    if (!value) return;
+
+    try {
+      const parsed =
+        typeof value === "string"
+          ? JSON.parse(value)
+          : value;
+
+      if (Array.isArray(parsed)) {
+        parsed.forEach((item) => {
+          if (item && typeof item === "object") {
+            collection.push(item);
+          }
+        });
+      } else if (
+        parsed &&
+        typeof parsed === "object"
+      ) {
+        collection.push(parsed);
+      }
+    } catch (error) {
+      console.error(
+        "Error parsing local deposit data:",
+        error
+      );
+    }
+  };
+
   useEffect(() => {
     const loadDepositHistory = async () => {
       const loggedIn =
-        localStorage.getItem(
-          "transportLoggedIn"
-        );
+        localStorage.getItem("transportLoggedIn");
 
       if (loggedIn !== "true") {
         window.location.href = "/login";
@@ -167,9 +334,7 @@ export default function DepositHistoryPage() {
       }
 
       const userData =
-        localStorage.getItem(
-          "transportUser"
-        );
+        localStorage.getItem("transportUser");
 
       if (!userData) {
         setLoading(false);
@@ -183,7 +348,8 @@ export default function DepositHistoryPage() {
           user.phone ||
           user.mobile ||
           user.phoneNumber ||
-          user.username;
+          user.username ||
+          "";
 
         if (!phone) {
           setLoading(false);
@@ -194,100 +360,141 @@ export default function DepositHistoryPage() {
           normalizePhone(phone);
 
         // =========================================================
-        // 1. LOCAL HISTORY
+        // 1. LOAD ALL POSSIBLE LOCAL DEPOSIT RECORDS
         // =========================================================
 
-        const userKey =
-          `transportDepositRequests_${phone}`;
+        const allLocalRecords = [];
 
-        const oldUserKey =
-          `transportDepositRequest_${phone}`;
-
-        let userDeposits = [];
-        let oldUserDeposit = null;
-
-        try {
-          const saved =
-            localStorage.getItem(userKey);
-
-          if (saved) {
-            const parsed =
-              JSON.parse(saved);
-
-            if (Array.isArray(parsed)) {
-              userDeposits = parsed;
-            }
-          }
-        } catch (error) {
-          console.error(
-            "Error reading local deposits:",
-            error
-          );
-        }
-
-        try {
-          const saved =
-            localStorage.getItem(oldUserKey);
-
-          if (saved) {
-            const parsed =
-              JSON.parse(saved);
-
-            if (parsed) {
-              oldUserDeposit = parsed;
-            }
-          }
-        } catch (error) {
-          console.error(
-            "Error reading old local deposit:",
-            error
-          );
-        }
-
-        const localRecords = [
-          ...userDeposits,
-          ...(oldUserDeposit
-            ? [oldUserDeposit]
-            : []),
+        const exactKeys = [
+          `transportDepositRequests_${phone}`,
+          `transportDepositRequest_${phone}`,
         ];
 
-        // =========================================================
-        // 2. COLLECT LOCAL IDS + TRANSACTION IDS
-        // =========================================================
+        if (
+          normalizedPhone &&
+          normalizedPhone !== phone
+        ) {
+          exactKeys.push(
+            `transportDepositRequests_${normalizedPhone}`
+          );
 
-        const localIds = new Set();
+          exactKeys.push(
+            `transportDepositRequest_${normalizedPhone}`
+          );
+        }
 
-        const localTransactionIds =
-          new Set();
+        exactKeys.forEach((key) => {
+          try {
+            const saved =
+              localStorage.getItem(key);
 
-        localRecords.forEach((deposit) => {
-          if (
-            deposit?.id ||
-            deposit?.requestId
-          ) {
-            localIds.add(
-              String(
-                deposit.id ||
-                  deposit.requestId
-              )
-            );
-          }
-
-          if (
-            deposit?.transactionId ||
-            deposit?.transaction_id
-          ) {
-            localTransactionIds.add(
-              normalizeText(
-                deposit.transactionId ||
-                  deposit.transaction_id
-              )
+            if (saved) {
+              addLocalValue(
+                allLocalRecords,
+                saved
+              );
+            }
+          } catch (error) {
+            console.error(
+              `Error reading ${key}:`,
+              error
             );
           }
         });
 
         // =========================================================
-        // 3. LOAD ALL SUPABASE DEPOSITS
+        // 2. GLOBAL LOCAL STORAGE RECORDS
+        // =========================================================
+
+        const globalKeys = [
+          "transportDepositRequests",
+          "transportDepositRequest",
+        ];
+
+        globalKeys.forEach((key) => {
+          try {
+            const saved =
+              localStorage.getItem(key);
+
+            if (saved) {
+              addLocalValue(
+                allLocalRecords,
+                saved
+              );
+            }
+          } catch (error) {
+            console.error(
+              `Error reading global ${key}:`,
+              error
+            );
+          }
+        });
+
+        // =========================================================
+        // 3. SCAN LOCAL STORAGE FOR DEPOSIT KEYS
+        // =========================================================
+
+        for (
+          let i = 0;
+          i < localStorage.length;
+          i++
+        ) {
+          const key =
+            localStorage.key(i);
+
+          if (!key) continue;
+
+          if (
+            key.startsWith(
+              "transportDepositRequests_"
+            ) ||
+            key.startsWith(
+              "transportDepositRequest_"
+            )
+          ) {
+            try {
+              const saved =
+                localStorage.getItem(key);
+
+              if (saved) {
+                addLocalValue(
+                  allLocalRecords,
+                  saved
+                );
+              }
+            } catch (error) {
+              console.error(
+                "Error scanning local deposits:",
+                error
+              );
+            }
+          }
+        }
+
+        // =========================================================
+        // 4. FILTER LOCAL RECORDS FOR CURRENT USER
+        // =========================================================
+
+        const userDeposits =
+          allLocalRecords
+            .map(convertLocalRecord)
+            .filter(Boolean)
+            .filter((deposit) => {
+              const recordPhone =
+                getRecordPhone(deposit);
+
+              if (!recordPhone) {
+                return true;
+              }
+
+              return phonesMatch(
+                recordPhone,
+                normalizedPhone
+              );
+            });
+
+        // =========================================================
+        // 5. LOAD SUPABASE DEPOSITS
         // =========================================================
 
         let supabaseDeposits = [];
@@ -308,23 +515,15 @@ export default function DepositHistoryPage() {
               "Supabase Deposit History Error:",
               error
             );
-          } else if (Array.isArray(data)) {
+          } else if (
+            Array.isArray(data)
+          ) {
             data.forEach((row) => {
               const rowUser =
                 row.user_data &&
                 typeof row.user_data === "object"
                   ? row.user_data
                   : {};
-
-              const rowId =
-                row.id
-                  ? String(row.id)
-                  : "";
-
-              const rowTransactionId =
-                normalizeText(
-                  row.transaction_id
-                );
 
               const rowPhone =
                 rowUser.phone ||
@@ -337,35 +536,11 @@ export default function DepositHistoryPage() {
                 row.userPhone ||
                 "";
 
-              // =====================================================
-              // EXACT MATCHES
-              // =====================================================
-
-              const idMatch =
-                rowId &&
-                localIds.has(rowId);
-
-              const transactionMatch =
-                rowTransactionId &&
-                localTransactionIds.has(
-                  rowTransactionId
-                );
-
-              const phoneMatch =
+              if (
                 phonesMatch(
                   rowPhone,
                   normalizedPhone
-                );
-
-              // =====================================================
-              // IMPORTANT:
-              // ID OR TRANSACTION ID OR PHONE
-              // =====================================================
-
-              if (
-                idMatch ||
-                transactionMatch ||
-                phoneMatch
+                )
               ) {
                 supabaseDeposits.push(
                   convertSupabaseRow(row)
@@ -381,145 +556,123 @@ export default function DepositHistoryPage() {
         }
 
         // =========================================================
-        // 4. REMOVE DUPLICATE SUPABASE RECORDS
+        // 6. MERGE LOCAL + SUPABASE
         // =========================================================
 
-        const uniqueSupabaseMap =
-          new Map();
-
-        supabaseDeposits.forEach(
-          (deposit) => {
-            if (!deposit?.id) return;
-
-            uniqueSupabaseMap.set(
-              String(deposit.id),
-              deposit
-            );
-          }
-        );
-
-        supabaseDeposits =
-          Array.from(
-            uniqueSupabaseMap.values()
-          );
-
-        // =========================================================
-        // 5. MERGE LOCAL + SUPABASE
-        //
-        // SUPABASE ALWAYS WINS
-        // =========================================================
-
-        const mergedMap =
-          new Map();
+        const mergedMap = new Map();
 
         userDeposits.forEach(
           (deposit, index) => {
-            const key =
+            const id =
               deposit.id ||
-              deposit.requestId ||
-              (
+              deposit.requestId;
+
+            const transactionId =
+              normalizeText(
                 deposit.transactionId ||
-                deposit.transaction_id ||
-                `${deposit.amount || deposit.price || 0}-${
-                  deposit.submittedAt ||
-                  deposit.createdAt ||
-                  deposit.date ||
-                  index
-                }`
+                  deposit.transaction_id
               );
 
+            const createdAt =
+              deposit.submittedAt ||
+              deposit.createdAt ||
+              deposit.date ||
+              "";
+
+            const amount =
+              deposit.amount ||
+              deposit.price ||
+              deposit.depositAmount ||
+              0;
+
+            const key =
+              id
+                ? `id-${id}`
+                : transactionId
+                ? `tx-${transactionId}`
+                : `local-${amount}-${createdAt}-${index}`;
+
             mergedMap.set(
-              String(key),
+              key,
               deposit
             );
           }
         );
 
-        if (oldUserDeposit) {
-          const key =
-            oldUserDeposit.id ||
-            oldUserDeposit.requestId ||
-            oldUserDeposit.transactionId ||
-            oldUserDeposit.transaction_id ||
-            `old-${
-              oldUserDeposit.amount ||
-              oldUserDeposit.price ||
-              0
-            }-${
-              oldUserDeposit.submittedAt ||
-              oldUserDeposit.createdAt ||
-              oldUserDeposit.date ||
-              "deposit"
-            }`;
-
-          mergedMap.set(
-            String(key),
-            oldUserDeposit
-          );
-        }
-
         // =========================================================
-        // 6. OVERWRITE USING SUPABASE
+        // 7. SUPABASE OVERRIDES MATCHING LOCAL RECORDS
         // =========================================================
 
         supabaseDeposits.forEach(
-          (supabaseDeposit) => {
+          (deposit) => {
             const supabaseId =
-              supabaseDeposit.id
-                ? String(
-                    supabaseDeposit.id
-                  )
+              deposit.id
+                ? String(deposit.id)
                 : "";
 
             const supabaseTransaction =
               normalizeText(
-                supabaseDeposit.transactionId
+                deposit.transactionId
               );
 
-            // Replace exact ID
-            if (supabaseId) {
-              mergedMap.set(
-                supabaseId,
-                supabaseDeposit
-              );
-            }
+            if (supabaseTransaction) {
+              Array.from(
+                mergedMap.entries()
+              ).forEach(
+                ([key, existing]) => {
+                  const existingTransaction =
+                    normalizeText(
+                      existing?.transactionId ||
+                        existing?.transaction_id
+                    );
 
-            // Also replace matching transaction ID
-            if (
-              supabaseTransaction
-            ) {
-              const keys =
-                Array.from(
-                  mergedMap.keys()
-                );
-
-              keys.forEach((key) => {
-                const existing =
-                  mergedMap.get(key);
-
-                const existingTransaction =
-                  normalizeText(
-                    existing?.transactionId ||
-                      existing?.transaction_id
-                  );
-
-                if (
-                  existingTransaction &&
-                  existingTransaction ===
-                    supabaseTransaction
-                ) {
-                  mergedMap.set(
-                    key,
-                    supabaseDeposit
-                  );
+                  if (
+                    existingTransaction &&
+                    existingTransaction ===
+                      supabaseTransaction
+                  ) {
+                    mergedMap.delete(key);
+                  }
                 }
-              });
+              );
             }
+
+            if (supabaseId) {
+              Array.from(
+                mergedMap.entries()
+              ).forEach(
+                ([key, existing]) => {
+                  const existingId =
+                    existing?.id ||
+                    existing?.requestId;
+
+                  if (
+                    existingId &&
+                    String(existingId) ===
+                      supabaseId
+                  ) {
+                    mergedMap.delete(key);
+                  }
+                }
+              );
+            }
+
+            const key =
+              supabaseId
+                ? `id-${supabaseId}`
+                : supabaseTransaction
+                ? `tx-${supabaseTransaction}`
+                : `supabase-${Date.now()}-${Math.random()}`;
+
+            mergedMap.set(
+              key,
+              deposit
+            );
           }
         );
 
         // =========================================================
-        // 7. FINAL DEPOSITS
+        // 8. FINAL LIST
         // =========================================================
 
         const finalDeposits =
@@ -552,19 +705,19 @@ export default function DepositHistoryPage() {
         );
 
         // =========================================================
-        // 8. SAVE LATEST VERSION LOCALLY
+        // 9. SAVE CLEAN HISTORY FOR CURRENT USER
         // =========================================================
 
         try {
           localStorage.setItem(
-            userKey,
+            `transportDepositRequests_${phone}`,
             JSON.stringify(
               finalDeposits
             )
           );
         } catch (error) {
           console.error(
-            "Error saving updated history:",
+            "Error saving deposit history:",
             error
           );
         }
