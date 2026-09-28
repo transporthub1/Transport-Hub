@@ -2,6 +2,81 @@
 
 import { useEffect, useState } from "react";
 
+const plans = [
+  {
+    id: 1,
+    name: "Starter",
+    amount: 100,
+    weekly: 15,
+  },
+  {
+    id: 2,
+    name: "Basic",
+    amount: 500,
+    weekly: 75,
+  },
+  {
+    id: 3,
+    name: "Standard",
+    amount: 1500,
+    weekly: 225,
+  },
+  {
+    id: 4,
+    name: "Premium",
+    amount: 3500,
+    weekly: 525,
+  },
+  {
+    id: 5,
+    name: "Advanced",
+    amount: 7500,
+    weekly: 1125,
+  },
+  {
+    id: 6,
+    name: "Professional",
+    amount: 13000,
+    weekly: 1950,
+  },
+  {
+    id: 7,
+    name: "Elite",
+    amount: 25000,
+    weekly: 3750,
+  },
+  {
+    id: 8,
+    name: "Executive",
+    amount: 50000,
+    weekly: 7500,
+  },
+  {
+    id: 9,
+    name: "Platinum",
+    amount: 125000,
+    weekly: 18750,
+  },
+  {
+    id: 10,
+    name: "Diamond",
+    amount: 175000,
+    weekly: 26250,
+  },
+  {
+    id: 11,
+    name: "Royal",
+    amount: 225000,
+    weekly: 33750,
+  },
+  {
+    id: 12,
+    name: "Grand Royal",
+    amount: 300000,
+    weekly: 45000,
+  },
+];
+
 export default function PlanConfirmation() {
   const [plan, setPlan] = useState(null);
 
@@ -13,146 +88,443 @@ export default function PlanConfirmation() {
       return;
     }
 
-    const params = new URLSearchParams(window.location.search);
+    /* =========================
+       GET USER
+    ========================= */
 
-    const name = params.get("name");
-    const price = params.get("price");
+    let savedUser = null;
 
-    // Weekly parameters
+    try {
+      savedUser = JSON.parse(
+        localStorage.getItem("transportUser") || "null"
+      );
+    } catch (error) {
+      savedUser = null;
+    }
+
+    const phone =
+      savedUser?.phone ||
+      savedUser?.mobile ||
+      savedUser?.phoneNumber ||
+      "";
+
+    /* =========================
+       GET URL PARAMETERS
+    ========================= */
+
+    const params = new URLSearchParams(
+      window.location.search
+    );
+
+    const nameParam = params.get("name");
+    const priceParam = params.get("price");
+    const amountParam = params.get("amount");
+
     const weeklyParam = params.get("weekly");
 
-    // Old parameters kept for compatibility
+    /* Old compatibility */
     const dailyParam = params.get("daily");
+
+    const planIdParam = params.get("id");
+
+    const selectedAmount = Number(
+      amountParam ||
+        priceParam ||
+        0
+    );
 
     const weekly = weeklyParam
       ? Number(weeklyParam)
       : dailyParam
       ? Number(dailyParam)
-      : null;
+      : 0;
 
-    // Fixed plan duration
-    const durationYears = 5;
-    const totalWeeks = 260;
+    /* =========================
+       FIND EXACT PLAN
+    ========================= */
 
-    if (name && price && weekly !== null && weekly > 0) {
-      const selectedPlan = {
-        name: name,
-        price: Number(price),
+    let matchingPlan = null;
 
-        weekly: weekly,
-        weeklyReturn: weekly,
+    if (planIdParam) {
+      matchingPlan = plans.find(
+        (item) =>
+          Number(item.id) ===
+          Number(planIdParam)
+      );
+    }
 
-        durationYears: durationYears,
-        durationWeeks: totalWeeks,
+    if (!matchingPlan && nameParam) {
+      matchingPlan = plans.find(
+        (item) =>
+          item.name.toLowerCase() ===
+          String(nameParam)
+            .trim()
+            .toLowerCase()
+      );
+    }
 
-        // Compatibility with old data
-        daily: weekly,
-        dailyReturn: weekly,
-        duration: totalWeeks,
+    if (
+      !matchingPlan &&
+      selectedAmount > 0
+    ) {
+      matchingPlan = plans.find(
+        (item) =>
+          Number(item.amount) ===
+          selectedAmount
+      );
+    }
 
-        total: weekly * totalWeeks,
-        totalReturn: weekly * totalWeeks,
+    /* =========================
+       BUILD SELECTED PLAN
+    ========================= */
+
+    if (
+      matchingPlan &&
+      Number(matchingPlan.weekly) > 0
+    ) {
+      const finalPlan = {
+        id: Number(matchingPlan.id),
+
+        name: matchingPlan.name,
+
+        amount: Number(
+          matchingPlan.amount
+        ),
+
+        /* Compatibility */
+        price: Number(
+          matchingPlan.amount
+        ),
+
+        weekly: Number(
+          matchingPlan.weekly
+        ),
+
+        weeklyReturn: Number(
+          matchingPlan.weekly
+        ),
+
+        /* Old compatibility */
+        daily: Number(
+          matchingPlan.weekly
+        ),
+
+        dailyReturn: Number(
+          matchingPlan.weekly
+        ),
+
+        durationYears: 5,
+
+        durationWeeks: 260,
+
+        duration: 260,
+
+        total:
+          Number(matchingPlan.weekly) *
+          260,
+
+        totalReturn:
+          Number(matchingPlan.weekly) *
+          260,
       };
 
-      setPlan(selectedPlan);
+      setPlan(finalPlan);
+
+      /* =========================
+         SAVE COMMON PLAN
+      ========================= */
 
       localStorage.setItem(
         "transportSelectedPlan",
-        JSON.stringify(selectedPlan)
+        JSON.stringify(finalPlan)
       );
-    } else {
-      const savedPlan = localStorage.getItem(
+
+      /* =========================
+         SAVE USER-SPECIFIC PLAN
+      ========================= */
+
+      if (phone) {
+        localStorage.setItem(
+          "transportSelectedPlan_" +
+            phone,
+          JSON.stringify(finalPlan)
+        );
+      }
+
+      return;
+    }
+
+    /* =========================
+       FALLBACK: SAVED PLAN
+    ========================= */
+
+    const savedPlan =
+      localStorage.getItem(
         "transportSelectedPlan"
       );
 
-      if (savedPlan) {
-        try {
-          const saved = JSON.parse(savedPlan);
+    if (savedPlan) {
+      try {
+        const saved = JSON.parse(
+          savedPlan
+        );
 
+        const savedName = String(
+          saved?.name || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const savedAmount = Number(
+          saved?.amount ||
+            saved?.price ||
+            0
+        );
+
+        const savedId = Number(
+          saved?.id || 0
+        );
+
+        let savedMatchingPlan = null;
+
+        if (savedId > 0) {
+          savedMatchingPlan =
+            plans.find(
+              (item) =>
+                Number(item.id) ===
+                savedId
+            );
+        }
+
+        if (
+          !savedMatchingPlan &&
+          savedName
+        ) {
+          savedMatchingPlan =
+            plans.find(
+              (item) =>
+                item.name.toLowerCase() ===
+                savedName
+            );
+        }
+
+        if (
+          !savedMatchingPlan &&
+          savedAmount > 0
+        ) {
+          savedMatchingPlan =
+            plans.find(
+              (item) =>
+                Number(item.amount) ===
+                savedAmount
+            );
+        }
+
+        if (savedMatchingPlan) {
           const savedWeekly = Number(
-            saved.weekly ||
-              saved.weeklyReturn ||
-              saved.daily ||
-              saved.dailyReturn ||
-              0
+            savedMatchingPlan.weekly
           );
 
-          if (savedWeekly > 0) {
-            const convertedPlan = {
-              ...saved,
+          const convertedPlan = {
+            id: Number(
+              savedMatchingPlan.id
+            ),
 
-              weekly: savedWeekly,
-              weeklyReturn: savedWeekly,
+            name:
+              savedMatchingPlan.name,
 
-              // Compatibility
-              daily: savedWeekly,
-              dailyReturn: savedWeekly,
+            amount: Number(
+              savedMatchingPlan.amount
+            ),
 
-              // Always use new duration
-              durationYears: 5,
-              durationWeeks: 260,
-              duration: 260,
+            price: Number(
+              savedMatchingPlan.amount
+            ),
 
-              total: savedWeekly * 260,
-              totalReturn: savedWeekly * 260,
-            };
+            weekly: savedWeekly,
 
-            setPlan(convertedPlan);
+            weeklyReturn: savedWeekly,
 
+            daily: savedWeekly,
+
+            dailyReturn: savedWeekly,
+
+            durationYears: 5,
+
+            durationWeeks: 260,
+
+            duration: 260,
+
+            total:
+              savedWeekly * 260,
+
+            totalReturn:
+              savedWeekly * 260,
+          };
+
+          setPlan(convertedPlan);
+
+          localStorage.setItem(
+            "transportSelectedPlan",
+            JSON.stringify(
+              convertedPlan
+            )
+          );
+
+          if (phone) {
             localStorage.setItem(
-              "transportSelectedPlan",
-              JSON.stringify(convertedPlan)
+              "transportSelectedPlan_" +
+                phone,
+              JSON.stringify(
+                convertedPlan
+              )
             );
-          } else {
-            setPlan(saved);
           }
-        } catch (error) {
-          console.log("Plan data error");
+        } else {
+          setPlan(saved);
         }
+      } catch (error) {
+        console.log(
+          "Plan data error"
+        );
       }
     }
   }, []);
 
+  /* =========================
+     DEFAULT PLAN
+  ========================= */
+
   const currentPlan = plan || {
-    name: "Starter Transport Plan",
+    id: 1,
+
+    name: "Starter",
+
+    amount: 100,
+
     price: 100,
 
     weekly: 15,
+
     weeklyReturn: 15,
 
     durationYears: 5,
+
     durationWeeks: 260,
 
-    // Compatibility
     daily: 15,
+
     dailyReturn: 15,
+
     duration: 260,
 
     total: 3900,
+
     totalReturn: 3900,
   };
 
+  /* =========================
+     CONFIRM PLAN
+  ========================= */
+
   const confirmPlan = () => {
+    const savedUser =
+      (() => {
+        try {
+          return JSON.parse(
+            localStorage.getItem(
+              "transportUser"
+            ) || "null"
+          );
+        } catch {
+          return null;
+        }
+      })();
+
+    const phone =
+      savedUser?.phone ||
+      savedUser?.mobile ||
+      savedUser?.phoneNumber ||
+      "";
+
+    const amount = Number(
+      currentPlan.amount ||
+        currentPlan.price ||
+        0
+    );
+
+    const weekly = Number(
+      currentPlan.weekly ||
+        currentPlan.weeklyReturn ||
+        currentPlan.daily ||
+        currentPlan.dailyReturn ||
+        0
+    );
+
     const finalPlan = {
       ...currentPlan,
 
+      id: Number(
+        currentPlan.id || 1
+      ),
+
+      name:
+        currentPlan.name ||
+        "Starter",
+
+      amount: amount,
+
+      /* Keep price for old compatibility */
+      price: amount,
+
+      weekly: weekly,
+
+      weeklyReturn: weekly,
+
+      daily: weekly,
+
+      dailyReturn: weekly,
+
       durationYears: 5,
+
       durationWeeks: 260,
+
       duration: 260,
 
       total:
-        Number(currentPlan.weekly || 0) * 260,
+        weekly * 260,
 
       totalReturn:
-        Number(currentPlan.weekly || 0) * 260,
+        weekly * 260,
     };
+
+    /* =========================
+       SAVE COMMON PLAN
+    ========================= */
 
     localStorage.setItem(
       "transportSelectedPlan",
       JSON.stringify(finalPlan)
     );
 
-    window.location.href = "/deposit";
+    /* =========================
+       SAVE USER-SPECIFIC PLAN
+    ========================= */
+
+    if (phone) {
+      localStorage.setItem(
+        "transportSelectedPlan_" +
+          phone,
+        JSON.stringify(finalPlan)
+      );
+    }
+
+    /* =========================
+       GO TO DEPOSIT
+    ========================= */
+
+    window.location.href =
+      "/deposit";
   };
 
   return (
@@ -160,12 +532,15 @@ export default function PlanConfirmation() {
       <div style={styles.container}>
 
         {/* Header */}
+
         <header style={styles.header}>
+
           <div style={styles.headerIcon}>
             🚛
           </div>
 
           <div style={styles.headerText}>
+
             <h1 style={styles.title}>
               Confirm Your Plan
             </h1>
@@ -173,20 +548,25 @@ export default function PlanConfirmation() {
             <p style={styles.subtitle}>
               Review your selected transport plan
             </p>
+
           </div>
+
         </header>
 
         <main style={styles.content}>
 
           {/* Plan Card */}
+
           <div style={styles.planCard}>
 
             <div style={styles.planHeader}>
+
               <div style={styles.planIcon}>
                 🚛
               </div>
 
               <div style={styles.planHeaderText}>
+
                 <h2 style={styles.planName}>
                   {currentPlan.name}
                 </h2>
@@ -194,7 +574,9 @@ export default function PlanConfirmation() {
                 <p style={styles.selectedText}>
                   Selected Plan
                 </p>
+
               </div>
+
             </div>
 
             <div style={styles.divider}></div>
@@ -205,15 +587,18 @@ export default function PlanConfirmation() {
             >
 
               {/* Investment */}
+
               <div
                 className="detail-card"
                 style={styles.detailCard}
               >
+
                 <div style={styles.detailIcon}>
                   💰
                 </div>
 
                 <div style={styles.detailContent}>
+
                   <p style={styles.label}>
                     Investment
                   </p>
@@ -221,22 +606,29 @@ export default function PlanConfirmation() {
                   <strong style={styles.investment}>
                     PKR{" "}
                     {Number(
-                      currentPlan.price
+                      currentPlan.amount ||
+                        currentPlan.price ||
+                        0
                     ).toLocaleString()}
                   </strong>
+
                 </div>
+
               </div>
 
               {/* Weekly Return */}
+
               <div
                 className="detail-card"
                 style={styles.detailCard}
               >
+
                 <div style={styles.detailIcon}>
                   📈
                 </div>
 
                 <div style={styles.detailContent}>
+
                   <p style={styles.label}>
                     Weekly Return
                   </p>
@@ -244,22 +636,28 @@ export default function PlanConfirmation() {
                   <strong style={styles.value}>
                     PKR{" "}
                     {Number(
-                      currentPlan.weekly
+                      currentPlan.weekly ||
+                        0
                     ).toLocaleString()}
                   </strong>
+
                 </div>
+
               </div>
 
               {/* Duration */}
+
               <div
                 className="detail-card"
                 style={styles.detailCard}
               >
+
                 <div style={styles.detailIcon}>
                   📅
                 </div>
 
                 <div style={styles.detailContent}>
+
                   <p style={styles.label}>
                     Duration
                   </p>
@@ -267,19 +665,24 @@ export default function PlanConfirmation() {
                   <strong style={styles.value}>
                     5 Years
                   </strong>
+
                 </div>
+
               </div>
 
               {/* Total Return */}
+
               <div
                 className="total-card"
                 style={styles.totalCard}
               >
+
                 <div style={styles.totalIcon}>
                   💎
                 </div>
 
                 <div style={styles.detailContent}>
+
                   <p style={styles.label}>
                     Total Return
                   </p>
@@ -288,17 +691,22 @@ export default function PlanConfirmation() {
                     PKR{" "}
                     {(
                       Number(
-                        currentPlan.weekly || 0
+                        currentPlan.weekly ||
+                          0
                       ) * 260
                     ).toLocaleString()}
                   </strong>
+
                 </div>
+
               </div>
 
             </div>
+
           </div>
 
           {/* Notice */}
+
           <div style={styles.noticeCard}>
 
             <div style={styles.noticeIcon}>
@@ -306,6 +714,7 @@ export default function PlanConfirmation() {
             </div>
 
             <div style={styles.noticeContent}>
+
               <h3 style={styles.noticeTitle}>
                 Plan Review
               </h3>
@@ -315,11 +724,13 @@ export default function PlanConfirmation() {
                 expected returns before continuing to the
                 deposit page.
               </p>
+
             </div>
 
           </div>
 
           {/* Actions */}
+
           <div style={styles.actions}>
 
             <button
@@ -345,6 +756,7 @@ export default function PlanConfirmation() {
       </div>
 
       {/* Responsive Mobile CSS */}
+
       <style jsx>{`
         * {
           box-sizing: border-box;
