@@ -3454,18 +3454,6 @@ const styles = {
     whiteSpace: "nowrap",
   },
 
-  whatsappButton: {
-    textDecoration: "none",
-    background: "#1E3A56",
-    color: "#ffffff",
-    border:
-      "1px solid #294B66",
-    padding: "10px 14px",
-    borderRadius: "9px",
-    fontSize: "11px",
-    fontWeight: 800,
-    whiteSpace: "nowrap",
-  },
 
   appDownloadCard: {
     background:
