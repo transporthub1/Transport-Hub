@@ -1175,7 +1175,7 @@ export default function DailyReturns() {
            UPDATE ACTIVE PLAN
         ======================================================= */
 
-     const {
+const {
   data: updatedDbPlan,
   error: updatePlanError,
 } = await supabase
@@ -1186,7 +1186,6 @@ export default function DailyReturns() {
     total_earned: newEarnedReturns,
     last_return_at: now,
     next_return_at: nextReturnAt,
-    updated_at: now,
   })
   .eq("id", planId)
   .eq("user_phone", phone)
@@ -1201,6 +1200,15 @@ if (updatePlanError) {
 
   setMessage(
     `Weekly return could not be saved. ${updatePlanError.message || "Please try again."}`
+  );
+
+  setMessageType("error");
+  return;
+}
+
+if (!updatedDbPlan) {
+  setMessage(
+    "The weekly return update was not confirmed by the system."
   );
 
   setMessageType("error");
