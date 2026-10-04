@@ -1175,45 +1175,46 @@ export default function DailyReturns() {
            UPDATE ACTIVE PLAN
         ======================================================= */
 
-        const {
-          data: updatedDbPlan,
-          error: updatePlanError,
-        } = await supabase
-          .from(
-            "active_plans"
-          )
-          .update({
-            returns_paid:
-              newReturnsPaid,
+     const {
+  data: updatedDbPlan,
+  error: updatePlanError,
+} = await supabase
+  .from("active_plans")
+  .update({
+    returns_paid: newReturnsPaid,
+    earned_returns: newEarnedReturns,
+    total_earned: newEarnedReturns,
+    last_return_at: now,
+    next_return_at: nextReturnAt,
+    updated_at: now,
+  })
+  .eq("id", planId)
+  .eq("user_phone", phone)
+  .select("*")
+  .maybeSingle();
 
-            earned_returns:
-              newEarnedReturns,
+if (updatePlanError) {
+  console.error(
+    "Active plan update error:",
+    updatePlanError
+  );
 
-            total_earned:
-              newEarnedReturns,
+  setMessage(
+    `Weekly return could not be saved. ${updatePlanError.message || "Please try again."}`
+  );
 
-            last_return_at:
-              now,
+  setMessageType("error");
+  return;
+}
 
-            next_return_at:
-              nextReturnAt,
+if (!updatedDbPlan) {
+  setMessage(
+    "The weekly return update was not confirmed by the system."
+  );
 
-            remaining_weeks:
-              Math.max(
-                0,
-                durationWeeks -
-                  newReturnsPaid
-              ),
-
-            updated_at:
-              now,
-          })
-          .eq(
-            "id",
-            planId
-          )
-          .select("*")
-          .maybeSingle();
+  setMessageType("error");
+  return;
+}
 
         if (
           updatePlanError
